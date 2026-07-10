@@ -1,0 +1,112 @@
+/* 
+PROCEDURE_Dash_Ges_01_v2.sql - Dashboard Gestor datos 01
+
+   Observaciones: 
+      Currency en la que se expresan los resultados
+      Parámetro ROLLUP se aplica al GROUP BY Owner
+      NO EJECUTAR EN VIEWS DEL AFILIADO
+   
+   Parámetros ( [AffiliateID | ALL] , [Month] , [Owner | ALL] , [Currency | ALL], [ROLLUP | ' '] )
+   
+   Ejemplos:
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','EUR','ROLLUP');
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','USD','ROLLUP');
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','GBP','ROLLUP');
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','ALL','ROLLUP');      
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','ALL','');            
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','EUR','');
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-06','2'  ,'EUR','ROLLUP');
+      call Dash_Ges_ByAff_ONE_Currency('39' ,'2022-08','ALL','EUR','');
+
+   07.09.2022 V1
+*/
+DROP PROCEDURE IF EXISTS Dash_Ges_ByAff_ONE_Currency;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_Ges_ByAff_ONE_Currency`(IN
+   AffiliateID VARCHAR(50),
+   Month VARCHAR(7),
+   Owner VARCHAR(50),
+   Curr_result VARCHAR(3),
+   RollUp VARCHAR(6)
+   )
+    COMMENT 'Dashboard Gestor ONE/ALL_Currency - x Owner x Affiliate/All'
+BEGIN
+
+	IF LOWER(AffiliateID)='all' THEN
+   	SET @AffiliateID_from='0';
+      SET @AffiliateID_until='9999999999999';
+   ELSE
+   	SET @AffiliateID_from=CAST(AffiliateID AS UNSIGNED INTEGER);
+      SET @AffiliateID_until=CAST(AffiliateID AS UNSIGNED INTEGER);
+	END IF;
+
+	IF LOWER(ifnull(Owner,'ALL'))='all' THEN
+   	SET @Owner_from='0';
+      SET @Owner_until='9999999999999';
+   ELSE
+   	SET @Owner_from=CAST(Owner AS UNSIGNED INTEGER);
+      SET @Owner_until=CAST(Owner AS UNSIGNED INTEGER);
+	END IF;
+
+	IF Month is not null THEN
+      SET @Month_Report=CONCAT("'",Month,"'");
+   ELSE
+      SET @Month_Report=CONCAT("'",LEFT(curdate(),7),"'");
+	END IF;
+   
+   IF ifnull(Curr_result,'')> '' THEN
+      SET @Curr_result=CONCAT('"',upper(Curr_result),'"');
+   ELSE
+      SET @Curr_result='"EUR"';
+	END IF;
+   
+	IF LOWER(ifnull(RollUp,''))='rollup' THEN
+      SET @ROLLUP=' WITH ROLLUP';
+   ELSE
+      SET @RollUp='';
+	END IF;
+   
+   SET SESSION group_concat_max_len = 100000;
+   
+   SET @SQL = CONCAT(
+   'SELECT Owner,left(Date,7) as `Month`
+   	,IF(',@Curr_result,'="ALL",Data_Currency,',@Curr_result,') as `Data_Currency`
+   	,IF(',@AffiliateID_from,'="0","ALL",Affiliate) as `Affiliate`
+      ,SUM(Qualified_Players) AS `CPA`
+      ,ROUND(SUM(CPA_Value_Gestor)       *xx.Coef,2) AS `CPA_Value_Gestor`
+      ,ROUND(SUM(Net_Revenue)            *xx.Coef,2) AS `Net_Revenue`
+      ,ROUND(SUM(Revenue_Share_Gestor)   *xx.Coef,2) AS `RS_Gestor`
+      ,ROUND(SUM(CPA_Value_Affiliate)    *xx.Coef,2) AS `CPA_Value_Affiliate`
+      ,ROUND(SUM(Revenue_Share_Affiliate)*xx.Coef,2) AS `RS_Affiliate`
+   FROM Snapshot_day_by_day_fact1 f1
+      LEFT JOIN LATERAL (SELECT
+     (SELECT Rate FROM exchange_rate_copy x WHERE x.Currency=Data_Currency)/
+     (SELECT Rate FROM exchange_rate_copy x WHERE x.Currency='
+     ,'IF(',@Curr_result,'="ALL",Data_Currency,',@Curr_result,')) as Coef ) 
+      AS xx ON TRUE
+   WHERE LEFT(DATE,7)=',@Month_Report
+   ,' and Affiliate_id BETWEEN ',@AffiliateID_from,' AND ',@AffiliateID_until
+   ,' and Owner BETWEEN ',@Owner_from,' AND ',@Owner_until
+   ,' GROUP BY Owner,IF(',@Curr_result,'="ALL",Data_Currency,Owner)'
+   -- ,' GROUP BY Owner,',IF(@Curr_result="ALL","Data_Currency","Owner")
+   ,IF(@Curr_result="ALL"," ",@RollUp)
+	,';');
+
+   -- SELECT @SQL;
+   PREPARE stmt1 FROM @SQL;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+
+END$$
+DELIMITER ;
+/*
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','EUR','ROLLUP');
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','USD','ROLLUP');
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','GBP','ROLLUP');
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','ALL','ROLLUP');      
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','ALL','');            
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-09','ALL','EUR','');
+      call Dash_Ges_ByAff_ONE_Currency('ALL','2022-06','2'  ,'EUR','ROLLUP');
+      call Dash_Ges_ByAff_ONE_Currency('39' ,'2022-08','ALL','EUR','');
+*/

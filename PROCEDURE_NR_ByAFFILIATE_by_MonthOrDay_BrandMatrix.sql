@@ -1,0 +1,141 @@
+/* 
+PROCEDURE NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix() - NR x Month/Day x Affiliate - Currency - Matriz por Brand 
+
+Descripción:
+  Procedimiento NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix.
+
+Keys:
+AreaUser = [valor]. Parámetro de entrada.
+
+Observaciones: 
+   Columnas Brands variables. 
+   Doble columna de Totales
+   Parámetro 1=ViewGES PARA VIEWS DEL GESTOR    (usa FACT1)
+   Parámetro 1=ViewAFF PARA VIEWS DEL AFILIADO  (usa FACT2)
+   Parámetro 4=ByDay agrupa info por DIA. 4<>ByDay agrupa por MES
+   Parámetro 6=EUR/GBP/USD los resultados se expresan en esta moneda luego de su conversión
+   Parámetro 6=ALL los resultados se expresan en la moneda de origen SIN conversión
+   Parámetro 7=ROLLUP aplica la cláusula WITH ROLLUP al GROUP BY
+
+Parámetros ( [ViewGES | ViewAFF] , [AffiliateID | ALL] , [Month] , [ByDay | ''] , [Owner | ALL] , [Currency | ALL], [ROLLUP | ' '] )
+
+Ejemplos:
+   call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','ALL','2022-09','ByDay','ALL','EUR','ROLLUP');
+   call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-09',''     ,'ALL','ALL','');
+   call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-06',''     ,'2'  ,'USD','ROLLUP');
+   call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','39' ,'2022-08','ByDay','ALL','EUR','rollup');
+
+   04.09.2022 V1 Total_FACT1_AFFILIATE_NRbyDay_BrandMatrix
+   08.09.2022 V2 FACT1/2 Como parámetro + Currency. Unifica acumulaciones de NR
+*/
+
+DROP PROCEDURE IF EXISTS NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix`(IN
+   AreaUser VARCHAR(50),
+   AffiliateID VARCHAR(50),
+   Month VARCHAR(7),
+   ByDay VARCHAR(6),
+   Owner VARCHAR(50),
+   Curr_result VARCHAR(3),
+   RollUp VARCHAR(6)
+   )
+    COMMENT 'NR [ViewGES/ViewAFF] x [Affiliate/ALL] [Month] x [Owner/ALL] [Currency/ALL] - Matriz por Brand'
+BEGIN
+
+	IF AreaUser='ViewGES' THEN
+      SET @DataTable=" FROM Snapshot_day_by_day_fact1 ";
+   ELSE
+      SET @DataTable=" FROM Snapshot_day_by_day_fact2 ";
+	END IF;
+   
+	IF LOWER(AffiliateID)='all' THEN
+   	SET @AffiliateID_from='0';
+      SET @AffiliateID_until='9999999999999';
+   ELSE
+   	SET @AffiliateID_from=CAST(AffiliateID AS UNSIGNED INTEGER);
+      SET @AffiliateID_until=CAST(AffiliateID AS UNSIGNED INTEGER);
+	END IF;
+
+	IF LOWER(ifnull(Owner,'ALL'))='all' THEN
+   	SET @Owner_from='0';
+      SET @Owner_until='9999999999999';
+   ELSE
+   	SET @Owner_from=CAST(Owner AS UNSIGNED INTEGER);
+      SET @Owner_until=CAST(Owner AS UNSIGNED INTEGER);
+	END IF;
+
+	IF Month is not null THEN
+      SET @Month_Report=Month;
+   ELSE
+      SET @Month_Report=LEFT(curdate(),7);
+	END IF;
+
+	IF LOWER(ByDay)='byday' THEN SET @ByDay='"yes"';
+   ELSE SET @ByDay='"no"';
+	END IF;   
+
+   IF LOWER(RollUp)='rollup' THEN SET @RollUp=' WITH ROLLUP';
+   ELSE SET @RollUp='';
+	END IF;
+   -- ----------------------------------------------------
+   IF upper(Curr_result)='ALL' THEN
+      SET @Curr_result=CONCAT('"',upper(Curr_result),'"');
+      IF LOWER(ByDay)='byday' THEN SET @Group_by=' GROUP BY Owner,Data_Currency,Date ';
+      ELSE SET @Group_by=' GROUP BY Owner,Data_Currency,left(Date,7) ';
+      END IF;
+      IF LOWER(RollUp)='rollup' THEN SET @Order_by='';
+      ELSE SET @Order_by=' ORDER BY Owner,Data_Currency,Date ';
+      END IF;
+   ELSE
+      SET @Curr_result=CONCAT('"',upper(Curr_result),'"');
+      IF LOWER(ByDay)='byday' THEN SET @Group_by=' GROUP BY Owner,Date ';
+      ELSE SET @Group_by=' GROUP BY Owner,left(Date,7) ';
+      END IF;
+		IF LOWER(RollUp)='rollup' THEN SET @Order_by='';
+      ELSE SET @Order_by=' ORDER BY Owner,Date ';
+      END IF;
+	END IF;
+   -- ----------------------------------------------------
+   
+   SET SESSION group_concat_max_len = 100000;
+	
+	-- SELECT @Month_Report,Curr_result,@Curr_result,ByDay,@ByDay,@Group_by,@RollUp,@Order_by;
+   
+   SET @SQL = CONCAT('SELECT Owner
+   ,IF(',@ByDay,'="yes",Date,LEFT(Date,7)) as `Date`
+   ,IF(',@Curr_result,'="ALL",Data_Currency,',@Curr_result,') as `Data_Currency`   
+   ,IF(',@AffiliateID_from,'="0","ALL",Affiliate) as `Affiliate`
+   ,ROUND(SUM(Net_Revenue)/xx.Coef,2) AS `Total`,',
+   (SELECT GROUP_CONCAT(CONCAT("\r\nROUND(SUM(CASE WHEN Brand='", Brand,"' THEN `Net_Revenue` ELSE 0 END)/xx.Coef,2) AS '",Brand,"'")
+   ORDER BY Brand)
+   FROM (select distinct Brand from Snapshot_day_by_day_fact1
+         where LEFT(DATE,7)=@Month_Report AND Net_Revenue<>0
+   ) AS xx)
+   ,',\r\nROUND(SUM(Net_Revenue)/xx.Coef,2) AS `Total` \r\n'
+   ,@DataTable
+   ,' LEFT JOIN LATERAL (SELECT
+     (SELECT Rate FROM exchange_rate x WHERE x.Currency=Data_Currency)/
+     (SELECT Rate FROM exchange_rate x WHERE x.Currency='
+     ,'IF(',@Curr_result,'="ALL",Data_Currency,',@Curr_result,')) as Coef ) 
+      AS xx ON TRUE
+   WHERE LEFT(DATE,7)="',@Month_Report
+   ,'" and Affiliate_id BETWEEN ',@AffiliateID_from,' AND ',@AffiliateID_until
+   ,' and Owner BETWEEN ',@Owner_from,' AND ',@Owner_until,'\r\n'
+   ,@Group_by,@RollUp,' HAVING SUM(Net_Revenue)<>0 ',@Order_by,';');
+   
+-- SELECT @SQL;
+   PREPARE stmt1 FROM @SQL;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+
+END$$
+DELIMITER ;
+
+/*
+      call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','ALL','2022-09','ByDay','ALL','EUR','ROLLUP');
+      call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-09',''     ,'ALL','ALL','');
+      call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-06',''     ,'2'  ,'USD','ROLLUP');
+      call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','39' ,'2022-08','ByDay','ALL','EUR','rollup');
+*/

@@ -1,0 +1,109 @@
+/* EVENT_Snapshot_day_by_day_fact1_event.sql
+
+   15.07.2022 V1     Lanza Update DbD_fact1 y DbD_fact2
+   25.09.2022 v1.1   Lanza Show_Diff_CPA_DbD_yesterday('SET') a partir de las 23
+   02.10.2022 v1.2   Lanza total_monthy_comm_ges_upd()
+   09.11.2022 v1.3   Lanza CALL Status_tables_upd();
+   16.03.2023 v1.4   Lanza total_monthy_comm_aff_upd()
+   19.04.2023        Cambio de parámetro en Show_Diff_CPA_DbD_yesterday()
+   20.03.2024 v1.5   Ejecución MS_Status_6_Reset el día 1 de cada mes entre las 00:25 y 0:35
+                     Eliminación CALL Status_tables_upd(); por obsoleta
+   25.07.2024 V1.6   Actualización de tabla exchange_rate 
+   05.09.2024 V1.6a  Reemplazo procedure exchange_rate por sync_common_tables_upd
+   22.02.2025 v1.7   Update Country_web en campaign_mkt_source_url 
+   07.03.2025 v1.8   Agregado proceso generación log dashboard
+                     Se instala en todas las DB pero hace LEAVE 
+                     IF DATABASE() IN ("euroaffiliati_dev,marca_blanca,affiliateaccess")
+   22.03.2025 v1.8.1 Proceso exclusivo de affiliaterevolution pasa datos de players_netrefer_API a Snapshot_day_by_day
+   25.03.2025        Proceso de generación de postbacks 
+   30.03.2025        Pasa datos HISTORICOS de Snapshot_day_by_day a Snapshot_day_by_day_YYYY (DEFAULT CURDATE-4 MESES)
+   04.04.2025        Pasa datos HISTORICOS de Snapshot_day_by_day_fact1/2 a Snapshot_day_by_day_fact1/2_YYYY (DEFAULT CURDATE-24 MESES) -- 04.04.2025
+   06.04.2025 v1.8.2 Proceso de generación de postbacks habilitado para todas las db
+                     Lógica de generación log dashboard CM siempre y LM entre días 1 a 5
+   
+*/
+
+DROP EVENT IF EXISTS Snapshot_day_by_day_fact1_event;
+-- -----------------------------------------------------
+DELIMITER //
+
+CREATE EVENT `Snapshot_day_by_day_fact1_event`
+	ON SCHEDULE EVERY 30 MINUTE STARTS '2025-01-01 00:15:00'
+	ON COMPLETION PRESERVE ENABLE
+	COMMENT 'Update Snapshot_day_by_day_fact1/fact2+Commiss+vs'
+   DO 
+   
+Main_Label: BEGIN
+   SET @Version         ='v1.8.2 06.04.2025';
+   SET @CurrentDay      =curdate();
+   
+   -- Pasa actualizaciones tablas comunues desde ea2 a las otras db
+   IF DATABASE()!="euroaffiliati2" AND HOUR(NOW()) IN (06,13,19) AND MINUTE(NOW())<30
+   THEN CALL sync_common_tables_upd(); 
+   END IF;
+   
+   -- No ejecuta en estas DB -- 07.03.2025 --------
+   IF DATABASE() IN ("euroaffiliati_dev,marca_blanca,affiliateaccess")
+   THEN LEAVE Main_Label; 
+   END IF;    
+   
+   /*-----------------------------------------------------------------*/
+
+   -- Proceso exclusivo de affiliaterevolution pasa datos de players_netrefer_API a Snapshot_day_by_day
+   IF DATABASE()="affiliaterevolution" 
+   THEN CALL players_nerefer_to_DbD_AR(''); 
+   END IF;
+   
+   /*-----------------------------------------------------------------*/
+   
+   -- Proceso de datos de entrada
+   CALL Snapshot_day_by_day_fact1_upd();        -- Determina cuando debe procesal LM, además de CM
+   CALL Snapshot_day_by_day_fact2_upd_cm();
+   
+   -- Recálculo de comisiones
+   CALL total_monthy_comm_ges_upd();
+   CALL total_monthy_comm_aff_upd();
+   
+   -- Update Country_web en campaign_mkt_source_url -- 22.02.2025
+   CALL `campaign_mkt_source_url_upd_country`();
+   
+   -- -------------------------------------------------------------------------------------
+   -- Proceso de generación de postbacks - 25.03.2025
+   -- IF DATABASE()="euroaffiliati2" 
+   -- THEN CALL Postback_for_Affiliate(''); 
+   -- END IF;
+   -- Habilitado para todas las db 06.04.2025
+   CALL Postback_for_Affiliate(''); 
+   
+   /*-----------------------------------------------------------------*/ 
+   -- Restablece Status activo para los que estaban con Status=6 (Paused until next month)
+   IF   DAY(NOW())=01 AND HOUR(NOW())=00 AND MINUTE(NOW())<30 
+   THEN CALL MS_Status_6_Reset('debug=NO');
+   END IF;
+   
+   -- Toma cant de CPA por MS para comparar con día siguiente
+   IF   HOUR(NOW())>22 
+   THEN CALL Show_Diff_CPA_DbD_yesterday('Action=SET'); 
+   END IF;
+   
+   -- proceso generación log dashboard A LAS 15:15 Y 23:15 -- 07.03.2025
+   IF HOUR(NOW()) IN (15,23) AND MINUTE(NOW())<30
+   THEN CALL Dash_Gestor_TotalByAdvertiser('month=CM,rec_log=yes'); 
+        IF DAY(NOW()) BETWEEN 01 AND 05
+        THEN CALL Dash_Gestor_TotalByAdvertiser('month=LM,rec_log=yes'); 
+        END IF;   
+   END IF;   
+   
+   -- Pasa datos HISTORICOS 
+   --    de Snapshot_day_by_day a Snapshot_day_by_day_YYYY (DEFAULT CURDATE-4 MESES) -- 30.03.2025
+   --    de Snapshot_day_by_day_fact1/2 a Snapshot_day_by_day_fact1/2_YYYY (DEFAULT CURDATE-24 MESES) -- 04.04.2025
+   IF   DAY(NOW())=01 AND HOUR(NOW())=00 AND MINUTE(NOW())<30 
+   THEN CALL DbD_data_to_history ('');
+        CALL DbD_fact_data_to_history ('');
+   END IF;   
+   -- -------------------------------------------------------------------------------------  
+   
+END Main_Label;
+
+//
+DELIMITER ;

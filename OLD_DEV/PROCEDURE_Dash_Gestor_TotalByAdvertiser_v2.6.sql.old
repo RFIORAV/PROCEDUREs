@@ -1,0 +1,309 @@
+/*
+PROCEDURE_Dash_Gestor_TotalByAdvertiserV24.sql - Dashboard Gestor Performance por Advertiser
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+   
+Keys:
+
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Month           =[AAAA-MM].            OPCIONAL. Default=Current Month.
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Currency        =[EUR | Original].     Moneda a la que se convierten los resultados. Original  No hace conversiones. El Profit NO SE CALCULARÁ cuando sean monedas distintas. OPCIONAL. Default=EUR.
+ByAccount       =[No | Yes]. OPCIONAL. Default=No
+OrderBy         =[CPA | CPAvalue | Profit | Advertiser]. OPCIONAL. Default=CPA
+Order           =[Desc | Asc]. OPCIONAL. Default=Desc
+ShowDate        =[Yes | No]. Incluye columna Date en resultado. OPCIONAL. Default=Yes
+ShowOwner       =[Yes | No]. Incluye columna Owner en resultado. OPCIONAL. Default=Yes
+Total           =[Yes | No]. Incluye línea/s de Totales x OWNER/Currency. OPCIONAL. Default=Yes
+TotLine         =[First | Last]. Posición de la línea de Totales. OPCIONAL. Default=First
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query. [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Dash_Gestor_TotalByAdvertiser(' '); -- Asumirá todos los defaults
+
+call Dash_Gestor_TotalByAdvertiser('Debug=KeyValues');	
+call Dash_Gestor_TotalByAdvertiser('Debug=yes');
+call Dash_Gestor_TotalByAdvertiser('Currency=original,Debug=KeyValues');
+
+call Dash_Gestor_TotalByAdvertiser('ShowDate=no,ShowOwner=no');
+call Dash_Gestor_TotalByAdvertiser('Month=2022-08,OrderBy=Profit');
+call Dash_Gestor_TotalByAdvertiser('Month=2022-08,ByAccount=yes,OrderBy=Profit');
+call Dash_Gestor_TotalByAdvertiser('Month=2022-08,Currency=ALL');   
+call Dash_Gestor_TotalByAdvertiser('Month=2022-08,TotLine=last,Debug=yes'); 
+call Dash_Gestor_TotalByAdvertiser('Month=2022-08,OrderBy=Advertiser,Order=asc')
+
+09.09.2022 V1
+15.09.2022 V2.1 Opción TOTAL y OrderbyCPA
+15.09.2022 V2.2 Agrega comisiones afiliados y Profit
+                Opción DEBUG
+16.09.2022 V2.3 Recodificacion. Calcula Porcentaje CPA_Limit
+17.09.2022 V2.4 Recodificacion. Parámetros con Key=Value en un solo campo de entrada como CommandLine
+17.09.2022 V2.5 Parámetros con Key=Value sin comillas
+01.10.2022 V2.6 Devuelve una línea cuando no hay datos
+
+*/
+DROP PROCEDURE IF EXISTS Dash_Gestor_TotalByAdvertiser;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_Gestor_TotalByAdvertiser`(IN
+   InputCommLine    VARCHAR(250)
+   )
+
+COMMENT 'Dashboard Gestor. PERFORMANCE Advertiser/Account - Currency conversion'
+
+BEGIN
+
+-- Defaults
+SET @Owner        ='ALL';
+SET @Month        =left(curdate(),7);
+SET @Advertiser_id='ALL';
+SET @Currency     ='EUR';
+SET @ByAccount    ='NO';
+SET @OrderBy      ='CPA';
+SET @Order        ='DESC';
+SET @Total        ='YES';
+SET @TotLine      ='FIRST';
+SET @Debug        ='NO';
+SET @ShowDate     ='YES';
+SET @ShowOwner    ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit
+-- @InputCommLine: ----5----0----5----0----5----0----5----0--
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   IF lower(@k)='owner'         THEN SET @Owner        =UPPER(@v); END IF;
+   IF lower(@k)='month'         THEN SET @Month        =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id' THEN SET @Advertiser_id=UPPER(@v); END IF;
+   IF lower(@k)='currency'      THEN SET @Currency     =UPPER(@v); END IF;
+   IF lower(@k)='byaccount'     THEN SET @ByAccount    =UPPER(@v); END IF;
+   IF lower(@k)='ShowDate'      THEN SET @ShowDate     =UPPER(@v); END IF;
+   IF lower(@k)='ShowOwner'     THEN SET @ShowOwner    =UPPER(@v); END IF;
+   IF lower(@k)='orderby'       THEN SET @OrderBy      =UPPER(@v); END IF;
+   IF lower(@k)='order'         THEN SET @Order        =UPPER(@v); END IF;
+   IF lower(@k)='total'         THEN SET @Total        =UPPER(@v); END IF;
+   IF lower(@k)='totline'       THEN SET @TotLine      =UPPER(@v); END IF;
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@ShowDate,@ShowOwner,InputCommLine; END IF;
+
+/**************************************************************************************************************/
+
+  -- -------------------------------------------------------
+	IF @Advertiser_id="ALL" THEN SET @WhereAdvertiserID=' ';
+   ELSE SET @WhereAdvertiserID=CONCAT(" AND G.Advertiser_id='",@Advertiser_id,"'"); END IF;
+
+   IF @Owner="ALL" THEN SET @WhereOwner=' ';
+   ELSE SET @WhereOwner=CONCAT(" AND G.Owner='",@Owner,"'"); END IF;
+
+	SET @Month_Report=@Month;
+
+   IF lower(@Currency)='original' THEN SET @Currency_result='ALL'; ELSE SET @Currency_result=UPPER(@Currency); END IF;
+
+   -- ----------------------------------------------------
+   -- TRATAMIENTO DE TOTALES Y ORDER----------------------
+   -- ----------------------------------------------------
+   SET @RollUp=UPPER(@Total);      -- Variable de entrada
+   SET @OrderBy=UPPER(@OrderBy);   -- Variable de entrada
+
+   SET @OrderByClause='';          -- Variable a aplicar
+
+	IF @Total='YES' THEN
+      IF  @TotLine='LAST' THEN SET @OrderByClause=' ORDER BY Date'; 
+                          ELSE SET @OrderByClause=' ORDER BY Date DESC';   END IF;
+                          
+	IF @Total='YES' THEN
+      IF  @ShowDate='NO' THEN 
+          IF  @TotLine='LAST' THEN SET @OrderByClause=' ORDER BY Brand DESC'; 
+                              ELSE SET @OrderByClause=' ORDER BY Brand';   
+          END IF;
+      END IF;
+   END IF;
+                                
+      IF  @OrderBy="CPA"        THEN SET @OrderByClause=CONCAT(@OrderByClause,',`CPA` ',@Order);        END IF;
+      IF  @OrderBy="PROFIT"     THEN SET @OrderByClause=CONCAT(@OrderByClause,',`Profit` ',@Order);     END IF;
+      IF  @OrderBy="CPAVALUE"   THEN SET @OrderByClause=CONCAT(@OrderByClause,',`CPA_Value` ',@Order);  END IF;
+      IF  @OrderBy="ADVERTISER" THEN SET @OrderByClause=CONCAT(@OrderByClause,',`Brand` ',@Order);      END IF;
+	END IF;
+   -- ----------------------------------------------------
+   -- IF @Debug!="NO" THEN SELECT @WhereAdvertiserID,@WhereOwner,@OrderByClause; END IF;
+
+SET SESSION group_concat_max_len = 100000;
+
+-- -------------------------------------------------------------------------------
+-- -- -----------------------------------------------------------------------------
+
+SET @SQL=CONCAT('
+WITH
+SetConverted as (
+   SELECT
+      G.Owner as Owner_id,AC.username as Owner
+      ,LEFT(Date,7) AS Date
+      ,Brand
+      ,U.id       as Username_id
+      ,',IF(@ByAccount="YES","G.Username","'ALL'"),' as Username
+      ,',IF(@Currency_result="ALL","G.Data_Currency",CONCAT("'",@Currency_result,"'")),' as Data_Currency
+      ,',IF(@ByAccount="YES","U.CPA_Limit","A.CPA_Limit"),' as CPA_Limit
+      ,CASE WHEN ',IF(@ByAccount="YES","U.CPA_Limit","A.CPA_Limit"),'>0
+                   AND SUM(CPA)/',IF(@ByAccount="YES","U.CPA_Limit","A.CPA_Limit"),'>=0.8
+            THEN ROUND(SUM(CPA)/',IF(@ByAccount="YES","U.CPA_Limit","A.CPA_Limit"),'*100,0)
+            ELSE 0 END                        as `UsedLim`
+      ,sum(CPA)                               as CPA
+      ,round(sum(CPA_Value       )/xx.Coef,2) as CPA_Value
+      ,round(sum(Net_Revenue     )/xx.Coef,2) as Net_Revenue
+      ,round(sum(RS_AJUST        )/xx.Coef,2) as RS_AJUST
+      ,round(sum(CPA_Val_AJ_RS   )/xx.Coef,2) as CPA_Val_AJ_RS
+      ,round(sum(Total_Commission)/xx.Coef,2) as Total_Commission
+      ,round(Ges_CPA              /xx.Coef,2) as Ges_CPA
+      ,round(Ges_RS,1)                        as Ges_RS
+      FROM view_monthly_fact_gestor3 G
+         LEFT JOIN LATERAL (SELECT
+         (SELECT Rate FROM exchange_rate x WHERE x.Currency=G.Data_Currency)/
+         (SELECT Rate FROM exchange_rate x WHERE x.Currency='
+         ,IF(@Currency_result="ALL","G.Data_Currency",CONCAT("'",@Currency_result,"'")),') as Coef)
+            AS xx ON TRUE
+         LEFT JOIN campaign_username U ON U.id=G.Username_id
+         LEFT JOIN campaign_advertiser A ON A.id=U.Advertiser_id
+         LEFT JOIN account_account AC ON AC.id=G.Owner
+      WHERE Date=',CONCAT("'",@Month_Report,"' ",@WhereAdvertiserID,@WhereOwner),'
+      GROUP by Owner',IF(@Currency_result="ALL",",Data_Currency",""),IF(@ByAccount="YES",",Brand,Username_id",",Brand"),'
+      ORDER BY Owner,Data_Currency,Brand,Username
+),
+
+SetCommAffConverted as (
+   SELECT G.Owner as Owner_id,AC.username as Owner
+      ,DATE,Brand,Advertiser_id,Username_id
+     ,',IF(@ByAccount="YES","G.Username","'ALL'"),' as Username
+     ,',IF(@Currency_result="ALL","Data_Currency",CONCAT("'",@Currency_result,"'")),' as Data_Currency
+     ,round(SUM(CPA_Value)    /xx.Coef,2) as Aff_Comm_CPA
+     ,round(SUM(RS_AJUST)     /xx.Coef,2) as Aff_Comm_RS
+     ,round(SUM(CPA_Val_AJ_RS)
+     +SUM(RS_AJUST)           /xx.Coef,2) as Aff_Comm_TOT
+     ,round(`Aff_CPA`         /xx.Coef,2) as `Aff_CPA`
+     ,round(`Aff_RS`,1)                   as `Aff_RS`
+   FROM view_monthly_fact_aff3 G
+   LEFT JOIN LATERAL (SELECT
+         (SELECT Rate FROM exchange_rate x WHERE x.Currency="EUR")/
+         (SELECT Rate FROM exchange_rate x WHERE x.Currency='
+         ,IF(@Currency_result="ALL","Data_Currency",CONCAT("'",@Currency_result,"'")),') as Coef)
+            AS xx ON TRUE
+         LEFT JOIN account_account AC ON AC.id=G.Owner
+   WHERE LEFT(DATE,7) =',CONCAT("'",@Month_Report,"' ",@WhereAdvertiserID,@WhereOwner),'
+   GROUP BY Owner',IF(@ByAccount="YES",",Brand,Username_id",",Brand"),'
+)
+
+(SELECT '
+   ,IF(@ShowDate="YES","S.Date,",""),IF(@ShowOwner="YES"," S.Owner_id,S.Owner,",""),'
+    S.Brand
+   ,S.Username
+   ,S.Data_Currency
+   ,S.CPA_Limit
+   ,CASE WHEN S.UsedLim>0 THEN CONCAT(S.UsedLim," %") ELSE "" END AS Used_Lim
+   ,sum(S.CPA)                       as `CPA`
+   ,round(sum(S.CPA_Value       ),2) as `CPA_Value`
+   ,round(sum(S.Net_Revenue     ),2) as Net_Revenue
+   -- ,round(sum(S.RS_AJUST        ),2) as RS_AJUST
+   -- ,round(sum(S.CPA_Val_AJ_RS   ),2) as CPA_Val_AJ_RS
+   ,round(sum(S.Total_Commission),2) as Total_Commission
+   ,CASE WHEN S.Data_Currency=T.Data_Currency
+         THEN (round(sum(S.Total_Commission)-sum(T.Aff_Comm_TOT),2))
+         ELSE 0 END                  AS `Profit`
+   ,round(S.Ges_CPA              ,2) as Ges_CPA
+   ,round(S.Ges_RS               ,2) as Ges_RS
+   ,T.Data_Currency                  as Aff_Curr
+   ,round(sum(T.Aff_Comm_CPA    ),2) AS Aff_Comm_CPA
+   ,round(sum(T.Aff_Comm_RS     ),2) AS Aff_Comm_RS
+   ,round(sum(T.Aff_Comm_TOT    ),2) AS Aff_Comm_TOT
+   ,round(sum(T.Aff_CPA         ),2) AS Aff_CPA
+   ,round(sum(T.Aff_RS          ),2) AS Aff_RS
+   FROM SetConverted S
+   INNER JOIN SetCommAffConverted T ON T.Brand=S.Brand AND T.Username=S.Username
+   GROUP by S.Owner ',IF(@Currency_result="ALL",",S.Data_Currency",""),IF(@ByAccount="YES",",S.Brand,S.Username",",S.Brand"),')',
+   IF(@Total="YES",CONCAT('
+UNION ALL
+(SELECT '
+   ,IF(@ShowDate="YES",'"TOTAL",',""),IF(@ShowOwner="YES",'"~~~~~",',""),IF(@ShowOwner="YES",'"~~~~~",',""),'
+    " TOTAL"
+   ,"~~~~~"
+   ,S.Data_Currency
+   ,"~~~~~"
+   ,"~~~~~"
+   ,sum(S.CPA)                       as CPA
+   ,round(sum(S.CPA_Value       ),2) as CPA_Value
+   ,round(sum(S.Net_Revenue     ),2) as Net_Revenue
+   -- ,round(sum(S.RS_AJUST        ),2) as RS_AJUST
+   -- ,round(sum(S.CPA_Val_AJ_RS   ),2) as CPA_Val_AJ_RS
+   ,round(sum(S.Total_Commission),2) as Total_Commission
+   ,CASE WHEN S.Data_Currency=T.Data_Currency
+         THEN (round(sum(S.Total_Commission)-sum(T.Aff_Comm_TOT),2))
+         ELSE 0 END                  AS `Profit`
+   ,"~~~~~"
+   ,"~~~~~"
+   ,T.Data_Currency
+   ,round(sum(T.Aff_Comm_CPA    ),2) AS Aff_Comm_CPA
+   ,round(sum(T.Aff_Comm_RS     ),2) AS Aff_Comm_RS
+   ,round(sum(T.Aff_Comm_TOT    ),2) AS Aff_Comm_TOT
+   ,"~~~~~"
+   ,"~~~~~"
+   FROM SetConverted S
+   INNER JOIN SetCommAffConverted T ON T.Brand=S.Brand AND T.Username=S.Username 
+   GROUP by S.Owner',IF(@Currency_result="ALL",',S.Data_Currency',''),')
+   UNION ALL
+	( 
+	SELECT  "~~~~~","~~~~~","~~~~~","~~~~~","~~~~~","~~~~~","~~~~~","~~~~~",0
+			 ,0,0,0,0,"~~~~~","~~~~~","~~~~~",0,0,0,"~~~~~","~~~~~"
+	FROM DUAL WHERE NOT EXISTS (SELECT * FROM SetConverted)
+	)'
+   ,@OrderByClause
+   ),' -- '
+   ),
+   ';');
+--
+-- -----------------------------------------------------------------------------
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+IF @Debug!="YES" THEN 
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+Ejemplos:
+
+	call Dash_Gestor_TotalByAdvertiser('Owner=ALL,Month=2022-09,Advertiser_id=ALL, Currency=EUR,ByAccount=no,OrderBy=CPA,Order=desc,Total=yes,TotLine=first,Debug=yes');
+-- equivale a:
+	call Dash_Gestor_TotalByAdvertiser(' '); -- Asumirá todos los defaults
+	call Dash_Gestor_TotalByAdvertiser('Debug=KeyValues');	
+	call Dash_Gestor_TotalByAdvertiser('Debug=yes');
+	call Dash_Gestor_TotalByAdvertiser('Currency=original,Debug=KeyValues');
+   
+	call Dash_Gestor_TotalByAdvertiser('ShowDate=no,ShowOwner=yes,Debug=no');
+   call Dash_Gestor_TotalByAdvertiser('Month=2022-08,OrderBy=Profit');
+   call Dash_Gestor_TotalByAdvertiser('Month=2022-08,ByAccount=yes,OrderBy=Profit');
+   call Dash_Gestor_TotalByAdvertiser('Month=2022-08,Currency=ALL');   
+   call Dash_Gestor_TotalByAdvertiser('Month=2022-08,TotLine=last,Debug=yes'); 
+   call Dash_Gestor_TotalByAdvertiser('Month=2022-08,OrderBy=Advertiser,Order=asc')  
+
+*/

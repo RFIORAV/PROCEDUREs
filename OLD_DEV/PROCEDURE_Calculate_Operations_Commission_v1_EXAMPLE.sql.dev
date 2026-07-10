@@ -1,0 +1,244 @@
+/*
+EXAMPLE_Operations_Commission_Usage.sql - Ejemplo de uso de los procedimientos de cálculo de comisiones
+
+Este script muestra cómo usar los procedimientos de cálculo de comisiones de operaciones
+incluyendo ejemplos de datos de prueba y diferentes escenarios de uso.
+
+Contenido:
+1. Creación de datos de prueba para las tablas DBD_movements y Deals
+2. Ejemplos de uso del procedimiento básico
+3. Ejemplos de uso del procedimiento avanzado
+4. Consultas de análisis adicionales
+
+*/
+
+-- ============================================================================
+-- 1. CREACIÓN DE DATOS DE PRUEBA
+-- ============================================================================
+
+-- Crear tabla de movimientos de prueba si no existe
+CREATE TABLE IF NOT EXISTS DBD_movements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    date DATE NOT NULL,
+    tracker_id INT NOT NULL,
+    product VARCHAR(80) NOT NULL,
+    deposits DECIMAL(15,2) NOT NULL DEFAULT 0,
+    INDEX idx_date (date),
+    INDEX idx_tracker_product (tracker_id, product)
+) ENGINE=InnoDB;
+
+-- Crear tabla de deals de prueba si no existe
+CREATE TABLE IF NOT EXISTS deals (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product VARCHAR(80) NULL,
+    criteria VARCHAR(50) NOT NULL,
+    threshold DECIMAL(15,2) NOT NULL,
+    level VARCHAR(50) NOT NULL,
+    cpa DECIMAL(12,2) NOT NULL,
+    INDEX idx_product_criteria (product, criteria),
+    INDEX idx_threshold (threshold)
+) ENGINE=InnoDB;
+
+-- Limpiar datos existentes
+TRUNCATE TABLE DBD_movements;
+TRUNCATE TABLE deals;
+
+-- Insertar datos de prueba en la tabla deals
+INSERT INTO deals (product, criteria, threshold, level, cpa) VALUES
+-- Deals para Sport
+('Sport', 'Deposits', 50, 'Bronze', 25),
+('Sport', 'Deposits', 100, 'Silver', 45),
+('Sport', 'Deposits', 200, 'Gold', 80),
+('Sport', 'Deposits', 500, 'Platinum', 150),
+
+-- Deals para Casino
+('Casino', 'Deposits', 75, 'Bronze', 30),
+('Casino', 'Deposits', 150, 'Silver', 55),
+('Casino', 'Deposits', 300, 'Gold', 100),
+('Casino', 'Deposits', 750, 'Platinum', 200),
+
+-- Deals para cualquier producto (producto vacío)
+('', 'Deposits', 25, 'Starter', 10),
+('', 'Deposits', 1000, 'Diamond', 300);
+
+-- Insertar datos de prueba en la tabla DBD_movements
+INSERT INTO DBD_movements (date, tracker_id, product, deposits) VALUES
+-- Enero 2025 - Tracker 1 - Sport
+('2025-01-01', 1, 'Sport', 25.00),
+('2025-01-02', 1, 'Sport', 30.00),
+('2025-01-03', 1, 'Sport', 45.00),
+('2025-01-04', 1, 'Sport', 20.00),
+('2025-01-05', 1, 'Sport', 35.00),
+
+-- Enero 2025 - Tracker 2 - Casino
+('2025-01-01', 2, 'Casino', 50.00),
+('2025-01-02', 2, 'Casino', 75.00),
+('2025-01-03', 2, 'Casino', 100.00),
+('2025-01-04', 2, 'Casino', 125.00),
+('2025-01-05', 2, 'Casino', 150.00),
+
+-- Enero 2025 - Tracker 3 - Sport (alto volumen)
+('2025-01-01', 3, 'Sport', 200.00),
+('2025-01-02', 3, 'Sport', 250.00),
+('2025-01-03', 3, 'Sport', 300.00),
+('2025-01-04', 3, 'Sport', 350.00),
+('2025-01-05', 3, 'Sport', 400.00),
+
+-- Enero 2025 - Tracker 4 - Casino (bajo volumen)
+('2025-01-01', 4, 'Casino', 10.00),
+('2025-01-02', 4, 'Casino', 15.00),
+('2025-01-03', 4, 'Casino', 20.00),
+('2025-01-04', 4, 'Casino', 25.00),
+('2025-01-05', 4, 'Casino', 30.00),
+
+-- Enero 2025 - Tracker 5 - Poker (sin deals específicos)
+('2025-01-01', 5, 'Poker', 50.00),
+('2025-01-02', 5, 'Poker', 60.00),
+('2025-01-03', 5, 'Poker', 70.00),
+('2025-01-04', 5, 'Poker', 80.00),
+('2025-01-05', 5, 'Poker', 90.00);
+
+-- ============================================================================
+-- 2. EJEMPLOS DE USO DEL PROCEDIMIENTO BÁSICO
+-- ============================================================================
+
+-- Ejemplo 1: Cálculo para todo el período de enero 2025
+SELECT 'EJEMPLO 1: Cálculo completo enero 2025' AS ejemplo;
+call Calculate_Operations_Commission('2025-01-01', '2025-01-31', NULL, NULL);
+
+-- Ejemplo 2: Cálculo solo para Sport
+SELECT 'EJEMPLO 2: Cálculo solo para Sport' AS ejemplo;
+call Calculate_Operations_Commission('2025-01-01', '2025-01-31', NULL, 'Sport');
+
+-- Ejemplo 3: Cálculo para un tracker específico
+SELECT 'EJEMPLO 3: Cálculo para tracker 3' AS ejemplo;
+call Calculate_Operations_Commission('2025-01-01', '2025-01-31', 3, NULL);
+
+-- ============================================================================
+-- 3. EJEMPLOS DE USO DEL PROCEDIMIENTO AVANZADO
+-- ============================================================================
+
+-- Ejemplo 4: Cálculo con salida resumida
+SELECT 'EJEMPLO 4: Cálculo con salida resumida' AS ejemplo;
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,output_type=summary');
+
+-- Ejemplo 5: Cálculo con salida detallada
+SELECT 'EJEMPLO 5: Cálculo con salida detallada' AS ejemplo;
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,output_type=detail');
+
+-- Ejemplo 6: Cálculo con debug y guardado de resultados
+SELECT 'EJEMPLO 6: Cálculo con debug y guardado' AS ejemplo;
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,output_type=debug,save_results=yes');
+
+-- Ejemplo 7: Cálculo filtrado por tracker y producto
+SELECT 'EJEMPLO 7: Cálculo filtrado tracker 2, Casino' AS ejemplo;
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,tracker_id=2,product=Casino,output_type=detail');
+
+-- ============================================================================
+-- 4. CONSULTAS DE ANÁLISIS ADICIONALES
+-- ============================================================================
+
+-- Análisis de los datos de prueba
+SELECT 'ANÁLISIS DE DATOS DE PRUEBA' AS titulo;
+
+-- Resumen de movimientos por producto
+SELECT 
+    'RESUMEN DE MOVIMIENTOS POR PRODUCTO' AS tipo_analisis,
+    product,
+    COUNT(*) AS total_movimientos,
+    SUM(deposits) AS total_deposits,
+    AVG(deposits) AS promedio_deposits,
+    MIN(deposits) AS minimo_deposits,
+    MAX(deposits) AS maximo_deposits
+FROM DBD_movements
+WHERE date BETWEEN '2025-01-01' AND '2025-01-31'
+GROUP BY product
+ORDER BY total_deposits DESC;
+
+-- Resumen de movimientos por tracker
+SELECT 
+    'RESUMEN DE MOVIMIENTOS POR TRACKER' AS tipo_analisis,
+    tracker_id,
+    product,
+    COUNT(*) AS total_movimientos,
+    SUM(deposits) AS total_deposits,
+    AVG(deposits) AS promedio_deposits
+FROM DBD_movements
+WHERE date BETWEEN '2025-01-01' AND '2025-01-31'
+GROUP BY tracker_id, product
+ORDER BY tracker_id, total_deposits DESC;
+
+-- Análisis de deals disponibles
+SELECT 
+    'DEALS DISPONIBLES' AS tipo_analisis,
+    product,
+    criteria,
+    threshold,
+    level,
+    cpa,
+    CASE 
+        WHEN product = '' THEN 'Cualquier producto'
+        ELSE product
+    END AS producto_descripcion
+FROM deals
+ORDER BY product, threshold;
+
+-- Simulación de cálculo manual para verificar lógica
+SELECT 
+    'SIMULACIÓN MANUAL - TRACKER 1 SPORT' AS tipo_analisis,
+    m.tracker_id,
+    m.product,
+    SUM(m.deposits) AS total_deposits,
+    d.level AS nivel_alcanzado,
+    d.cpa AS comision_cpa,
+    d.threshold AS threshold_deal
+FROM DBD_movements m
+LEFT JOIN deals d ON (
+    (d.product = m.product OR d.product = '')
+    AND SUM(m.deposits) >= d.threshold
+    AND d.criteria = 'Deposits'
+)
+WHERE m.date BETWEEN '2025-01-01' AND '2025-01-31'
+  AND m.tracker_id = 1
+  AND m.product = 'Sport'
+GROUP BY m.tracker_id, m.product, d.id
+HAVING d.id IS NOT NULL
+ORDER BY d.threshold DESC
+LIMIT 1;
+
+-- ============================================================================
+-- 5. CONSULTAS PARA VERIFICAR RESULTADOS GUARDADOS
+-- ============================================================================
+
+-- Verificar si se guardaron resultados en la tabla permanente
+SELECT 
+    'RESULTADOS GUARDADOS EN TABLA PERMANENTE' AS tipo_analisis,
+    COUNT(*) AS total_registros_guardados
+FROM operations_commission_history
+WHERE start_date = '2025-01-01' AND end_date = '2025-01-31';
+
+-- Mostrar resultados guardados si existen
+SELECT 
+    'DETALLE DE RESULTADOS GUARDADOS' AS tipo_analisis,
+    tracker_id,
+    product,
+    total_criteria_value,
+    level_achieved,
+    commission_cpa,
+    criteria_used,
+    currency,
+    calculation_date
+FROM operations_commission_history
+WHERE start_date = '2025-01-01' AND end_date = '2025-01-31'
+ORDER BY tracker_id, product;
+
+-- ============================================================================
+-- 6. LIMPIEZA (OPCIONAL)
+-- ============================================================================
+
+-- Descomentar las siguientes líneas si se desea limpiar los datos de prueba
+-- DROP TABLE IF EXISTS DBD_movements;
+-- DROP TABLE IF EXISTS deals;
+-- DROP TABLE IF EXISTS operations_commission_history;
+
+SELECT 'EJEMPLO COMPLETADO - Revisar resultados arriba' AS mensaje_final; 

@@ -1,0 +1,254 @@
+/*
+PROCEDURE_Dash_Gestor_ProfitByAff.sql - Dashboard Gestor Profit/CPA/NR/FTD by Affiliate
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Param           =[ALL | Profit | CPA | NR | FTD]. OPCIONAL. Default=Profit
+Area            =[ALL | forex | gaming ]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | Publisher_id]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Brand           =[ALL | NOMBRE de Brand]. OPCIONAL. Default=ALL
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query. [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Dash_Gestor_ProfitByAff(' '); -- Asumirá todos los defaults
+
+09.01.2023 V1
+11.01.2023 v1.1	Cambio de cálculo a diferencia proporcional entre view_monthly_fact_aff3 y total_monthy_comm_ges
+						La proporción es establece entre CPA y Net Revenue para la RS
+08.03.2023        Agregada columna Average                  
+17.03.2023 v1.2   Nueva forma de calcular  
+22.05.2024 v1.3   Filtro por Profit/CPA/NR/FTD 
+09.10.2024        Quitado Owner de la selección               
+
+*/
+SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+SET collation_connection = utf8mb4_0900_ai_ci;
+
+-- DROP PROCEDURE IF EXISTS Dash_Gestor_ProfitByAff13;
+DROP PROCEDURE IF EXISTS Dash_Gestor_ProfitByAff;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_Gestor_ProfitByAff`(IN
+   InputCommLine    VARCHAR(250)
+   )
+COMMENT 'Dashboard Gestor. PERFORMANCE - Profit/CPA/NR/FTD by Affiliate'
+
+BEGIN
+
+-- Defaults
+SET @Version      ='v1.3 09.10.2024';
+SET @Param        ='PROFIT';
+SET @Publisher_id ='ALL';
+SET @Advertiser_id='ALL';
+SET @Param        ='Profit';
+SET @Filters      ='NO';
+SET @Debug        ='NO';
+SET @Meta         ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug="YES" THEN SELECT @Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit
+-- @InputCommLine: ----5----0----5----0----5----0----5----0--
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='param'         THEN SET @Param        =UPPER(@v); END IF;
+   IF lower(@k)='publisher_id'  THEN SET @Publisher_id =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id' THEN SET @Advertiser_id=UPPER(@v); END IF;
+   IF lower(@k)='filters'       THEN SET @Filters      =UPPER(@v); END IF;
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+
+END WHILE;
+
+SET @Days=DATEDIFF(curdate(),concat(Left(date_sub(curdate(),interval 11 month),7),"-01"));
+-- SELECT @Days;
+
+IF @Debug!="NO" THEN SELECT @Param,@Publisher_id,@Advertiser_id,@Filters,@Debug,@Meta,InputCommLine; END IF;
+
+-- ----------------------------------------------------------------------------
+SET SESSION group_concat_max_len = 200000;
+-- ----------------------------------------------------------------------------   
+
+SET @SumBy_Month=concat(' 
+    sum(Profit) as `Total Profit`
+   ,round(sum(Profit)/@Days*30.4,2) as `Monthly AVG`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  0 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  0 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  1 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  1 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  2 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  2 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  3 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  3 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  4 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  4 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  5 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  5 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  6 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  6 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  7 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  7 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  8 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  8 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  9 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  9 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval 10 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval 10 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval 11 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval 11 month),7),'`
+');
+
+-- Profit/CPA/NR/FTD
+IF    @Param="PROFIT" THEN SET @SumBy_Month=(REPLACE(@SumBy_Month,"Profit","Profit"))     ; END IF;
+IF    @Param="CPA"    THEN SET @SumBy_Month=(REPLACE(@SumBy_Month,"Profit","CPA"))        ; END IF;
+IF    @Param="NR"     THEN SET @SumBy_Month=(REPLACE(@SumBy_Month,"Profit","Net_Revenue")); END IF;
+IF    @Param="FTD"    THEN SET @SumBy_Month=(REPLACE(@SumBy_Month,"Profit","FTD"))        ; END IF;
+
+-- Filtros
+SET @WherePublisher_id ='';
+SET @WhereAdvertiser_id='';
+
+IF @Advertiser_id !="ALL" THEN SET @WhereAdvertiser_id=CONCAT(" AND Advertiser_id=",@Advertiser_id);  END IF;
+IF @Publisher_id  !="ALL" THEN SET @WherePublisher_id =CONCAT(" AND Publisher_id=",@Publisher_id);    END IF;
+
+
+SET @SQLmeta=concat(
+' UNION ALL (
+SELECT
+   "setting"
+   ,"width=300px" as Aff
+   ,"width=80px,center=true" as Aff_id
+   ,"width=100px,right=true,sortable=yes" Tot
+   ,"width=100px,right=true,sortable=yes" AVG
+   ,"width=100px,right=true,sortable=yes" M0
+   ,"width=100px,right=true,sortable=yes" M1
+   ,"width=100px,right=true,sortable=yes" M2
+   ,"width=100px,right=true,sortable=yes" M3
+   ,"width=100px,right=true,sortable=yes" M4
+   ,"width=100px,right=true,sortable=yes" M5
+   ,"width=100px,right=true,sortable=yes" M6
+   ,"width=100px,right=true,sortable=yes" M7
+   ,"width=100px,right=true,sortable=yes" M8
+   ,"width=100px,right=true,sortable=yes" M9
+   ,"width=100px,right=true,sortable=yes" M10
+   ,"width=100px,right=true,sortable=yes" M11
+	FROM DUAL WHERE @Meta="YES")'
+);
+
+SET @CTE=concat(' 
+with grossCommByMonth_fact1 as (
+SELECT left(DATE,7) AS Month
+   ,Brand
+   ,Advertiser_id
+   ,Publisher_id
+   ,P.Advertiser_Name            as `Publisher`
+   ,Data_Currency
+   ,Username_id
+   ,Affiliate_id
+   ,Affiliate
+   ,ifnull(Channel_id,0)         as `Channel_id`
+   ,ifnull(Channel,"no Channel") as `Channel`
+   ,sum(Qualified_Players      ) as `CPA`
+   ,sum(CPA_Value_Gestor       ) as `CPA_Val_Ges`
+   ,sum(CPA_Value_Affiliate    ) as `CPA_Val_Aff`
+   ,sum(Net_Revenue            ) as `Net_Revenue`
+-- ,sum(case when Net_Revenue<0 then Net_Revenue
+--       else 0 end)             as `NR_Negative`
+-- ,sum(case when Net_Revenue>0 then Net_Revenue
+--       else 0 end)             as `NR_Positive`
+   ,sum(Revenue_Share_Gestor   ) as `RS_Val_Ges`
+   ,sum(Revenue_Share_Affiliate) as `RS_Val_Aff`
+   ,sum(First_Time_Deposit)      as `FTD`
+   ,sum(CPA_Value_Gestor-CPA_Value_Affiliate+Revenue_Share_Gestor-Revenue_Share_Affiliate)
+                                 as `Profit`
+FROM Snapshot_day_by_day_fact1 F
+LEFT JOIN campaign_publisher P ON P.id=F.Publisher_id 
+WHERE left(Date,7)>=left(date_sub(curdate(),interval 11 month),7) 
+'
+   ,@WherePublisher_id
+   ,@WhereAdvertiser_id
+);
+
+SET @SQL=concat(@CTE,
+'
+GROUP BY MONTH,Affiliate,ifnull(Channel,"no Channel")
+)
+-- SELECT * FROM grossCommByMonth_fact1; -- Solo para debug
+SELECT '
+,IF(@Meta="YES","'data' as `Meta`,",""),
+'CONCAT(TRIM(Affiliate)," - ",TRIM(CHANNEL)) AS "Affiliate_CH",SUM(CPA) as `CPAs`,',
+@SumBy_Month,'
+FROM grossCommByMonth_fact1
+GROUP BY CONCAT(TRIM(Affiliate)," - ",TRIM(CHANNEL)) WITH ROLLUP
+'
+,IF(@Meta="YES",@SQLmeta,""),'
+ORDER BY 2
+;');
+
+-- select @SumBy_Month,@SQL;
+-- SET @M0=left(date_sub(curdate(), interval 0 month),7);
+-- SET @M1=left(date_sub(curdate(), interval 1 month),7);
+-- SET @M2=left(date_sub(curdate(), interval 2 month),7);
+-- SET @M3=left(date_sub(curdate(), interval 3 month),7);
+-- SET @M4=left(date_sub(curdate(), interval 4 month),7);
+-- SET @M5=left(date_sub(curdate(), interval 5 month),7);
+-- SET @M6=left(date_sub(curdate(), interval 6 month),7);
+-- SET @M7=left(date_sub(curdate(), interval 7 month),7);
+-- SET @M2=left(date_sub(curdate(), interval 2 month),7);
+
+SET @Dat0='Profit';
+SET @Dat1='NR';
+SET @Dat2='CPA';
+SET @Dat3='FTD';
+
+
+SET @SQLfilters=CONCAT(
+@CTE,
+'
+GROUP BY Publisher_id,Advertiser_id
+)
+(SELECT "5" as "Korder","Publisher" AS "Key",`Publisher`    AS "Value","Publisher_id"    AS `CallKey`,`Publisher_id` AS "CallValue","" AS "Rows" 
+  FROM grossCommByMonth_fact1 f GROUP BY Publisher_id) UNION ALL
+  
+(SELECT "6" as "Korder","Brand" AS "Key",CONCAT(`Brand`,"-",LEFT(Publisher,6)) AS "Value","Advertiser_id" AS `CallKey`,`Advertiser_id` AS "CallValue","" AS "Rows" 
+  FROM grossCommByMonth_fact1) UNION ALL  
+(SELECT "2" as "Korder","Data"  AS "Key",@Dat0 AS "Value","Param" AS `CallKey`,@Dat0 AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "2" as "Korder","Data"  AS "Key",@Dat1 AS "Value","Param" AS `CallKey`,@Dat1 AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "2" as "Korder","Data"  AS "Key",@Dat2 AS "Value","Param" AS `CallKey`,@Dat2 AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "2" as "Korder","Data"  AS "Key",@Dat3 AS "Value","Param" AS `CallKey`,@Dat3 AS "CallValue","" AS "Rows" FROM DUAL) 
+ORDER BY 1, 3
+;');
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+
+/* TEST --------------
+
+call Dash_Gestor_ProfitByAff('meta=yes,debug=ye');
+call Dash_Gestor_ProfitByAff13('param=cpa,publisher_id=all,advertiser_id=all,filters=yes,meta=yes,debug=yes');
+call Dash_Gestor_ProfitByAff13('param=cpa,publisher_id=16,advertiser_id=all,filters=yes,meta=yes,debug=ye');
+call Dash_Gestor_ProfitByAff('param=profit,publisher_id=all,advertiser_id=all,filters=yes,meta=yes,debug=ye');
+*/

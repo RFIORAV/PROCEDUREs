@@ -1,0 +1,66 @@
+/**
+	PROCEDURE_total_monthy_comm_ges_upd.sql
+	**	Actualiza tabla total_monthy_comm_ges desde view_monthly_fact_gestor3
+   ** 
+	**	Se lanza desde EVENT
+	02.10.2022 V1 Materializa view_monthly_fact_gestor3 por performance (Est 0.6" a 0.1")
+   28.11.2022    Agrega nuevos campos de view is_indirect,Advertiser_indirect_id,Advertiser_indirect
+*/
+
+DROP PROCEDURE IF EXISTS total_monthy_comm_ges_upd;
+-- -----------------------------------------------------
+DELIMITER //
+
+CREATE PROCEDURE total_monthy_comm_ges_upd()
+COMMENT 'Recrea total_monthy_comm_ges desde view_monthly_fact_gestor3'
+DETERMINISTIC
+MODIFIES SQL DATA
+-- SQL SECURITY INVOKER
+
+BEGIN
+
+CREATE TABLE IF NOT EXISTS `total_monthy_comm_ges` (
+	`Owner` VARCHAR(55) NULL DEFAULT NULL,
+	`Date` VARCHAR(7) NULL DEFAULT NULL,
+	`Brand` VARCHAR(55) NULL DEFAULT NULL,
+	`Username` VARCHAR(30) NULL DEFAULT NULL,
+	`Advertiser_id` INT(10) NULL DEFAULT NULL,
+	`Username_id` VARCHAR(55) NULL DEFAULT NULL,
+	`Product` VARCHAR(55) NULL DEFAULT NULL,
+	`CPA` DECIMAL(12,2) NULL DEFAULT NULL,
+	`Data_Currency` VARCHAR(10) NULL DEFAULT 'EUR',
+	`is_indirect` TINYINT(1) NOT NULL DEFAULT '0',            -- 28.11.2022
+	`Advertiser_indirect_id` INT(10) NULL DEFAULT NULL,       -- 28.11.2022
+	`Advertiser_indirect` VARCHAR(150) NULL DEFAULT NULL,     -- 28.11.2022
+	`CPA_Value` DECIMAL(12,2) NULL DEFAULT NULL,
+	`Net_Revenue` DECIMAL(56,2) NULL DEFAULT NULL,
+	`RS_Value` DECIMAL(12,2) NULL DEFAULT NULL,
+	`RS_AJUST` DECIMAL(12,2) NULL DEFAULT NULL,
+	`CPA_Val_AJ_RS` DECIMAL(12,2) NULL DEFAULT NULL,
+	`Total_Commission` DECIMAL(12,2) NULL DEFAULT NULL,
+	`Ges_id_Deal` INT(10) NULL DEFAULT NULL,
+	`Ges_CPA` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Ges_Carry_Over` VARCHAR(30) NULL DEFAULT NULL,
+	`Ges_RS_Against_CPA` INT(10) NULL DEFAULT NULL,
+	`Ges_RS_Base` VARCHAR(30) NULL DEFAULT NULL,
+	`Ges_RS` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Ges_Valid_From` VARCHAR(10) NULL DEFAULT NULL,
+	`Last_Update` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+	INDEX `Date_Brand` (`Date`, `Brand`) USING BTREE
+)
+ENGINE=InnoDB
+;
+
+TRUNCATE TABLE total_monthy_comm_ges;
+
+INSERT IGNORE INTO total_monthy_comm_ges
+SELECT *,NOW() FROM view_monthly_fact_gestor3;   
+
+END;
+//
+DELIMITER ;
+	
+-- -----------------------------------------------------
+-- CALL total_monthy_comm_ges_upd();
+-- -----------------------------------------------------
+

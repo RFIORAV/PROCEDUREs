@@ -1,0 +1,103 @@
+/**
+	PROCEDURE_total_monthy_comm_aff_upd.sql
+	**	Actualiza TABLA view_monthly_fact_aff3
+
+   15.03.2023 v4   Utiliza PROCEDURE monthly_comms_affiliate
+*/
+
+DROP PROCEDURE IF EXISTS total_monthy_comm_aff_upd;
+-- -----------------------------------------------------
+DELIMITER //
+
+CREATE PROCEDURE total_monthy_comm_aff_upd()
+COMMENT 'TABLA view_monthly_fact_aff4 desde tabla monthly_comms_affiliate'
+DETERMINISTIC
+MODIFIES SQL DATA
+-- SQL SECURITY INVOKER
+
+BEGIN
+-- Defaults
+SET @Version         ='v4 15.03.2023 ';
+SET @CurrentDay      =curdate();
+
+IF CURDATE()<='2023-03-15' THEN
+--    DROP VIEW  IF EXISTS `view_monthly_fact_aff3`;
+   DROP TABLE IF EXISTS `view_monthly_fact_aff4`;
+END IF;
+
+CREATE TABLE IF NOT EXISTS `view_monthly_fact_aff4` (
+   `Owner`                    VARCHAR(150)  NOT NULL DEFAULT ''
+   ,`Area`                    VARCHAR(150)  NOT NULL DEFAULT 'gaming'
+   ,`DATE`                    VARCHAR(7)    NOT NULL DEFAULT '0000-00'
+   ,`Affiliate`               VARCHAR(150)  NOT NULL DEFAULT ''
+   ,`Affiliate_id`            INT(10)       NOT NULL DEFAULT '0'
+   ,`Brand`                   VARCHAR(150)  NOT NULL DEFAULT ''
+   ,`Advertiser_id`           INT(10)       NOT NULL DEFAULT '0'
+   ,`Username`                VARCHAR(150)  NOT NULL DEFAULT ''
+   ,`Username_id`             INT(10)       NOT NULL DEFAULT '0'
+   ,`Channel_id`              INT(10)       NOT NULL DEFAULT '0'
+   ,`Channel`                 VARCHAR(150)  NOT NULL DEFAULT ''
+   ,`Channel_Name`            VARCHAR(150)  NOT NULL DEFAULT ''
+   ,`Product`                 VARCHAR(150)  NOT NULL DEFAULT ''
+   ,`Product_real`            VARCHAR(150)  NOT NULL DEFAULT ''
+   ,`Data_Currency`           VARCHAR(150)  NOT NULL DEFAULT 'EUR'
+   ,`CPA`                     DECIMAL(12,0) NOT NULL DEFAULT '0'
+   ,`CPA_Value`               DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`Net_Revenue`             DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`RS_Value`                DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`RS_AJUST`                DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`CPA_Val_AJ_RS`           DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`net_Total_comm`          DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`RS_carry_NCO`            DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`Deal_Aff_RS_Against_CPA` DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`Aff_CPA`                 DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`Aff_RS`                  DECIMAL(12,2) NOT NULL DEFAULT '0'
+   ,`Last_Update`             TIMESTAMP     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	INDEX `Date_Affiliate_id`  (`Date`, `Affiliate_id`)   USING BTREE,
+	INDEX `Date_Brand`         (`Date`, `Advertiser_id`)  USING BTREE,
+	INDEX `Date_Account_id`    (`Date`, `Username_id`)    USING BTREE
+)
+ENGINE=InnoDB
+;
+
+CALL monthly_comms_affiliate;
+
+TRUNCATE TABLE view_monthly_fact_aff4;
+
+INSERT IGNORE INTO view_monthly_fact_aff4 (
+ `Owner`,`Area`
+,`Username`,`Username_id`
+,`DATE`
+,`Affiliate`,`Affiliate_id`
+,`Brand`,`Advertiser_id`
+,`CPA`,`CPA_Value`,`Net_Revenue`,`RS_Value`,`RS_AJUST`,`CPA_Val_AJ_RS`
+,`net_Total_comm`,`RS_carry_NCO`
+-- ,`Data_Currency`
+-- ,`Channel_id`,`Channel`,`Channel_Name`
+-- ,`Product`,`Product_real`
+-- ,`Deal_Aff_RS_Against_CPA`,`Aff_CPA`,`Aff_RS`
+)
+SELECT
+ CU.Owner,CU.Area
+,CU.`Username`,CU.`Username_id`
+,`Month`
+,`Affiliate`,`Affiliate_id`
+,`Brand`,`Advertiser_id`
+,`CPA`,`gross_CPA_Val`,`Net_Revenue`,`gross_RS_Val`,`net_RS_Val`,`net_CPA_Val`
+,`net_Total_comm`,`RS_carry_NCO`
+FROM monthly_comms_affiliate G
+LEFT JOIN LATERAL
+   (SELECT id as `Username_id`,Owner,Area,`Username`
+      FROM `campaign_username` CU
+      WHERE CU.`Advertiser_id`=G.`Advertiser_id`
+      LIMIT 1) AS CU ON TRUE
+;
+
+END;
+//
+DELIMITER ;
+
+/* -----------------------------------------------------
+CALL total_monthy_comm_aff_upd;
+-- -----------------------------------------------------
+*/

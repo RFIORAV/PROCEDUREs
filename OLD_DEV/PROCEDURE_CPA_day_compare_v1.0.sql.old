@@ -1,0 +1,181 @@
+/*
+PROCEDURE_CPA_day_compare_v1.0.sql
+
+Descripción:
+  Devuelve el valor de CPA de una fecha dada y del mismo día del mes anterior.
+  Cuando existen múltiples snapshots para el mismo día, toma el más reciente
+  (MAX de Datetime_retrieval).
+  Fuente: tabla campaign_log_dashboard.
+
+Observaciones:
+  Cada Key debe estar seguida de = y el valor deseado SIN comillas.
+  Cada par Key=Value debe ir seguido de una COMA.
+  El conjunto de pares debe ir entre '' (comillas simples) como único parámetro string.
+  Si el día solicitado es el 31 y el mes anterior solo tiene 30 días, MySQL ajusta
+  automáticamente al último día disponible (ej: 2026-03-31 → fecha_mes_anterior=2026-02-28).
+  La columna fecha_mes_anterior en el resultado refleja siempre el día real consultado.
+  Si no hay datos para exactamente ese día en el mes anterior, se usa el día inmediato
+  anterior disponible dentro del mismo mes. Si no hay ninguno, cpa_mes_anterior devuelve 0.
+  La columna snapshot_mes_anterior refleja siempre la fecha real que se tomó.
+
+Keys:
+  Date   = [YYYY-MM-DD]. Fecha de consulta. OBLIGATORIO.
+  Owner  = [All Owners | Man Adj | WebWS | FullMT | Aff Int]. OPCIONAL. Default=All Owners.
+  Debug  = [No | Yes | KeyValues]. Controla modo de ejecución. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+  call CPA_day_compare('Date=2026-06-08');
+  call CPA_day_compare('Date=2026-06-08,Owner=WebWS');
+  call CPA_day_compare('Date=2026-06-05,Owner=FullMT');
+  call CPA_day_compare('Date=2026-06-08,Debug=KeyValues');
+  call CPA_day_compare('Date=2026-06-08,Debug=Yes');
+
+09.06.2026 v1.0 Primera versión operativa
+*/
+
+SET NAMES 'utf8mb4';
+
+DROP PROCEDURE IF EXISTS CPA_day_compare;
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `CPA_day_compare`(IN InputCommLine VARCHAR(250))
+COMMENT 'v1.0 09.06.2026 - CPA del día solicitado y del mismo día del mes anterior'
+SQL SECURITY DEFINER
+proc_label:BEGIN
+    DECLARE v_Version       VARCHAR(32)  DEFAULT 'v1.0 09.06.2026';
+    DECLARE v_InputCommLine VARCHAR(500) DEFAULT '';
+    DECLARE v_DateStr       VARCHAR(10)  DEFAULT '';
+    DECLARE v_Date          DATE         DEFAULT NULL;
+    DECLARE v_PrevDate      DATE         DEFAULT NULL;
+    DECLARE v_PrevDateStr   VARCHAR(10)  DEFAULT '';
+    DECLARE v_Owner         VARCHAR(150) DEFAULT 'All Owners';
+    DECLARE v_Debug         VARCHAR(20)  DEFAULT 'NO';
+    DECLARE v_MaxDT         VARCHAR(16)  DEFAULT NULL;
+    DECLARE v_MaxDT_Prev    VARCHAR(16)  DEFAULT NULL;
+    DECLARE v_CPA_Date      INT          DEFAULT 0;
+    DECLARE v_CPA_Prev      INT          DEFAULT 0;
+    DECLARE v_e             INT          DEFAULT 0;
+    DECLARE v_c             INT          DEFAULT 0;
+    DECLARE v_k             VARCHAR(80)  DEFAULT '';
+    DECLARE v_v             VARCHAR(250) DEFAULT '';
+
+    -- Normalización de entrada
+    SET v_InputCommLine = CONCAT(IFNULL(InputCommLine, ''), ',');
+    SET v_InputCommLine = REPLACE(v_InputCommLine, '"', '');
+
+    -- Parseo case-insensitive de parámetros
+    WHILE v_InputCommLine > ' ' DO
+        SET v_e = INSTR(v_InputCommLine, '=');
+        SET v_c = INSTR(v_InputCommLine, ',');
+
+        IF v_e = 0 OR v_c = 0 OR v_e > v_c THEN
+            LEAVE proc_label;
+        END IF;
+
+        SET v_k = TRIM(SUBSTRING(v_InputCommLine, 1, v_e - 1));
+        SET v_v = TRIM(SUBSTRING(v_InputCommLine, v_e + 1, v_c - (v_e + 1)));
+        SET v_InputCommLine = SUBSTRING(v_InputCommLine, v_c + 1);
+
+        IF LOWER(v_k) = 'date'  THEN SET v_DateStr = v_v;        END IF;
+        IF LOWER(v_k) = 'owner' THEN SET v_Owner   = v_v;        END IF;
+        IF LOWER(v_k) = 'debug' THEN SET v_Debug   = UPPER(v_v); END IF;
+    END WHILE;
+
+    -- Validar parámetro obligatorio Date
+    IF v_DateStr = '' THEN
+        SELECT 'ERROR: Date es obligatorio. Formato esperado: YYYY-MM-DD.' AS Mensaje;
+        LEAVE proc_label;
+    END IF;
+
+    SET v_Date = STR_TO_DATE(v_DateStr, '%Y-%m-%d');
+    IF v_Date IS NULL THEN
+        SELECT CONCAT('ERROR: Date inválido [', v_DateStr, ']. Formato esperado: YYYY-MM-DD.') AS Mensaje;
+        LEAVE proc_label;
+    END IF;
+
+    -- Mismo día del mes anterior (MySQL ajusta automáticamente si el día no existe en ese mes)
+    SET v_PrevDate    = DATE_SUB(v_Date, INTERVAL 1 MONTH);
+    SET v_DateStr     = DATE_FORMAT(v_Date,     '%Y-%m-%d');
+    SET v_PrevDateStr = DATE_FORMAT(v_PrevDate, '%Y-%m-%d');
+
+    IF v_Debug = 'KEYVALUES' THEN
+        SELECT 'Version'     AS `Key`, v_Version    AS `Value`
+        UNION ALL SELECT 'Date',        v_DateStr
+        UNION ALL SELECT 'PrevDate',    v_PrevDateStr
+        UNION ALL SELECT 'DayAjustado', IF(DAY(v_Date) = DAY(v_PrevDate), 'NO', CONCAT('SI → ', v_PrevDateStr))
+        UNION ALL SELECT 'Owner',       v_Owner
+        UNION ALL SELECT 'Debug',       v_Debug;
+        LEAVE proc_label;
+    END IF;
+
+    -- CTE que normaliza Owner_id → Datetime_retrieval y limita el scan a los dos meses necesarios.
+    -- Los dos LEFT JOIN garantizan una fila de resultado aunque alguna fecha no tenga datos.
+    WITH cld AS (
+        SELECT
+            LEFT(`Owner_id`, 7)    AS Month_data,
+            MID(`Owner_id`, 9, 16) AS Datetime_retrieval,
+            `Owner`,
+            `Brand`,
+            `Curr`,
+            `Signup`,
+            `FTD`,
+            `CPA`,
+            `CPA_Value`,
+            `Net_Rev`,
+            `RS_Val`,
+            `Tot_Comm`,
+            `Profit`,
+            `AfCom_cpa`,
+            `AfCom_rs`,
+            `AfCom_tot`
+        FROM campaign_log_dashboard
+        WHERE LEFT(`Owner_id`, 7) BETWEEN LEFT(v_PrevDateStr, 7) AND LEFT(v_DateStr, 7)
+          AND `Owner` = v_Owner
+    )
+    SELECT
+        fa.Datetime_retrieval,
+        IFNULL(fa.CPA, 0),
+        fp.Datetime_retrieval,
+        IFNULL(fp.CPA, 0)
+    INTO v_MaxDT, v_CPA_Date, v_MaxDT_Prev, v_CPA_Prev
+    FROM (SELECT 1) AS t
+    LEFT JOIN (
+        SELECT Datetime_retrieval, CPA FROM   cld
+        WHERE  LEFT(Datetime_retrieval, 10) = v_DateStr
+        ORDER BY Datetime_retrieval DESC LIMIT 1
+    ) AS fa ON 1 = 1
+    LEFT JOIN (
+        SELECT Datetime_retrieval, CPA FROM   cld
+        WHERE  LEFT(Datetime_retrieval, 10) <= v_PrevDateStr
+          AND  LEFT(Datetime_retrieval, 7)  =  LEFT(v_PrevDateStr, 7)
+        ORDER BY Datetime_retrieval DESC LIMIT 1
+    ) AS fp ON 1 = 1;
+
+    SET v_CPA_Date = IFNULL(v_CPA_Date, 0);
+    SET v_CPA_Prev = IFNULL(v_CPA_Prev, 0);
+
+    -- Resultado principal
+    SELECT
+        v_DateStr     AS fecha_solicitada,
+        v_MaxDT       AS snapshot_fecha,
+        v_CPA_Date    AS cpa_fecha,
+        v_PrevDateStr AS fecha_mes_anterior,
+        v_MaxDT_Prev  AS snapshot_mes_anterior,
+        v_CPA_Prev    AS cpa_mes_anterior;
+
+    -- Información adicional en modo Debug=Yes
+    IF v_Debug = 'YES' THEN
+        SELECT
+            v_Version     AS version,
+            v_DateStr     AS fecha_solicitada,
+            v_PrevDateStr AS fecha_mes_anterior,
+            v_Owner       AS owner_filtro,
+            v_MaxDT       AS snapshot_fecha,
+            v_MaxDT_Prev  AS snapshot_mes_anterior,
+            v_CPA_Date    AS cpa_fecha,
+            v_CPA_Prev    AS cpa_mes_anterior;
+    END IF;
+
+END$$
+DELIMITER ;

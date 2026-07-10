@@ -1,0 +1,56 @@
+/* PROCEDURE UPDATE_day_by_day_fact2_current_month
+   30.08.2022 V1 Actualiza Snapshot_day_by_day_fact2 para Mes Cte (hasta dia 2 del mes sigte)
+                 Exige cambiar VIEW_monthly_fact_aff2.sql
+   
+*/
+DROP PROCEDURE IF EXISTS Snapshot_day_by_day_fact2_upd_cm;
+DELIMITER $$
+CREATE PROCEDURE Snapshot_day_by_day_fact2_upd_cm()
+   COMMENT 'FACT2-UPDATE CurrMonth desde FACT1 - Considera Mes Cte hasta dia 3 del mes sigte'
+   LANGUAGE SQL
+    
+BEGIN
+
+DECLARE MesCorriente VARCHAR(7) DEFAULT left(curdate(),7);
+
+SET @Version='v1.1 09.11.2022';
+    
+IF DAY(CURDATE()) <= 3 THEN
+    SET MesCorriente = LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7);
+END IF;
+
+DELETE FROM Snapshot_day_by_day_fact2 WHERE left(DATE,7)>=MesCorriente; 
+    
+INSERT IGNORE INTO Snapshot_day_by_day_fact2 (
+`id`,`Owner`,`Affiliate`,`Affiliate_id`,`Deal_Aff`,`Date`,`Username`,`Username_id`,`Brand`
+,`Advertiser_id`,`Tracker_ID`,`MS_id`,`Tracker_Name`,`Code_To_Affiliate`,`Product`,`Product_Real`
+,`Qualified_Players`,`Qualified_Players_Adjusted`,`First_Time_Deposit`,`Views`,`Clicks`,`Signups`
+,`Impressions`,`Sign_Up_Offer`,`Type`,`Language`,`Deposits`,`Depositing_Customers`,`Active_Customers`
+,`New_Depositing_Customers`,`New_Active_Customers`,`First_Time_Active_Customers`,`Turnover`,`Net_Revenue`
+,`CPA_Limit`,`Channel_id`,`Channel`,`Revenue_Share_Affiliate`,`CPA_Value_Affiliate`,`Deal_Aff_id`
+,`Deal_Aff_CPA`,`Deal_Aff_Carry_Over`,`Deal_Aff_RS_Against_CPA`,`Deal_Aff_RS_Base`,`Deal_Aff_RS`
+,`Deal_Aff_Valid_From`,`Data_Currency`,`TimeGen`
+)
+SELECT
+id,Owner,Affiliate,Affiliate_id,Deal_Aff,Date,Username,Username_id,Brand
+,Advertiser_id,Tracker_ID,MS_id,Tracker_Name,Code_To_Affiliate,Product,Product_Real
+,sum(Qualified_Players) AS Qualified_Players,sum(Qualified_Players_Adjusted) AS Qualified_Players_Adjusted,sum(First_Time_Deposit) AS First_Time_Deposit,sum(Views) AS Views,sum(Clicks) AS Clicks,sum(Signups) AS Signups
+,sum(Impressions) AS Impressions,Sign_Up_Offer,Type,Language,sum(Deposits) AS Deposits,sum(Depositing_Customers) AS Depositing_Customers,sum(Active_Customers) AS Active_Customers
+,sum(New_Depositing_Customers) AS New_Depositing_Customers,sum(New_Active_Customers) AS New_Active_Customers,sum(First_Time_Active_Customers) AS First_Time_Active_Customers,sum(Turnover) AS Turnover,sum(Net_Revenue) AS Net_Revenue
+,CPA_Limit,Channel_id,Channel,sum(Revenue_Share_Affiliate) AS Revenue_Share_Affiliate,sum(CPA_Value_Affiliate) AS CPA_Value_Affiliate,Deal_Aff_id
+,Deal_Aff_CPA,Deal_Aff_Carry_Over,Deal_Aff_RS_Against_CPA,Deal_Aff_RS_Base,Deal_Aff_RS
+,Deal_Aff_Valid_From,Data_Currency,TimeGen
+FROM Snapshot_day_by_day_fact1
+WHERE left(DATE,7)>=MesCorriente
+GROUP BY Owner,Date,Affiliate_id,ifnull(MS_id,0),Tracker_ID,Tracker_Name,Deal_Aff_CPA,Deal_Aff_RS
+	HAVING 
+      sum(Qualified_Players)<>0 OR 
+      (SUM(`Net_Revenue`)<>0 and Deal_Aff_RS>0) OR    -- 09.11.2022
+      sum(First_Time_Deposit)<>0 OR 
+      sum(Views)<>0 OR 
+      sum(Clicks)<>0 OR 
+      sum(Signups)<>0 OR 
+      sum(Impressions)<>0 
+;
+END$$
+DELIMITER ;

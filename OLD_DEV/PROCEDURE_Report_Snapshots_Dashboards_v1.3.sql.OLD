@@ -1,0 +1,458 @@
+/*
+PROCEDURE_Report_Dashboards_v1.sql - Report Snapshots Dashboards
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Mode            =[Lite | Full ]. Muestra todas las columnas o una selección reducida. OPCIONAL. Default=Full
+Owner           =[ALL | Owner]. OPCIONAL. Default=ALL
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month.
+Time            =[ALL | Midday | Midnight]. OPCIONAL. Default=ALL
+
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_Snapshots_Dashboards('debug=ye'); -- Devuelve todas las MS
+call Report_Snapshots_Dashboards('debug=ye,month=lm');
+call Report_Snapshots_Dashboards('debug=ye,filters=yes');
+call Report_Snapshots_Dashboards('debug=ye,meta=yes,filters=no');
+
+07.03.2025 V1     Primera versión operativa
+19.03.2025 v1.1   Muestra columnas diff adyacentes a columna dato
+22.03.2025 v1.2   Mode Lite
+                  `Monthly Profit Trend`
+06.04.2025 v1.3   Incluye month datos para independizar comienzo de mes
+
+*/
+
+DROP PROCEDURE IF EXISTS Report_Snapshots_Dashboards;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Snapshots_Dashboards`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Snapshots Dashboards'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @xVersion         ='v1.3 06.04.2025';
+SET @xCurrentDay      =curdate();
+
+-- SET @xOwner           ='*!All Owners';
+-- SET @xTime            ='Midnight';
+SET @xOwner           ='ALL';
+SET @xMode            ='Lite';
+SET @xTime            ='Midnight';
+SET @xMonth           =LEFT(CURDATE(),7);
+
+SET @xDebug           ='NO';
+SET @xFilters         ='NO';
+SET @xMeta            ='YES';
+
+SET @xInputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @xInputCommLine=replace(@xInputCommLine,' ','');  -- Elimina espacios
+SET @xInputCommLine=replace(@xInputCommLine,'"','');  -- Elimina comillas
+
+-- IF @xDebug!="NO" THEN SELECT @xInputCommLine; END IF;
+-- IF @xDebug="YES" THEN SELECT @xOwner,@xMonth,@xCurrency,@xPublisher_id,@xByAccount,@xDebug,@xTotal,@xTotLine,@xOrderBy,@xOrder,@xInputCommLine; END IF;
+
+WHILE @xInputCommLine>' ' DO
+-- @xInputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @xInputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @xe=INSTR(@xInputCommLine,'=');    				   -- 6
+   SET @xc=INSTR(@xInputCommLine,','); 					   -- 14
+   SET @xk=SUBSTRING(@xInputCommLine,1,@xe-1); 			   -- Month
+   SET @xv=SUBSTRING(@xInputCommLine,@xe+1,@xc-(@xe+1)); 	-- 2022-08
+   SET @xInputCommLine=SUBSTRING(@xInputCommLine,@xc+1);
+   SET @xk=TRIM(@xk);
+   SET @xv=TRIM(@xv);
+
+   IF lower(@xk)='owner'           THEN SET @xOwner         =UPPER(@xv); END IF;
+   IF lower(@xk)='time'            THEN SET @xTime          =UPPER(@xv); END IF;
+   IF lower(@xk)='mode'            THEN SET @xMode          =UPPER(@xv); END IF;
+   IF lower(@xk)='month'           THEN SET @xMonth         =UPPER(@xv); END IF;
+
+   IF lower(@xk)='meta'            THEN SET @xMeta          =UPPER(@xv); END IF;
+   IF lower(@xk)='filters'         THEN SET @xFilters       =UPPER(@xv); END IF;
+   IF lower(@xk)='debug'           THEN SET @xDebug         =UPPER(@xv); END IF;
+
+END WHILE;
+
+IF @xMonth='CM' THEN SET @xMonth=LEFT(DATE_SUB(CURDATE(), INTERVAL 0 MONTH),7); END IF;
+IF @xMonth='LM' THEN SET @xMonth=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+IF @xDebug!="NO" THEN SELECT @xOwner,@xMonth,@xTime,@xFilters,@xDebug,@xMeta,InputCommLine; END IF;
+
+SET @xWhereOwner=' AND Owner NOT IN ("* All Owners")';
+SET @xWhereMonth='';
+SET @xWhereTime='';
+
+--   AND Owner='FULLMT' AND `Month`='2025-03' AND  temp in ("total","TOTAL NOW") and Time in ("Midnight","---NOW---")
+SET @xOwner  =REPLACE(@xOwner,"!"," ");
+IF @xOwner  !="ALL" THEN SET @xWhereOwner  =CONCAT(" AND Owner='",@xOwner,"'");   END IF;
+IF @xMonth  !="ALL" THEN SET @xWhereMonth  =CONCAT(" AND `Month`='",@xMonth,"'"); END IF;
+IF @xTime   !="ALL" THEN SET @xWhereTime   =CONCAT(" AND UPPER(Time) in ('",@xTime,"','---NOW---')"); END IF;
+
+IF @xDebug!="NO" THEN SELECT @xWhereOwner,@xWhereMonth,@xWhereTime; END IF;
+
+/**************************************************************************************************************/
+CREATE TABLE IF NOT EXISTS `campaign_log_dashboard` (
+   `Meta`            VARCHAR(7)    NULL DEFAULT '',
+   `Date`            VARCHAR(22)   NULL DEFAULT '',
+   `Owner_id`        VARCHAR(150)  NULL DEFAULT '',
+   `Owner`           VARCHAR(100)  NULL DEFAULT NULL,
+   `Publisher`       VARCHAR(150)  NULL DEFAULT '',
+   `Brand`           VARCHAR(150)  NULL DEFAULT '',
+   `StatusAdv`       VARCHAR(30)   NULL DEFAULT NULL,
+   `Account`         VARCHAR(9)    NULL DEFAULT '',
+   `Status`          VARCHAR(30)   NULL DEFAULT NULL,
+   `Curr`            VARCHAR(11)   NULL DEFAULT NULL,
+   `Cap/Used`        VARCHAR(57)   NULL DEFAULT NULL,
+   `Signup`          INT           NULL DEFAULT NULL,
+   `FTD`             INT           NULL DEFAULT NULL,
+   `CPA`             INT           NULL DEFAULT NULL,
+   `CPA_Value`       DECIMAL(10,2) NULL DEFAULT NULL,
+   `Net_Rev`         DECIMAL(10,2) NULL DEFAULT NULL,
+   `RS_Val`          DECIMAL(10,2) NULL DEFAULT NULL,
+   `Tot_Comm`        DECIMAL(10,2) NULL DEFAULT NULL,
+   `Profit`          DECIMAL(10,2) NULL DEFAULT NULL,
+   `AfCurr`          VARCHAR(11)   NULL DEFAULT '',
+   `AfCom_cpa`       DECIMAL(10,2) NULL DEFAULT NULL,
+   `AfCom_rs`        DECIMAL(10,2) NULL DEFAULT NULL,
+   `AfCom_tot`       DECIMAL(10,2) NULL DEFAULT NULL,
+   `AfCPA`           VARCHAR(33)   NULL DEFAULT NULL,
+   `AfRS`            VARCHAR(33)   NULL DEFAULT NULL,
+   `Area`            VARCHAR(50)   NULL DEFAULT NULL,
+   `RS COver Pend`   VARCHAR(51)   NULL DEFAULT NULL,
+   `Publisher_id`    VARCHAR(11)   NULL DEFAULT ''
+)
+ENGINE=InnoDB
+;
+
+/**************************************************************************************************************/
+
+-- SET SESSION group_concat_max_len = 100000;
+
+SET @xSELECT_main='
+SELECT
+    `Date`                 as `temp`
+   ,RIGHT(`Owner_id`,16)   as `Date`
+   ,LEFT(`Owner_id`,7)     AS `Month`
+   ,CASE WHEN MID(`Owner_id`,20,2)<17 THEN "Midday" ELSE "Midnight" END AS `Time`
+   ,CASE WHEN `Owner`="All Owners" THEN "* All Owners" ELSE `Owner` END as `Owner`
+   ,`Brand`
+   ,`Signup`
+   ,`FTD`
+   ,`CPA`
+   ,`Curr`
+   ,`CPA_Value` AS `CPA_Value`
+   ,`Net_Rev`   AS `Net_Rev`
+   ,`RS_Val`    AS `RS_Val`
+   ,`Tot_Comm`  AS `Tot_Comm`
+   ,`Profit`    AS `Profit`
+   ,`AfCom_cpa` AS `AfCom_cpa`
+   ,`AfCom_rs`  AS `AfCom_rs`
+   ,`AfCom_tot` AS `AfCom_tot`
+FROM campaign_log_dashboard D
+';
+
+SET @xSELECT_main_temp='
+UNION ALL
+SELECT
+    `Date`                 as `temp`
+   ,RIGHT(`Owner_id`,16)   as `Date`
+   ,LEFT(`Owner_id`,7)     AS `Month`
+   ,"---NOW---"            AS `Time`
+   ,CASE WHEN `Owner`="All Owners" THEN "* All Owners" ELSE `Owner` END as `Owner`
+   ,`Brand`
+   ,`Signup`
+   ,`FTD`
+   ,`CPA`
+   ,`Curr`
+   ,`CPA_Value` AS `CPA_Value`
+   ,`Net_Rev`   AS `Net_Rev`
+   ,`RS_Val`    AS `RS_Val`
+   ,`Tot_Comm`  AS `Tot_Comm`
+   ,`Profit`    AS `Profit`
+   ,`AfCom_cpa` AS `AfCom_cpa`
+   ,`AfCom_rs`  AS `AfCom_rs`
+   ,`AfCom_tot` AS `AfCom_tot`
+FROM campaign_log_dashboard_temp D
+';
+
+SET @xCTE=CONCAT('
+WITH Main_Table_Data as (
+',@xSELECT_main
+ ,@xSELECT_main_temp,
+')
+');
+
+IF @xDebug!="NO" THEN SELECT @xCTE,@xSELECT_main,@xSELECT_main_temp; END IF;
+
+-- ---------TOMA DATOS DE DASHBOARD ACTUAL-------------
+DROP TEMPORARY TABLE IF EXISTS campaign_log_dashboard_temp ;
+IF @xFilters!="YES" THEN CALL Dash_Gestor_TotalByAdvertiser(concat('month=',@xMonth,',rec_log=NOW,debug=no')); END IF;
+-- ----------------------------------------------------
+
+SET @xSQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"omit=yes"               as `temp`
+   ,"width=130px"            as `Date`
+   ,"width=080px"            as `Month`
+   ,"width=100px"            as `Time dashbrd`
+   ,IF(@xOwner="* All Owners","omit=yes","width=120px") as `Owner`
+   ,"omit=yes"               as `Brand`
+   ,"omit=yes"               as `Sign up`
+   ,"omit=yes"               as `diff SUp`
+   ,"omit=yes"               as `FTD`
+   ,"omit=yes"               as `diff FTD`
+   ,"width=080px,right=true" as `CPA`
+   ,"width=080px,right=true" as `diff CPA`
+   ,"width=060px,right=true" as `Curr`
+   ,"width=100px,right=true" as `CPA VALUE`
+   ,"width=100px,right=true" as `diff CPA val`
+   ,"width=100px,right=true" as `NET REV`
+   ,"width=100px,right=true" as `diff NR`
+   ,"width=100px,right=true" as `RS VAL`
+   ,"width=100px,right=true" as `diff RS`
+   ,"width=100px,right=true" as `TOT COMM`
+   ,"width=100px,right=true" as `diff Tot comm`
+   ,"width=100px,right=true" as `GROSS MARGIN`
+   ,"width=100px,right=true" as `diff GM`
+   ,"omit=yes"               as `AfCom cpa`
+   ,"omit=yes"               as `AfCom rs`
+   ,"omit=yes"               as `AfCom tot`
+   ,"width=100px,right=true" as `MARGIN Trend`
+FROM DUAL WHERE @xMeta="YES")
+UNION ALL '
+);
+
+SET @xSQLmetaLite=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"omit=yes"               as `temp`
+   ,"width=130px"            as `Date`
+   ,"width=080px"            as `Month`
+   ,"omit=yes"               as `Time dashbrd`
+   ,IF(@xOwner="* All Owners","omit=yes","width=120px") as `Owner`
+   ,"omit=yes"               as `Brand`
+   ,"omit=yes"               as `Sign up`
+   ,"omit=yes"               as `diff SUp`
+   ,"omit=yes"               as `FTD`
+   ,"omit=yes"               as `diff FTD`
+   ,"width=080px,right=true" as `CPA`
+   ,"width=080px,right=true" as `diff CPA`
+   ,"omit=yes"               as `Curr`
+   ,"omit=yes"               as `CPA VALUE`
+   ,"width=100px,right=true" as `diff CPA val`
+   ,"omit=yes"               as `NET REV`
+   ,"omit=yes"               as `diff NR`
+   ,"width=100px,right=true" as `RS VAL`
+   ,"width=100px,right=true" as `diff RS`
+   ,"omit=yes"               as `TOT COMM`
+   ,"omit=yes"               as `diff Tot comm`
+   ,"width=100px,right=true" as `GROSS MARGIN`
+   ,"width=100px,right=true" as `diff GM`
+   ,"omit=yes"               as `AfCom cpa`
+   ,"omit=yes"               as `AfCom rs`
+   ,"omit=yes"               as `AfCom tot`
+   ,"width=100px,right=true" as `MARGIN Trend`
+FROM DUAL WHERE @xMeta="YES")
+UNION ALL '
+);
+
+IF @xMode="LITE" THEN SET @xSQLmeta= @xSQLmetaLite; END IF;
+
+SET @xSQL=CONCAT(
+@xCTE,
+@xSQLmeta,
+'
+SELECT "data" as `Meta`
+   ,`temp`
+   ,`Date`
+   ,`Month`
+   ,`Time`
+   ,`Owner`
+   ,`Brand`
+   ,FORMAT(`Signup`   ,0) AS `Signup`
+   ,CONCAT(IF((`SignUp` - LAG(`SignUp`) OVER w)      >0,"+",""),(`SignUp` - LAG(`SignUp`) OVER w)                ) AS `Sign Up Diff`
+   ,FORMAT(`FTD`      ,0) AS `FTD`
+   ,CONCAT(IF((FTD - LAG(FTD) OVER w)                >0,"+",""),(FTD - LAG(FTD) OVER w)                          ) AS `FTD Diff`
+   ,FORMAT(`CPA`      ,0) AS `CPA`
+   ,CONCAT(IF((CPA - LAG(CPA) OVER w)                >0,"+",""),(CPA - LAG(CPA) OVER w)                          ) AS `CPA Diff`
+   ,`Curr`
+   ,FORMAT(`CPA_Value`,2) AS `CPA_Value`
+   ,CONCAT(IF((`CPA_Value` - LAG(`CPA_Value`) OVER w)>0,"+",""),FORMAT((`CPA_Value` - LAG(`CPA_Value`) OVER w),0)) AS `CPA Value Diff`
+   ,FORMAT(`Net_Rev`  ,2) AS `Net_Rev`
+   ,CONCAT(IF((`Net_Rev` - LAG(`Net_Rev`) OVER w)    >0,"+",""),FORMAT((`Net_Rev` - LAG(`Net_Rev`) OVER w)    ,0)) AS `Net Rev Diff`
+   ,FORMAT(`RS_Val`   ,2) AS `RS_Val`
+   ,CONCAT(IF((`RS_Val` - LAG(`RS_Val`) OVER w)      >0,"+",""),FORMAT((`RS_Val` - LAG(`RS_Val`) OVER w)      ,0)) AS `RS Val Diff`
+   ,FORMAT(`Tot_Comm` ,2) AS `Tot_Comm`
+   ,CONCAT(IF((`Tot_Comm` - LAG(`Tot_Comm`) OVER w)  >0,"+",""),FORMAT((`Tot_Comm` - LAG(`Tot_Comm`) OVER w)  ,0)) AS `Tot Comm Diff`
+   ,FORMAT(`Profit`   ,2) AS `Profit`
+   ,CONCAT(IF((Profit - LAG(Profit) OVER w)          >0,"+",""),FORMAT((Profit - LAG(Profit) OVER w)          ,0)) AS `Profit Diff`
+   ,FORMAT(`AfCom_cpa`,2) AS `AfCom_cpa`
+   ,FORMAT(`AfCom_rs` ,2) AS `AfCom_rs`
+   ,FORMAT(`AfCom_tot`,2) AS `AfCom_tot`
+   ,FORMAT((Profit / DAY(Date)) * DAY(LAST_DAY(Date)),2) AS `Monthly Profit Trend`
+
+    -- Columnas de diferencia   CONCAT(IF(12332.2 >= 0, "+", ""), FORMAT(12332.2, 0))
+
+FROM Main_Table_Data MT
+WHERE temp in ("total","TOTAL NOW")
+'
+   ,@xWhereOwner
+   ,@xWhereMonth
+   ,@xWhereTime
+,'
+WINDOW w AS (PARTITION BY MT.Month, MT.Owner ORDER BY MT.Date)
+ORDER BY `Date` DESC
+');
+-- select @xSQLdev,@xCTE;
+
+-- ------------------------------------------------------------
+SET @xSQLfilters=CONCAT('
+WITH RECURSIVE MonthFilter AS (
+  SELECT  CURDATE() AS date
+  UNION ALL
+  SELECT DATE_SUB(date, INTERVAL 1 MONTH) FROM MonthFilter
+  WHERE DATE_SUB(date, INTERVAL 1 MONTH) >= DATE_SUB(CURDATE(), INTERVAL 4 MONTH)
+),
+Main_Table AS (
+',@xSELECT_main,'
+),
+Main_Table_Data AS (
+   SELECT "data" as `Meta`,
+      MT.*
+   FROM Main_Table MT
+   WHERE 1=1 '
+   -- ,@xWhereOwner
+   ,@xWhereMonth
+   -- ,@xWhereTime
+,'
+)
+
+(SELECT "01" as "Korder","Mode" AS "Key","Full" AS "Value","Mode" AS `CallKey`,"Full" AS `CallValue`,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "01" as "Korder","Mode" AS "Key","Lite" AS "Value","Mode" AS `CallKey`,"Lite" AS `CallValue`,"" AS "Rows" FROM DUAL) UNION ALL
+-- (SELECT "07" as "Korder","Date" AS "Key",LEFT(`Date`,7) AS "Value","Month" AS `CallKey`,LEFT(`Date`,7) AS `CallValue`,"" AS "Rows"
+--                                                                            FROM Main_Table_Data GROUP BY `Month`) UNION ALL
+(SELECT "07" as "Korder","Date" AS "Key",LEFT(`Date`,7) AS "Value","Month" AS `CallKey`,LEFT(`Date`,7) AS `CallValue`,"" AS "Rows"
+                                                                              FROM MonthFilter) UNION ALL
+(SELECT "05" as "Korder","Time" AS "Key",`Time` AS "Value","Time" AS `CallKey`,`Time` AS "CallValue",COUNT(*) AS "Rows"
+                                                                              FROM Main_Table_Data GROUP BY `Time`) UNION ALL
+(SELECT "03" as "Korder","Owner" AS "Key",`Owner` AS "Value","Owner" AS `CallKey`,REPLACE(`Owner`," ","!") AS "CallValue",COUNT(*) AS "Rows"
+                                                                              FROM Main_Table_Data GROUP BY `Owner`)
+ORDER BY 1, case when `CallKey`="Month" then `CallValue` else "" end desc,3
+;');
+
+IF @xDebug!="NO" THEN SELECT @xSELECT_main; END IF;
+IF @xDebug!="NO" THEN SELECT @xCTE; END IF;
+IF @xDebug!="NO" THEN SELECT @xSQLfilters; END IF;
+-- IF @xDebug!="NO" THEN SELECT @@xWhereOwner; END IF;
+IF @xDebug!="NO" THEN SELECT @xSQL; END IF;
+
+IF @xFilters="YES" THEN SET @xSQL=@xSQLfilters; END IF;
+
+
+IF @xDebug != "YES" THEN
+	PREPARE stmt1 FROM @xSQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+
+call Report_Snapshots_Dashboards('debug=ye'); -- Devuelve todas las MS
+call Report_Snapshots_Dashboards('debug=ye,filters=yes');
+call Report_Snapshots_Dashboards('debug=ye,filters=no,status=0');
+
+*/
+/*
+   -- ---------------------------------------------------
+   SELECT
+    t1.Date,
+    t1.Month,
+    t1.Time,
+    t1.Owner,
+    t1.`Sign Up`,
+    t1.FTD,
+    t1.CPA,
+    t1.Curr,
+    t1.`CPA Value`,
+    t1.`Net Rev`,
+    t1.`RS Val`,
+    t1.`Tot Comm`,
+    t1.Profit,
+
+    -- Columnas de diferencia
+    (t1.`Sign Up` - LAG(t1.`Sign Up`) OVER w) AS `Sign Up Diff`,
+    (t1.FTD - LAG(t1.FTD) OVER w) AS `FTD Diff`,
+    (t1.CPA - LAG(t1.CPA) OVER w) AS `CPA Diff`,
+    (t1.`CPA Value` - LAG(t1.`CPA Value`) OVER w) AS `CPA Value Diff`,
+    (t1.`Net Rev` - LAG(t1.`Net Rev`) OVER w) AS `Net Rev Diff`,
+    (t1.`RS Val` - LAG(t1.`RS Val`) OVER w) AS `RS Val Diff`,
+    (t1.`Tot Comm` - LAG(t1.`Tot Comm`) OVER w) AS `Tot Comm Diff`,
+    (t1.Profit - LAG(t1.Profit) OVER w) AS `Profit Diff`
+
+FROM tu_tabla t1
+WINDOW w AS (PARTITION BY t1.Month, t1.Owner, t1.Time ORDER BY t1.Date)
+ORDER BY t1.Owner, t1.Date, t1.Time;
+   -- ---------------------------------------------------
+
+Por favor modifica este query en MySLQ8 para que presente una columna adicional que represente la tendencia mensual del valor acumulado de Profit:
+
+WITH diff_data AS (
+    SELECT
+        t1.Date,
+        t1.Month,
+        t1.Time,
+        t1.Owner,
+        t1.`Sign Up`,
+        t1.FTD,
+        t1.CPA,
+        t1.Curr,
+        t1.`CPA Value`,
+        t1.`Net Rev`,
+        t1.`RS Val`,
+        t1.`Tot Comm`,
+        t1.Profit,
+
+        -- Columnas de diferencia
+        (t1.`Sign Up` - LAG(t1.`Sign Up`) OVER w) AS `Sign Up Diff`,
+        (t1.FTD - LAG(t1.FTD) OVER w) AS `FTD Diff`,
+        (t1.CPA - LAG(t1.CPA) OVER w) AS `CPA Diff`,
+        (t1.`CPA Value` - LAG(t1.`CPA Value`) OVER w) AS `CPA Value Diff`,
+        (t1.`Net Rev` - LAG(t1.`Net Rev`) OVER w) AS `Net Rev Diff`,
+        (t1.`RS Val` - LAG(t1.`RS Val`) OVER w) AS `RS Val Diff`,
+        (t1.`Tot Comm` - LAG(t1.`Tot Comm`) OVER w) AS `Tot Comm Diff`,
+        (t1.Profit - LAG(t1.Profit) OVER w) AS `Profit Diff`,
+
+        -- Proyección del Profit a fin de mes
+        (t1.Profit / DAY(t1.Date)) * DAY(LAST_DAY(t1.Date)) AS `Monthly Profit Trend`
+
+    FROM tu_tabla t1
+    WINDOW w AS (PARTITION BY t1.Month, t1.Owner, t1.Time ORDER BY t1.Date)
+)
+SELECT * FROM diff_data
+WHERE `Sign Up Diff` IS NOT NULL
+ORDER BY Owner, Date, Time;
+   */

@@ -1,0 +1,73 @@
+# Fra_Dash — Especificación (SP: `PROCEDURE_Fra_Dash_v2.sql`, procedimiento `Fra_Dash`)
+
+## Mantenimiento de esta especificación (obligatorio)
+
+Cada vez que se pida una **modificación** respecto al pedido anterior o al comportamiento documentado aquí (nuevas keys, modos, columnas, reglas de cálculo, tablas, etc.), quien actualice el SP debe **actualizar en la misma entrega** este archivo `PROCEDURE_Fra_Dash_v1.prompt` para que siga siendo la referencia única del “prompt” / requisitos vigentes. No dejar el `.sql` adelantado respecto al `.prompt`.
+
+## Objetivo del negocio (preguntas que debe contestar el SP)
+
+1. **¿Cuánto beneficio representa un Publisher_id (client)?**  
+   Beneficio del publisher = comisiones totales cobradas a anunciantes (gestor) menos comisiones pagadas a afiliados en ese publisher (incluyendo ajustes manuales aplicables), en el período `Month_from`–`Month_until`.
+
+2. **¿Cuánto beneficio aporta un Afiliado?**  
+   No se puede asignar todo el gestor de un publisher a un solo afiliado sin una regla. El SP usa **atribución proporcional**: en cada publisher `p`, sea `T_p` la suma de lo pagado a todos los afiliados en `p` y `G_p` el net_Total_comm gestor de `p`. Al afiliado `a` se le atribuye, por cada publisher donde cobra,  
+   `(pago_a_en_p / T_p) × (G_p − T_p)`.  
+   Sumando en todos los publishers del período se obtiene el **beneficio aportado (atribuido)** por `Affiliate_id`. La suma de estas atribuciones coincide con la suma de los beneficios por publisher (salvo redondeos).
+
+## Tablas (db euroaffiliati2)
+
+- `monthly_comms_gestor_v5` — comisiones cobradas (gestor) por `Publisher_id`, `Month`, etc.
+- `monthly_comms_affiliate_v5` — comisiones pagadas a afiliados; **no** trae `Publisher_id`. Resolución del publisher para agrupar y mostrar en **Detail**:  
+  `COALESCE(campaign_username.Publisher_id` vía `Account_id` = `campaign_username.id`, **`campaign_advertiser.Publisher_id`** vía `Advertiser_id` = `campaign_advertiser.id`) para no colapsar varias filas en `Publisher_id = 0` cuando el username no enlaza.
+- `campaign_advertiser` (tiene `Publisher_id` por marca/anunciante), `campaign_publisher` (client), `campaign_username`
+- `account_account` — afiliados (`username` para mostrar)
+- `account_manual_adjustments` — sumar `Amount_Credit` al coste afiliado cuando `IncludeInProfitCalculation=1` (y `Status` operativo, p. ej. 1/2), repartido por afiliado entre publishers en proporción a `net_Total_comm` por par (ver implementación en el SP).
+
+## Campos de salida (resumen)
+
+- Nombre publisher: `Advertiser_Name` en `campaign_publisher`.
+- Gestor: `CPA`, `net_CPA_Val`, `net_RS_Val`, `net_Total_comm` acumulados en el período.
+- Afiliado: mismos agregados + `Affiliate_id` y `Affiliate_username` donde aplique.
+- Columna principal de resultado: **`Beneficio`** (antes `Profit` en versiones antiguas).
+- Porcentajes sobre totales globales del período; **`Pct_Beneficio`**: participación del `Beneficio` de la fila sobre la suma de `Beneficio` del resultset (en modo Publisher y Affiliate tiene sentido agregado; en modo Detail es informativo por fila).
+
+## Parámetros `InputCommLine` (Key=Value,…)
+
+| Key | Valores | Default | Descripción |
+|-----|---------|---------|-------------|
+| `Month_from` | `YYYY-MM` | **YYYY-01** (enero del **año corriente**, `YEAR(CURDATE())`) | Inicio inclusive |
+| `Month_until` | `YYYY-MM` | **YYYY-12** (diciembre del **año corriente**) | Fin inclusive |
+| `Mode` | ver abajo | `Publisher` | Vista del informe |
+| `Debug` | `No` / `Yes` / `KeyValues` | `No` | |
+| `Filters` | `No` / `Yes` | `No` | Valores de filtro. Con `Yes` el resultset usa las columnas **`Korder`**, **`Key`**, **`Value`**, **`CallKey`**, **`CallValue`**, **`Rows`** (mismo criterio que `PROCEDURE_Dash_Gestor_ProfitByAff_v1.4_op.sql`: `CallKey`/`CallValue` son el parámetro y valor sugeridos para `InputCommLine`; `Rows` vacío reservado para el front). Orden: `ORDER BY 1 ASC, 3 DESC`. |
+| `Meta` | `No` / `Yes` | `Yes` | Fila `setting` + `total` |
+
+### Valores de `Mode`
+
+| Valor | Pregunta / uso |
+|-------|------------------|
+| **Publisher** (aliases: `OnlyClients`, `PorPublisher`) | **Q1**: una fila por `Publisher_id`; `Beneficio` = beneficio del client. |
+| **Affiliate** (aliases: `ByAffiliate`, `PorAfiliado`, `Affiliates`) | **Q2**: una fila por `Affiliate_id`; `Beneficio` = atribución proporcional descrita arriba. |
+| **Detail** (aliases: `OnlyAffiliates`, `Detalle`) | **Una fila por par** `(Publisher_id, Affiliate_id)` con totales del período; columna **`Publisher_id` visible** (no omitir en Meta). `Beneficio` = `G_p − pago` en esa fila (gestor del publisher en contexto drill-down). |
+
+## Referencia de implementación
+
+- Tomar como ejemplo patrones de `PROCEDURE_Dash_Gestor_TotalByAdvertiser_v4.7.6_man_adj_op.sql` (ajustes manuales, conversión si se añade moneda en el futuro).
+- Archivo entregable del SP: `PROCEDURE_Fra_Dash_v1.sql` (convención del repo `PROCEDURE_*`).
+
+## Conexión local (si hace falta inspeccionar tablas)
+
+- Host `localhost`, puerto **3304** (u otro según entorno), usuario `b3w1nn3r`, contraseña `abcd`, base `euroaffiliati2`.
+- Cliente Windows típico: `C:\Program Files\MySQL\MySQL Server 8.4\bin\mysql.exe` (ver `AGENTS.md` / `CLAUDE.md`).
+
+## Ejemplos de llamada
+
+```sql
+CALL Fra_Dash('');  -- usa por defecto todo el año calendario en curso (enero–diciembre)
+CALL Fra_Dash('Mode=Publisher,Month_from=2025-01,Month_until=2025-12');
+CALL Fra_Dash('Mode=Affiliate,Month_from=2025-01,Month_until=2025-12,Meta=Yes');
+CALL Fra_Dash('Mode=Detail,Month_from=2025-06,Month_until=2025-06');
+CALL Fra_Dash('Filters=Yes');
+```
+
+Si alguna regla de atribución o modo debe cambiarse (p. ej. otro criterio que “participación en el coste”), documentar aquí y en el encabezado del `.sql`.

@@ -1,0 +1,80 @@
+/* PROCEDURE PROCEDURE Balance_Affiliate
+   04.09.2022 V1 Calcula Balance actual de un afiliado o todos
+   
+   Parametros (AffiliateID/ALL,LastOpLimitMonth)
+   LastOpLimitMonth: 0-12 INT. Meses atras sin operaciones. Este parametro solo se aplica para ALL
+                 Ej: 6=Omitir saldos cuyas operanciones mas recientes sean anteriores a 6 meses
+   Ejemplos:
+      call Balance_Affiliate('ALL',NULL); -- Asume ('ALL',12)
+      call Balance_Affiliate('ALL',6);    -- Asume ('ALL',6)
+      call Balance_Affiliate('39',2);     -- Asume ('39',12)
+      call Balance_Affiliate('100',2);    -- Asume ('100',12)
+*/
+DROP PROCEDURE IF EXISTS Balance_Affiliate;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Balance_Affiliate`(IN
+   AffiliateID VARCHAR(50),
+   LastOpLimitMonth INT
+   )
+    COMMENT 'BALANCE actual Estimado-Real-INFO de [Affiliate/ALL] [Meses antigüedad saldos a mostrar]'
+BEGIN
+
+	IF LOWER(AffiliateID)='all' THEN
+   	SET @AffiliateID_from='0';
+      SET @AffiliateID_until='9999999999999';
+      SET @LastOpLimitMonth=LastOpLimitMonth;
+   ELSE
+   	SET @AffiliateID_from=CAST(AffiliateID AS UNSIGNED INTEGER);
+      SET @AffiliateID_until=CAST(AffiliateID AS UNSIGNED INTEGER);
+      SET @LastOpLimitMonth=12;
+	END IF;
+   
+	IF IFNULL(@LastOpLimitMonth,12)<12 THEN
+      SET @DATE_from=DATE_SUB(curdate(), INTERVAL @LastOpLimitMonth MONTH);
+	END IF;
+   
+SELECT Affiliate_id,A.username AS 'Affiliate',MAX(DATE) AS 'Date' -- ,max(LEFT(DATE,7)) AS Periodo
+	,round(sum(case when x.Status in (0,1,2)		then Amount ELSE 0 END),2) AS 'Estimado'
+	,round(sum(case when x.Status IN (1,2)			then Amount ELSE 0 END),2) AS 'Confirmado'
+	,round(sum(case when x.Status IN (5)			then Amount ELSE 0 END),2) AS 'INFO'
+FROM (
+   SELECT Affiliate_id,DATE,"CPA" AS Op_type,CONCAT_WS(" ",Brand,Product_Real) AS Description,(CPA_Val_AJ_RS) AS Amount
+      ,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),'-20')<CURDATE() THEN "1" 			ELSE 0 END AS Status
+      ,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),'-20')<CURDATE() THEN "Confirmed" 	ELSE "Provisional" END AS StatusText
+      ,0 as balance_est,0 as balance_conf
+   FROM view_monthly_fact_aff2 F WHERE (CPA_Val_AJ_RS)<>0
+   UNION ALL
+   SELECT Affiliate_id,DATE,"RShare" AS Op_type,CONCAT_WS(" ",Brand,Product_Real) AS Description,(RS_AJUST) AS Amount
+      ,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),'-20')<CURDATE() THEN "1" 			ELSE 0 END AS Status
+      ,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),'-20')<CURDATE() THEN "Confirmed" 	ELSE "Provisional" END AS StatusText
+      ,0 as balance_est,0 as balance_conf
+   FROM view_monthly_fact_aff2 F WHERE (RS_AJUST)<>0
+   UNION ALL
+   SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,Amount_Debit*-1 AS Amount,IFNULL(Status,0) AS Status
+      ,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Confirmed" WHEN 2 THEN "Paid" 
+                           WHEN 3 THEN "Denied"  WHEN 5 THEN "INFO" END AS StatusText
+      ,0 as balance_est, 0 as balance_conf
+   FROM account_financial_movement F WHERE ifnull(F.Status,0)<>3
+   UNION ALL
+   SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,Amount_Credit AS Amount,IFNULL(Status,0) AS Status
+      ,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Confirmed" WHEN 2 THEN "Paid" 
+                           WHEN 3 THEN "Denied"  WHEN 5 THEN "INFO" END AS StatusText
+      ,0 as balance_est,0 as balance_conf
+   FROM account_manual_adjustments F WHERE ifnull(F.Status,0) in (1,2,5)
+   ORDER BY Affiliate_id,Date,Description
+) AS x
+LEFT JOIN account_account A ON Affiliate_id=A.id
+WHERE Affiliate_id BETWEEN @AffiliateID_from AND @AffiliateID_until
+GROUP BY Affiliate HAVING MAX(DATE)>=@DATE_from AND (Estimado<>0 OR Confirmado<>0) -- WITH ROLLUP
+ORDER BY Affiliate 
+;
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call Balance_Affiliate('ALL',NULL);
+-- call Balance_Affiliate('ALL',6);
+-- call Balance_Affiliate('39',2);
+-- call Balance_Affiliate('100',2);
+

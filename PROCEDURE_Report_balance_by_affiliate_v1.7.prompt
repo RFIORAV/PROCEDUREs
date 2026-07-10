@@ -1,0 +1,142 @@
+Objetivo
+Documentar y mantener el comportamiento ACTUAL del SP:
+
+- Archivo SQL:
+  D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_Report_balance_by_affiliate_v1.7.sql
+- Procedimiento:
+  Report_balance_by_affiliate(IN InputCommLine VARCHAR(250))
+- Motor objetivo:
+  MySQL 8.0.37
+
+Este prompt NO describe una migracion desde v1.6.6.
+Este prompt describe la logica vigente en v1.7 (26.03.2026), para futuras mejoras sin romper compatibilidad.
+
+
+Resumen funcional actual
+1) El SP arma SQL dinamico y devuelve un grid de balance por afiliado con:
+   - comision del mes corriente
+   - confirmed de hoy
+   - confirmed al dia 20
+   - confirmed del mes
+   - moneda financiera y conversion
+   - latest operation
+   - withdraw ultimos 30 dias
+   - estado afiliado y ultimo login
+   - fila rollup de grand total
+
+2) Fuentes principales:
+   - monthly_comms_affiliate_v5
+   - account_manual_adjustments (Status in 1,2)
+   - account_financial_movement (Status in 1,2)
+   - account_account
+   - util_settings (MultiCurrency, GridCurrency)
+
+3) La consulta usa CTEs:
+   - Main_data_origen
+   - Main_data
+   - Latest_operation
+   - Latest_withdraw
+   - Main_dataRollUp
+
+4) Puede devolver:
+   - metadata + data (por defecto)
+   - solo filtros (filters=yes)
+   - insercion en tabla temporal tmp_balance_by_affiliate (tmptable=yes)
+
+
+Parametros de entrada (InputCommLine Key=Value)
+Reglas:
+- Formato: "key=value,key=value,..."
+- Se normaliza quitando comillas dobles.
+- Keys case-insensitive.
+
+Keys soportadas:
+- omit_0=[YES|NO]             default YES
+- includeinactives=[YES|NO]   default NO
+- showinactives=[YES|NO]      default NO
+- showactive=[YES|NO]         default NO
+- oldbalances=[YES|NO]        default NO (declarado, no se usa en el SQL final)
+- tmptable=[YES|NO]           default NO
+- filters=[YES|NO]            default NO
+- meta=[YES|NO]               default YES
+- debug=[NO|YES|otro]         default NO
+
+Interaccion entre filtros de actividad:
+- Si showinactives=YES => includeinactives=YES
+- Si showactive=YES    => includeinactives=NO
+- showinactives tiene prioridad para forzar mostrar solo inactivos.
+
+
+Reglas de fechas y estados (vigentes)
+- v_CurrentDay = CURDATE()
+- v_LMonth = YYYY-MM del mes anterior
+- v_Date_confirm = dia 20 del mes actual
+
+Clasificacion usada para comisiones:
+- Status 0  => provisional / comision CM
+- Status 21 => confirmed 20th day (si dia actual < 20 para mes previo)
+- Status 5  => confirmed this month (cuando ya corresponde confirmar)
+- Status 4  => confirmed historico
+
+Agregados actuales en salida:
+- commision_CM      = suma status 0
+- Confirmed         = suma status (1,2,4,5)
+- Confirmed21       = suma status (1,2,4,21)
+- confirmed_CM      = suma status (1,2,4,5,21)
+- Financial Confirmed convertido a GridCurrency
+
+Nota: mantener alias legacy tal como estan (incluye typo "commision_CM") para no romper el grid consumidor.
+
+
+Comportamiento debug (importante)
+- El SQL se ejecuta cuando debug != 'YES'.
+- Si debug='YES', se muestran variables y SQL generado, pero NO se ejecuta el SELECT final.
+- Si debug es otro valor distinto de NO/YES (ej: YE), se ejecuta y ademas imprime trazas debug.
+
+
+Salida y compatibilidad
+- Mantener columnas auxiliares en minuscula:
+  - confirmed_today
+  - confirmed_days
+- Mantener logica de ROLLUP con fila "___ GRAND TOTAL ___".
+- Mantener exclusion de Currency='T.Curr' salvo fila total.
+- Mantener tmp_balance_by_affiliate con estructura actual si tmptable=YES.
+
+
+Requisitos para cualquier cambio futuro en este SP
+1) No romper nombres de columnas consumidas por el grid.
+2) No cambiar semantica de debug sin pedirlo explicitamente.
+3) Mantener compatibilidad MySQL 8.0.37.
+4) Si se agrega columna, actualizar tambien bloque Meta cuando corresponda.
+5) Si se cambia la logica de estados, validar dia <20 y dia >=20.
+6) Conservar filtros IncludeInactives/ShowInactives/ShowActive.
+
+
+Casos de prueba minimos
+1) Default:
+   CALL Report_balance_by_affiliate('');
+
+2) Solo filtros:
+   CALL Report_balance_by_affiliate('filters=yes');
+
+3) Incluir inactivos:
+   CALL Report_balance_by_affiliate('includeinactives=yes');
+
+4) Solo inactivos:
+   CALL Report_balance_by_affiliate('showinactives=yes');
+
+5) Solo activos:
+   CALL Report_balance_by_affiliate('showactive=yes');
+
+6) Sin omitir ceros:
+   CALL Report_balance_by_affiliate('omit_0=no');
+
+7) Con tabla temporal:
+   CALL Report_balance_by_affiliate('tmptable=yes');
+
+8) Debug sin ejecutar:
+   CALL Report_balance_by_affiliate('debug=yes');
+
+9) Debug ejecutando:
+   CALL Report_balance_by_affiliate('debug=ye');
+

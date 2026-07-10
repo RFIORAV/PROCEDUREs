@@ -1,0 +1,360 @@
+/*
+PROCEDURE_Aff_Ads_Set_to_MS_v1.sql - SET Ads to MS manager
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Affiliate_id     =[id de Afiliado]
+
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Aff_Ads_Set_to_MS('Affiliate_id=490,debug=ye');
+
+v1       14.02.2025 Primera versión operativa
+
+*/
+
+DROP PROCEDURE IF EXISTS Aff_Ads_Set_to_MS;
+
+DELIMITER $$
+
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Aff_Ads_Set_to_MS`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Set Ads to a MS'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 14.02.2025';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @Affiliate_id    ='0';
+SET @MS_id           ='0';
+SET @Ads_id          ='0';
+SET @Ads_code        ='0';
+SET @Account_id      ='0';
+SET @Affiliate_id    ='0';
+SET @Valid_from      =CURDATE();
+SET @Valid_to        =NULL;
+SET @Status_id       ='1';
+SET @Tranklink_new   ='';
+SET @Tranklink_base  ='';
+SET @Account_id      ='';
+SET @Product         ='';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='ms_id'           THEN SET @MS_id         =UPPER(@v); END IF;
+   IF lower(@k)='ads_id'          THEN SET @Ads_id        =UPPER(@v); END IF;
+   IF lower(@k)='ads_code'        THEN SET @Ads_code      =UPPER(@v); END IF;
+   IF lower(@k)='account_id'      THEN SET @Account_id    =UPPER(@v); END IF;
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='valid_from'      THEN SET @Valid_from    =UPPER(@v); END IF;
+   IF lower(@k)='valid_to'        THEN SET @Valid_to      =UPPER(@v); END IF;
+   IF lower(@k)='status_id'       THEN SET @Status_id     =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Affiliate_id,@MS_id,@Ads_id,@Ads_code,@Account_id,@Affiliate_id,@Valid_from
+                           ,@Valid_to,@Status_id,@Debug,@Filters,@Meta,InputCommLine; END IF;
+
+CREATE TABLE IF NOT EXISTS campaign_advertiser_ads_v2 (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,  
+  Ads_Code      VARCHAR(50)   NOT NULL,  -- Código del anuncio
+  Product       VARCHAR(50)   NOT NULL,  -- 'sport', 'casino', etc.
+  Brand         VARCHAR(100)  NOT NULL,  -- Nombre de la marca (advertiser), derivada de 'Account' 
+  Account_id    INT           NOT NULL,  -- Identificador de cuenta
+  Country       VARCHAR(50)   NULL,      -- País al cual se aplica; NULL = para todos
+  Title         VARCHAR(255)  NOT NULL,  -- Título resumido del Ad
+  Description   TEXT          NOT NULL,  -- Descripción detallada del Ad
+  Valid_From    DATE          NOT NULL,  -- Fecha desde la cual aplica
+  Valid_To      DATE          NULL,      -- Fecha hasta la cual aplica; NULL = permanente
+  -- Campos de control/ auditoría
+  Creation_Date DATETIME      NULL DEFAULT CURRENT_TIMESTAMP,
+  Last_Update   DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  User          INT           NULL DEFAULT NULL,
+
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS campaign_advertiser_ads_applied_v2 (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  Ads_Code    INT UNSIGNED    NOT NULL,  -- FK que referencia a 'campaign_advertiser_ads_v2(Ads_Code)'
+  MS_id       INT UNSIGNED    NOT NULL,  -- FK que referencia a la tabla de Marketing Source
+  Status_id   TINYINT         NOT NULL,  -- 1=Activo, 0=Obsoleto (o inactivo)
+  Product     VARCHAR(50)     NOT NULL,  -- Copia de 'Product' para control
+  Account_id  INT             NOT NULL,  -- Copia de 'Account_id' para control
+  Tracklink_new VARCHAR(500)  NOT NULL,  -- URL con el [Ads_Code]
+  Valid_From  DATE            NOT NULL,
+  Valid_To    DATE            NULL,
+  -- Campos de control / auditoría
+  Creation_Date DATETIME      NULL DEFAULT CURRENT_TIMESTAMP,
+  Last_Update   DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  User          INT           NULL DEFAULT NULL,
+
+  PRIMARY KEY (id)
+  ,KEY fk_Ads_Code (Ads_Code)
+  -- CONSTRAINT fk_Ads_Code 
+    -- FOREIGN KEY (Ads_Code) 
+    -- REFERENCES campaign_advertiser_ads_v2(id)
+    -- ON UPDATE CASCADE
+    -- ON DELETE RESTRICT
+);
+
+-- Compone el nuevo Tracklink
+-- SET @Tracklink=(SELECT CONCAT(SUBSTRING_INDEX(Tracklink, '?', 1) FROM campaign_marketing_source WHERE id=@MS_id);
+-- SET @PID      =(SELECT SUBSTRING_INDEX(SUBSTRING(Tracklink,LOCATE('pid=',Tracklink) + 4), "&", 1) FROM campaign_marketing_source WHERE id=@MS_id);
+-- SET @BID      =(SELECT SUBSTRING_INDEX(SUBSTRING(Tracklink,LOCATE('bid=',Tracklink) + 4), "&", 1) FROM campaign_marketing_source WHERE id=@MS_id);
+
+-- Comprueba si existe alguna asignación de Ads previa para esa MS
+
+-- SET @Existe_record=0;
+SELECT COUNT(*),id INTO @Existe_record,@Ads_id FROM campaign_advertiser_ads_applied_v2 WHERE MS_id=@MS_id;
+
+SELECT SUBSTRING_INDEX(m.Tracklink, '?', 1) AS TracklinkBase
+      ,SUBSTRING_INDEX(SUBSTRING(m.Tracklink,LOCATE('pid=',m.Tracklink) + 4), "&", 1) as `PID`
+      ,SUBSTRING_INDEX(SUBSTRING(m.Tracklink,LOCATE('bid=',m.Tracklink) + 4), "&", 1) as `BID`
+      ,username_id,Product,m.Tracklink
+INTO  @TracklinkBase,@PID,@BID,@Account_id,@Product,@Tracklink FROM campaign_marketing_source m WHERE id=@MS_id;
+
+SET @Tracklink_new=CONCAT(@TracklinkBase,"?pid=",@PID,"&bid=",@Ads_Code);                       
+
+IF @Debug!="NO" THEN SELECT @MS_id,@Existe_record,@Ads_code,@TracklinkBase,@Tracklink,@PID,@BID,@Tracklink_new,@Account_id,@Product; END IF;
+
+IF @Existe_record=0 THEN
+   INSERT INTO campaign_advertiser_ads_applied_v2 (`Ads_Code`,`MS_id`,`Status_id`,`Product`,`Account_id`,`Tracklink_new`,`Valid_From`,`Valid_To`)
+   VALUES (@Ads_Code,@MS_id,@Status_id,@Product,@Account_id,@Tracklink_new,@Valid_From,@Valid_To);
+ELSE
+   REPLACE INTO campaign_advertiser_ads_applied_v2 (`id`,`Ads_Code`,`MS_id`,`Status_id`,`Product`,`Account_id`,`Tracklink_new`,`Valid_From`,`Valid_To`)
+   VALUES (@Ads_id,@Ads_Code,@MS_id,@Status_id,@Product,@Account_id,@Tracklink_new,@Valid_From,@Valid_To);
+END IF;   
+
+  
+
+
+/*  
+  SELECT a.*
+    FROM campaign_advertiser_ads_v2 a
+    JOIN campaign_marketing_source ms
+      ON ms.Product    = a.Product
+     AND ms.Username_id = a.Account_id
+    -- Ejemplo de cómo distinguir Tracklink "directo":
+    WHERE ms.affiliate_id = @Affiliate_id
+      AND ms.Status_id IN (1,6)
+      AND ms.Tracklink NOT LIKE '%rebrand.ly%'
+      AND ms.Tracklink NOT LIKE '%affly%'
+      AND a.Valid_From <= CURDATE()
+      AND (a.Valid_To > CURDATE() OR a.Valid_To IS NULL);
+*/
+      
+END $$
+DELIMITER ;
+
+/*
+call Aff_Ads_Set_to_MS('ms_id=2450,ads_code=9389,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2450,ads_code=9158,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2450,ads_code=9389,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('Affiliate_id=39,debug=ye');
+
+*/
+/*
+SELECT `id`,`Valid_From`,`Status_id`,`Ads_id`,`Affiliate_id`,`Channel_id`,`Advertiser_id`,`Advertiser_Name`,`Product`,`Owner`,`Country`,`Creation_Date`,`Last_Update`,`User` 
+FROM campaign_advertiser_ads_affiliate_v2
+;
+SELECT `id`,`Ads_Code`,`ms_id`,`Status_id`,`Product`,`Account_id`,`Tracklink_new`,`Valid_From`,`Valid_To`,`Creation_Date`,`Last_Update`,`User` 
+FROM campaign_advertiser_ads_applied_v2
+;
+INSERT INTO campaign_advertiser_ads_applied_v2 (`Ads_Code`,`Status_id`,`Product`,`Valid_From`)
+SELECT 
+ `Ads_id`
+,`Status_id`
+,`Product`
+,`Valid_From`
+FROM campaign_advertiser_ads_affiliate_v2
+;
+id;Ads_Code
+call Aff_Ads_Set_to_MS('ms_id=350,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=352,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=354,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=355,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=357,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=360,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=370,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=427,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=541,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=653,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=656,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=658,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=661,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=852,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=854,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=855,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=856,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=858,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=860,ads_code=1494   ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2195,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2286,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2415,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2417,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2419,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2420,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2423,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2424,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2549,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2705,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2706,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2707,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2708,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2710,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2711,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2713,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3505,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3506,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3507,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3513,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3883,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3888,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3891,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4817,ads_code=1494  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1647,ads_code=1509  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1649,ads_code=1509  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1586,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1587,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1588,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1627,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1628,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1630,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1631,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1632,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1634,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1635,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1643,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1644,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1645,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1646,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1648,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1651,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1837,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1841,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1842,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1843,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1844,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=1846,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2283,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2400,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2401,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2402,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2403,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2404,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2406,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2407,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2408,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2630,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2631,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2633,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2634,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2635,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2636,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2637,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2638,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2639,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2641,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2642,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2643,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2644,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2645,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2648,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2865,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2867,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2868,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2869,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2870,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2871,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=2873,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3068,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3069,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3070,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3071,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3534,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3535,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3540,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3542,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3702,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3704,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3705,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3873,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3878,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3880,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=3881,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4195,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4196,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4199,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4200,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4201,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4202,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4203,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4208,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4211,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4212,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4213,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4669,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4818,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4851,ads_code=1508  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4109,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4110,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4111,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4112,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4113,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4116,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4117,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4118,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4285,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4286,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4287,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4433,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4435,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4437,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4438,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4439,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4440,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4441,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=4442,ads_code=1214  ,valid_to=2025-02-28,debug=ye');
+call Aff_Ads_Set_to_MS('ms_id=702,ads_code=13186  ,valid_to=2025-02-28,debug=ye');
+*/

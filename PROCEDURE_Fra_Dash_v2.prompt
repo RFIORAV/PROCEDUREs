@@ -1,0 +1,70 @@
+# Fra_Dash — Especificación (SP: `PROCEDURE_Fra_Dash_v2.sql`, procedimiento `Fra_Dash`)
+
+## Mantenimiento de esta especificación (obligatorio)
+
+Cada vez que se pida una **modificación** respecto al pedido anterior o al comportamiento documentado aquí (nuevas keys, modos, columnas, reglas de cálculo, tablas, etc.), quien actualice el SP debe **actualizar en la misma entrega** este archivo `PROCEDURE_Fra_Dash_v2.prompt` para que siga siendo la referencia única del “prompt” / requisitos vigentes. No dejar el `.sql` adelantado respecto al `.prompt`.
+
+## Objetivo del negocio (preguntas que debe contestar el SP)
+
+1. **¿Cuánto beneficio representa un Publisher_id (client)?**  
+   Beneficio del publisher = comisiones totales cobradas a anunciantes (gestor) menos comisiones pagadas a afiliados en ese publisher (incluyendo ajustes manuales aplicables), en el período `Month_from`–mes corriente.
+
+2. **¿Cuánto beneficio aporta un Afiliado?**  
+   No se puede asignar todo el gestor de un publisher a un solo afiliado sin una regla. El SP usa **atribución proporcional**: en cada publisher `p`, sea `T_p` la suma de lo pagado a todos los afiliados en `p` y `G_p` el net_Total_comm gestor de `p`. Al afiliado `a` se le atribuye, por cada publisher donde cobra,  
+   `(pago_a_en_p / T_p) × (G_p − T_p)`.  
+   Sumando en todos los publishers del período se obtiene el **beneficio aportado (atribuido)** por `Affiliate_id`. La suma de estas atribuciones coincide con la suma de los beneficios por publisher (salvo redondeos).
+
+## Tablas (db euroaffiliati2)
+
+- `monthly_comms_gestor_v5` — comisiones cobradas (gestor) por `Publisher_id`, `Month`, etc.
+- `monthly_comms_affiliate_v5` — comisiones pagadas a afiliados; **no** trae `Publisher_id`. Resolución del publisher para agrupar y mostrar en **Detail**:  
+  `COALESCE(campaign_username.Publisher_id` vía `Account_id` = `campaign_username.id`, **`campaign_advertiser.Publisher_id`** vía `Advertiser_id` = `campaign_advertiser.id`) para no colapsar varias filas en `Publisher_id = 0` cuando el username no enlaza.
+- `campaign_advertiser` (tiene `Publisher_id` por marca/anunciante), `campaign_publisher` (client), `campaign_username`
+- `account_account` — afiliados (`username` para mostrar)
+- `account_manual_adjustments` — sumar `Amount_Credit` al coste afiliado cuando `IncludeInProfitCalculation=1` (y `Status` operativo, p. ej. 1/2), repartido por afiliado entre publishers en proporción a `net_Total_comm` por par (ver implementación en el SP).
+
+## Campos de salida (resumen)
+
+- `Mode=Publisher`: una fila por `Publisher_id`. Nombre publisher: `Advertiser_Name` en `campaign_publisher` con label `Operator`. Incluye métricas gestor, métricas afiliado, ajustes manuales y beneficio interno `Beneficio` (etiquetado como `Gross Margin` cuando `Meta=Yes`); la columna `Affiliate` se devuelve con `omit=yes` en Meta.
+- `Mode=Affiliate`: matriz dinámica. Filas = afiliados (`Affiliate_id`, `Affiliate`); columnas = publishers del período; valores según `Data_Type`.
+- `Mode=Detail`: modo legacy de drill-down, una fila por par `(Publisher_id, Affiliate_id)`; `Operator ID` queda visible en Meta.
+
+## Parámetros `InputCommLine` (Key=Value,…)
+
+| Key | Valores | Default | Descripción |
+|-----|---------|---------|-------------|
+| `Month_from` | `YYYY-MM` / `Last_Year` | **mes corriente - 11 meses** | Inicio inclusive; `Last_Year` equivale a los últimos 12 meses hasta el mes corriente |
+| `Mode` | `Publisher` / `Affiliate` / `Detail` | `Publisher` | No acepta aliases |
+| `SubMode` | `Amount` / `Percentage` | `Amount` | No acepta aliases. En `Filters=Yes` solo se muestra cuando `Mode=Affiliate`; la opción `Amount` se oculta cuando ya es el submodo activo. `Amount` muestra importes/valores absolutos; `Percentage` muestra participación |
+| `Data_Type` | `CPA` / `net_CPA_Val` / `net_RS_Val` / `net_Total_comm` / `Profit` | `Profit` | SOLO aplica a matriz cuando `Mode=Affiliate`; en `Filters=Yes` solo se muestra en ese modo |
+| `Debug` | `No` / `Yes` / `KeyValues` | `No` | |
+| `Filters` | `No` / `Yes` | `No` | Valores de filtro. Con `Yes` el resultset usa las columnas **`Korder`**, **`Key`**, **`Value`**, **`CallKey`**, **`CallValue`**, **`Rows`**. Para `Month_from` muestra `Last_Year` y los meses desde `v_Month_from` hasta el mes corriente. Orden: `ORDER BY 1 ASC, 3 DESC`. |
+| `Meta` | `No` / `Yes` | `Yes` | Fila `setting` + `total`; la fila `total` se ordena antes que las filas `data` |
+
+## Referencia de implementación
+
+- Tomar como ejemplo para Mode=Publisher patrones de `PROCEDURE_Dash_Gestor_TotalByAdvertiser_v4.7.6_man_adj_op.sql` (ajustes manuales, conversión si se añade moneda en el futuro).
+- Para Mode=Affiliate presentar una matriz cuyas filas son el acumulado del Affiliate y las columnas los Publishers.
+- Archivo entregable del SP: `PROCEDURE_Fra_Dash_v2.sql` (convención del repo `PROCEDURE_*`).
+- Tomar en cuenta las directivas generales de `AGENTS.md` / `CLAUDE.md`.
+- Cuando se agreguen condiciones en modo interactivo, modificar este documento para que siempre represente el código generado.
+- Los parámetros documentados no aceptan aliases; usar solo los valores indicados en la tabla.
+- en lugar de utilizar doble ' para delimitar constantes string, utilizar comillas "
+- En `Filters=Yes`, `Month_from=Last_Year` debe aparecer como opción adicional y debe ser aceptado por el parser.
+
+## Conexión local (para comprobaciones y descripción de tablas)
+
+- Host `localhost`, puerto **3304** (u otro según entorno), usuario `b3w1nn3r`, contraseña `abcd`, base `euroaffiliati2`.
+- Cliente Windows típico: `C:\Program Files\MySQL\MySQL Server 8.4\bin\mysql.exe`
+
+## Ejemplos de llamada
+
+```sql
+CALL Fra_Dash('');  -- usa por defecto los últimos 12 meses hasta el mes corriente
+CALL Fra_Dash('Mode=Publisher,Month_from=2025-06');
+CALL Fra_Dash('Mode=Affiliate,Month_from=Last_Year,Data_Type=Profit,SubMode=Amount');
+CALL Fra_Dash('Mode=Affiliate,Month_from=2025-06,Data_Type=net_Total_comm,SubMode=Percentage');
+CALL Fra_Dash('Mode=Detail,Month_from=2025-06');
+CALL Fra_Dash('Filters=Yes');
+```
+

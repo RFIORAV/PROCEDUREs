@@ -1,0 +1,66 @@
+/* PROCEDURE_Master_Sub_Affiate_v1.sql
+      Compone lista de Affiliate_id correspondientes a un MasterAffiliate
+      en formato "(1,2,5,8)" para incluir en cláusulas de Query
+      Ej: Affiliate_id IN (1,2,5,8)
+      
+Keys:
+
+MasterAff_id     =[ MasterAff_id ]. Default='' 
+Affiliate_ids    =List of Affilate ids
+
+Ejemplos:
+
+SET @Affiliate_list="";
+call Master_Sub_Affiliate(440,@Affiliate_list);
+
+27.05.2024 v1     Primera versión operativa      
+
+*/
+
+DROP PROCEDURE IF EXISTS Master_Sub_Affiliate;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Master_Sub_Affiliate`(
+    IN    MasterAff_id    INT
+   ,INOUT Affiliate_ids   VARCHAR(250)
+   )
+   COMMENT 'Affiliate_id list from a MasterAffiliate'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 27.05.2024';
+SET @CurrentDay      =CURDATE();
+
+SET @MasterAff_id    =MasterAff_id;
+
+/************ TRATAMIENTO DE MASTER AFFILIATE **************************************/
+SET @AffiliateGroup=(SELECT group_id FROM account_account_groups 
+                     WHERE account_id=@MasterAff_id AND group_id=4);
+
+IF  @AffiliateGroup IS NULL
+THEN
+    Select 'MasterAff_id mandatory' as '' from dual;
+    LEAVE proc_label;
+END IF;
+ 
+/*---------------------------------------------------------------------------------*/
+
+SET @Affiliate_ids=(SELECT GROUP_CONCAT(id SEPARATOR ', ') AS ids 
+                    FROM account_account 
+                    WHERE Second_Level = @MasterAff_id);
+
+SET Affiliate_ids=CONCAT("(",@Affiliate_ids,")");
+
+-- SELECT @MasterAff_id,@Affiliate_ids,Affiliate_ids; END IF;
+
+END$$
+DELIMITER ;
+ 
+/*
+SET @Affiliate_list="";
+SET @MasterAff_id=440;
+call Master_Sub_Affiliate(@MasterAff_id,@Affiliate_list);
+SELECT @MasterAff_id,@Affiliate_list;
+
+*/

@@ -1,0 +1,97 @@
+/**
+	PROCEDURE_total_monthy_comm_ges_upd.sql
+	**	Actualiza tabla total_monthy_comm_ges desde tabla monthly_comms_gestor_v5
+   ** 
+	**	Se lanza desde EVENT
+	02.10.2022 V1   Materializa view_monthly_fact_gestor3 por performance (Est 0.6" a 0.1")
+   28.11.2022      Agrega nuevos campos de view is_indirect,Advertiser_indirect_id,Advertiser_indirect
+   31.01.2023 v1.1 Area
+   15.03.2023 v4   Utiliza PROCEDURE_monthly_comms_gestor_v4.1_COver.sql
+   17.05.2024 v5   Adaptación a cambios en PROCEDURE y tabla monthly_comms_gestor_v5
+*/
+
+DROP PROCEDURE IF EXISTS total_monthy_comm_ges_upd;
+-- -----------------------------------------------------
+DELIMITER //
+
+CREATE PROCEDURE total_monthy_comm_ges_upd()
+COMMENT 'total_monthy_comm_ges desde tabla monthly_comms_gestor_v5'
+DETERMINISTIC
+MODIFIES SQL DATA
+-- SQL SECURITY INVOKER
+
+BEGIN
+-- Defaults
+SET @Version         ='v5 17.05.2024';
+SET @CurrentDay      =curdate();
+
+IF CURDATE()<='2024-08-03' THEN DROP TABLE IF EXISTS `total_monthy_comm_ges`; END IF;
+
+CREATE TABLE IF NOT EXISTS `total_monthy_comm_ges` (
+	`Owner`                 VARCHAR(150)  NULL DEFAULT '',
+	`Area`                  VARCHAR(150)  NULL DEFAULT 'gaming',
+   `Date`                  VARCHAR(7)    NULL DEFAULT '0000-00',
+	`Publisher`             VARCHAR(150)  NULL DEFAULT '',
+	`Brand`                 VARCHAR(150)  NULL DEFAULT '',
+	`Username`              VARCHAR(150)  NULL DEFAULT '',
+	`Publisher_id`          INT(10)       NULL DEFAULT '0',
+	`Advertiser_id`         INT(10)       NULL DEFAULT '0',
+	`Username_id`           INT(10)       NULL DEFAULT '0',
+	`CPA`                   DECIMAL(12,0) NULL DEFAULT '0',
+	`CPA_Value`             DECIMAL(12,2) NULL DEFAULT '0',
+	`Net_Revenue`           DECIMAL(12,2) NULL DEFAULT '0',
+	`RS_Value`              DECIMAL(12,2) NULL DEFAULT '0',
+	`RS_AJUST`              DECIMAL(12,2) NULL DEFAULT '0',
+	`CPA_Val_AJ_RS`         DECIMAL(12,2) NULL DEFAULT '0',
+	`Total_Commission`      DECIMAL(12,2) NULL DEFAULT '0',
+	`RS_carry_NCO`          DECIMAL(12,2) NULL DEFAULT '0',
+	`Data_Currency`         VARCHAR(150)  NULL DEFAULT 'EUR',
+   -- Campos sin contenido - Solo para compatibilidad
+	`Product`               VARCHAR(150)  NULL DEFAULT '',
+	`is_indirect`           TINYINT(1)    NULL DEFAULT '0',    -- 28.11.2022
+	`Advertiser_indirect_id` INT(10)      NULL DEFAULT '0',    -- 28.11.2022
+	`Advertiser_indirect`   VARCHAR(150)  NULL DEFAULT '',     -- 28.11.2022
+	`Ges_id_Deal`           INT(10)       NULL DEFAULT '0',
+	`Ges_CPA`               DECIMAL(12,2) NULL DEFAULT '0',
+	`Ges_Carry_Over`        VARCHAR(150)  NULL DEFAULT '0',
+	`Ges_RS_Against_CPA`    INT(10)       NULL DEFAULT '0',
+	`Ges_RS_Base`           VARCHAR(150)  NULL DEFAULT '',
+	`Ges_RS`                DECIMAL(12,2) NULL DEFAULT '0',
+	`Ges_Valid_From`        VARCHAR(150)  NULL DEFAULT '',
+   --
+   `Last_Update`           TIMESTAMP     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	INDEX `Date_Publisher_id`  (`Date`, `Publisher_id`)   USING BTREE,
+	INDEX `Date_Brand`         (`Date`, `Advertiser_id`)  USING BTREE,
+	INDEX `Date_Account_id`    (`Date`, `Username_id`)    USING BTREE
+)
+ENGINE=InnoDB
+;
+
+-- ---------------------------------------------
+CALL monthly_comms_gestor;
+-- ---------------------------------------------
+
+TRUNCATE TABLE total_monthy_comm_ges;
+
+INSERT IGNORE INTO total_monthy_comm_ges (
+`Owner`,`Area`,`Data_Currency`
+,`Date`,`Publisher`,`Brand`,`Username`,`Publisher_id`,`Advertiser_id`,`Username_id`,`CPA`
+,`CPA_Value`,`Net_Revenue`,`RS_Value`,`RS_AJUST`,`CPA_Val_AJ_RS`,`Total_Commission`
+,`RS_carry_NCO`
+)
+SELECT 
+`Owner`,`Area`,`Data_Currency`
+,`Month`,`Publisher`,`Brand`,`Username`,`Publisher_id`,`Advertiser_id`,`Username_id`,`CPA`
+,`gross_CPA_Val`,`Net_Revenue`,`gross_RS_Val`,`net_RS_Val`,`net_CPA_Val`,`net_Total_comm`
+,`RS_CarryOver_Pend` 
+FROM monthly_comms_gestor_v5
+;
+
+END;
+//
+DELIMITER ;
+	
+-- -----------------------------------------------------
+-- CALL total_monthy_comm_ges_upd();
+-- -----------------------------------------------------
+

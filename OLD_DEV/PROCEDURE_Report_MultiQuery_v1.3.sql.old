@@ -1,0 +1,165 @@
+/*
+PROCEDURE_Report_MultiQuery_v1.sql - Grid con Multi queries - (Detailed Reports)
+Keys:
+
+Affiliate_id    =[ALL | id del Affiliate_id].
+Month           =[AAAA-MM | CM | LM ]. OPCIONAL. Default=Current Month
+Brand           =[Brand | ALL ]. Nombre de la Brand/advertiser. OPCIONAL. Default=ALL
+Meta            =[No | Yes]. Default [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Dash_Aff_Brand(' ');                                   -- ERROR Sin Affiliate_id
+call Dash_Aff_Brand('Affiliate_id=ALL,Month=LM');           -- ERROR Affiliate_id=ALL
+call Dash_Aff_Brand('Affiliate_id=39,Brand=ALL,Month=LM');  -- OK
+call Dash_Aff_Brand('Brand=ALL,Month=LM');                  -- ERROR Affiliate_id=""
+
+call Dash_Aff_Brand('Affiliate_id=39,Brand=betclic,Month=LM,debug=no');
+
+12.09.2023 V1     Primera version
+14.09.2023 V1.1   Karen. multi_query_account
+20.03.2025 v1.3   Karen. Adaptación CEO's dashboard settings 
+
+*/
+
+DROP PROCEDURE IF EXISTS Report_MultiQuery;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_MultiQuery`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Grid con Multi queries'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version      ='v1.3 20.03.2025';
+SET @Month        =LEFT(CURDATE(),7);
+SET @Account_id   ='2';
+SET @Brand        ='';
+SET @TypeReport   ='Default';   -- 20.03.2025                                             
+
+SET @Meta         ='YES';
+SET @Debug        ='NO';
+SET @Filters      ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit
+-- @InputCommLine: ----5----0----5----0----5----0----5----0--
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='month'         THEN SET @Month        =UPPER(@v); END IF;
+   IF lower(@k)='Brand'         THEN SET @Brand        =UPPER(@v); END IF;
+   IF lower(@k)='Account_id'    THEN SET @Account_id   =UPPER(@v); END IF;
+   IF lower(@k)='TypeReport'    THEN SET @TypeReport   =UPPER(@v); END IF; -- 20.03.2025                                                                                       
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+   IF lower(@k)='mode'          THEN SET @Mode         =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+   IF lower(@k)='filters'       THEN SET @Filters      =UPPER(@v); END IF;
+
+END WHILE;
+
+/************ VALIDACION PARAMETROS ************************************************/
+
+IF @Month='CM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 0 MONTH),7); END IF;
+IF @Month='LM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+/* **************************************************/
+
+-- SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH BaseData as (
+   SELECT 
+       title
+      ,Descr_IT
+      ,Descr_ES
+      ,Descr_EN
+      ,code
+      ,params_Procedure
+      ,is_Procedure
+      ,is_Filter
+      ,Procedure_call
+		,mq.id
+				,IFNULL(mqa.', IF(@TypeReport = 'DashCeo', 'is_checked_ceo', 'is_checked'), ', 0) as `checked`  -- 20.03.2025
+		,IFNULL(mqa.language,"EN")
+		,CASE WHEN mqa.language="IT" AND Descr_IT IS NOT NULL THEN Descr_IT
+            WHEN mqa.language="ES" AND Descr_ES IS NOT NULL THEN Descr_ES
+            WHEN mqa.language="EN" AND title IS NOT NULL THEN title
+            ELSE title END
+		,mqa.id as id_mqa
+   FROM multi_query mq
+	 LEFT JOIN multi_query_account mqa ON mq.id=mqa.multi_query_id AND mqa.account_id=',@Account_id,'
+   ORDER BY `checked` DESC
+)
+');
+
+SET @SQL=concat(
+@CTE,'
+SELECT
+   "setting"         as `Meta`
+   ,"width=400px"    as `Name`
+   ,"width=500px,tooltip=yes"  as `Descr IT`
+   ,"width=500px,tooltip=yes"  as `Descr ES`
+   ,"width=200px,tooltip=yes,omit=true"  as `Descr EN`
+   ,"omit=true"      as `code`
+   ,"omit=true"      as `params_Procedure`
+   ,"omit=true"      as `is_Procedure`
+   ,"omit=true"      as `is_Filter`
+   ,"omit=true"      as `5`
+	,"omit=true"      as `id`
+	,"omit=true"      as `checked`
+	,"omit=true"      as `check_language` 
+	,"omit=true"      as `descr_language` 
+	,"omit=true"      as `id_mqa` 
+	FROM DUAL
+UNION ALL
+SELECT "data",T.* FROM BaseData T
+ORDER BY 
+    `checked` DESC,                 
+    CASE 
+        WHEN `Descr IT` IS NULL THEN 1 
+        ELSE 0 
+    END,
+    `Descr IT` ASC
+;');
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+IF @Debug!="NO" THEN SELECT @Debug,@Month_Report,@WhereMonth,@WhereAffiliate,@WhereBrand,@GroupByBrand,@Filters; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/* Testing
+
+call Report_MultiQuery(' ');                                               -- ERROR Sin Affiliate_id, ni Brand
+call Report_MultiQuery('Affiliate_id=ALL,Month=LM');                       -- ERROR Affiliate_id=ALL
+call Report_MultiQuery('Affiliate_id=39,Brand=ALL,Month=LM,Filters=yes');  -- OK
+call Report_MultiQuery('Brand=ALL,Month=LM');                              -- ERROR Affiliate_id=""
+
+call Report_MultiQuery('Affiliate_id=39,Brand=ALL,Month=LM,Filters=YEs,debug=YE');
+call Report_MultiQuery('Affiliate_id=39,Brand=goldbet,Month=2023-06,Filters=YE,debug=YE');
+
+*/

@@ -1,0 +1,177 @@
+/*
+PROCEDURE_Report_balance_by_affiliate.sql - Report balance by affiliate
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Omit0           =[Yes | No]. Omite Afiliados con Saldo=0. OPCIONAL. Default=yes.
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+CALL  Report_balance_by_affiliate('');  -- asum defaults: LMonth
+CALL  Report_balance_by_affiliate('filters=yes,debug=non');
+CALL  Report_balance_by_affiliate('filters=ye,omit0=no,debug=non');
+
+23.05.2024 v1
+
+*/	
+SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+
+-- -----------------------------------------------------
+DROP PROCEDURE IF EXISTS Report_balance_by_affiliate;
+-- -----------------------------------------------------
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_balance_by_affiliate`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report balance by affiliate'
+
+ProcedureBody: BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 23.05.2024';
+SET @CurrentDay      =curdate();
+SET @Date_confirm    =CONCAT(LEFT(CURDATE(),7),"-20");
+SET @Month           =left(curdate(),7);
+
+SET @Omit0           ='YES';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+SET @Debug           ='NO';
+
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='Omit0'           THEN SET @Omit0         =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+
+END WHILE;
+
+IF   CURDATE()>=@Date_confirm
+THEN SET @LabelConf=CONCAT(',"width=110px,omit=true"  as `Confirmed ',@Date_confirm,'`');
+ELSE SET @LabelConf=CONCAT(',"width=110px,right=true" as `Confirmed ',@Date_confirm,'`');
+END  IF;
+
+IF @Debug!="NO" THEN SELECT @Date_confirm,@Omit0,@Debug,@filters,@meta,@LabelConf,@InputCommLine; END IF;
+
+/**************************************************************************************************************/
+SET SESSION group_concat_max_len = 200000;
+-- -----------------------------------------------------------------------------------------------------
+
+SET @SQLmeta=CONCAT('
+(
+SELECT
+   "setting" as Meta
+   ,"width=200px"            `Affiliate`
+   ,"width=110px,right=true" `Estimated`
+   ,"width=110px,right=true" `Confirmed today`
+'
+   ,@LabelConf,
+'
+FROM DUAL WHERE @Meta="YES"
+   )'
+);
+
+SET @SQL=concat('
+with Main_data as (
+SELECT Affiliate_id,ifnull(A.username,"_Unassigned") AS `Affiliate`
+	,round(sum(case when x.Status in (0,1,2)		then Amount ELSE 0 END),2) AS `Estimated`
+	,round(sum(case when x.Status IN (1,2)			then Amount ELSE 0 END),2) AS `Confirmed`
+	,round(sum(case when x.Status_21 IN (1,2)		then Amount ELSE 0 END),2) AS `Confirmed21`
+FROM (
+SELECT Affiliate_id,DATE,"CPA" AS Op_type,CONCAT_WS(" ",Brand,Product_Real) AS Description,(CPA_Val_AJ_RS+RS_AJUST) AS Amount
+	,IF(DATEDIFF(CURDATE(),LAST_DAY(CONCAT(DATE,"-20")))>=20,"1","0") AS Status
+	,IF(DATEDIFF(CURDATE(),LAST_DAY(CONCAT(DATE,"-20")))>=20,"Accepted","Provisional") AS StatusText
+	,0 as balance_est,0 as balance_conf
+	,IF(DATEDIFF(CONCAT(LEFT(CURDATE(),7),"-21"),LAST_DAY(CONCAT(DATE,"-20")))>=20,"1","0") AS Status_21
+FROM view_monthly_fact_aff4 F WHERE (CPA_Val_AJ_RS)<>0 OR (RS_AJUST)<>0
+UNION ALL
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,Amount_Debit*-1 AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est, 0 as balance_conf
+	,IFNULL(Status,0) AS Status_21
+FROM account_financial_movement F WHERE ifnull(F.Status,0) IN (1,2)
+UNION ALL
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,Amount_Credit AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+	,IFNULL(Status,0) AS Status_21
+FROM account_manual_adjustments F WHERE ifnull(F.Status,0) in (1,2)
+) AS x
+LEFT JOIN account_account A ON Affiliate_id	=A.id
+GROUP BY Affiliate WITH ROLLUP
+)
+'
+,@SQLmeta,'
+UNION ALL
+(
+SELECT IF(`Affiliate` IS NULL,"total","data") as `Meta`
+      ,IF(`Affiliate` IS NULL,"___ TOTAL ___",`Affiliate`) AS `Affiliate`
+      ,`Estimated`
+      ,`Confirmed`
+      ,`Confirmed21`
+FROM Main_data '
+,if(@Omit0="YES"," WHERE `Estimated`<>0 OR `Confirmed`<>0 OR `Confirmed21`<>0",""),
+')
+ORDER BY `Affiliate`
+;');
+/*
+-- Filtros------------------------------------------------------------------------------------
+*/
+SET @SQLfilters=CONCAT('
+SELECT "01" as "Korder","Criteria" AS "Key","Show Balances = 0.00" AS "Value","Omit0" AS `CallKey`,"no" AS `CallValue`
+;');
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END;
+$$
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- -----------------------------------------------------
+/*
+CALL  Report_balance_by_affiliate('');
+CALL  Report_balance_by_affiliate('filters=yes,debug=non');
+CALL  Report_balance_by_affiliate('filters=ye,omit0=no,debug=non');
+*/

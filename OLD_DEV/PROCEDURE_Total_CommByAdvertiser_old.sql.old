@@ -1,0 +1,71 @@
+/* PROCEDURE PROCEDURE Total_CommByAdvertiser.sql
+   02.09.2022 V1 Suma comisiones por Advertiser
+   Parametros (MonthReport, AdvertiserID/ALL)
+   
+*/
+DROP PROCEDURE IF EXISTS Total_CommByAdvertiser;
+
+DELIMITER $$
+CREATE PROCEDURE Total_CommByAdvertiser(IN
+   MonthReport  VARCHAR(07),
+   AdvertiserID VARCHAR(50) 
+   )
+   COMMENT 'Comisiones x [Month] [Affiliate/ALL]'
+   LANGUAGE SQL
+    
+BEGIN
+	DECLARE AdvertiserID_from  BIGINT DEFAULT '0';
+	DECLARE AdvertiserID_until BIGINT DEFAULT '9999999999999';
+   
+	IF LOWER(AdvertiserID)!='all' THEN
+      SET AdvertiserID_until=CAST(AdvertiserID AS UNSIGNED INTEGER);
+   	SET AdvertiserID_from=CAST(AdvertiserID AS UNSIGNED INTEGER);
+	END IF;
+
+SELECT DATE,Brand,Data_Currency,
+   ROUND(SUM(CPA), 0)            AS 'Sum_CPA',
+   ROUND(SUM(CPA_Value), 2)      AS 'CPA_Value',
+   ROUND(SUM(CPA_Val_AJ_RS), 2)  AS 'CPA_Val_AJ_RS',
+   ROUND(SUM(Net_Revenue), 2)    AS 'Net_Revenue',
+   ROUND(SUM(RS_Value), 2)       AS 'RS_Value',
+   ROUND(SUM(RS_AJUST), 2)       AS 'RS_AJUST',
+   ROUND(SUM(TOTAL_AJUST), 2)    AS 'TOTAL_AJUST',
+   Curr_Aff,
+   ROUND(SUM(Aff_Comm_CPA), 2)   AS 'Aff_Comm_CPA',
+   ROUND(SUM(Aff_Comm_Tot), 2)   AS 'Aff_Comm_Tot',
+   CASE WHEN Data_Currency = Curr_Aff THEN ROUND(SUM(CPA_Value)-SUM(Aff_Comm_CPA),2)   ELSE 0 END AS 'Margin_CPA',
+   CASE WHEN Data_Currency = Curr_Aff THEN ROUND(SUM(TOTAL_AJUST)-SUM(Aff_Comm_Tot),2) ELSE 0 END AS 'Margin_Tot' 
+ FROM (
+ SELECT G.OWNER,G.Date,G.Brand,Data_Currency
+     ,SUM(G.CPA           )	as CPA
+     ,SUM(G.CPA_Value     )	as CPA_Value
+     ,SUM(G.CPA_Val_AJ_RS )	as CPA_Val_AJ_RS
+     ,SUM(G.Net_Revenue   )	as Net_Revenue
+     ,SUM(G.RS_Value      )	as RS_Value
+     ,SUM(G.RS_AJUST      )	as RS_AJUST
+     ,SUM(G.CPA_Val_AJ_RS )+ SUM(G.RS_AJUST) AS TOTAL_AJUST
+     ,'EUR' AS Curr_Aff
+     ,(SELECT SUM(G1.CPA_Val_AJ_RS)+SUM(G1.RS_AJUST) FROM view_monthly_fact_aff2 G1 
+         WHERE LEFT(DATE,7) =MonthReport AND G.OWNER=G1.OWNER AND G.Brand=G1.Brand)
+         AS Aff_Comm_Tot
+     ,(SELECT SUM(G1.CPA_Value)  FROM view_monthly_fact_aff2 G1 
+         WHERE LEFT (DATE, 7)=MonthReport AND G.OWNER = G1.OWNER AND G.Brand = G1.Brand)
+        AS Aff_Comm_CPA
+     ,Ges_RS_Base AS 'BaseAcumula',
+      Ges_Carry_Over AS Carry,
+      Ges_RS_Against_CPA AS RSrestaCPA,
+      Ges_CPA AS 'ValxCPA',
+      Ges_RS AS 'RS' 
+ FROM view_monthly_fact_gestor3 G
+ WHERE LEFT(G.DATE,7)=MonthReport AND Advertiser_id BETWEEN AdvertiserID_from AND AdvertiserID_until
+ GROUP BY G.OWNER, G.Brand 
+) AS XXX
+GROUP BY Data_Currency,OWNER,Brand
+;
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call Total_CommByAdvertiser('2022-08','ALL');
+-- call Total_CommByAdvertiser('2022-08','62');
+

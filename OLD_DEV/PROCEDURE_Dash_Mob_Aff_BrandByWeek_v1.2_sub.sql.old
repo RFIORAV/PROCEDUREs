@@ -1,0 +1,236 @@
+/*
+PROCEDURE_Dash_Mob_Aff_BrandByWeek.sql - Dashboard Mobile Aff Performance Brand by week
+
+Descripción:
+  Procedimiento Dash_Mob_Aff_BrandByWeek.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Month           =[AAAA-MM].            OPCIONAL. Default=Current Month.
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Brand           =[ALL | NOMBRE de Brand]. OPCIONAL. Default=ALL
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query. [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Dash_Mob_Aff_BrandByWeek(' '); -- Asumirá todos los defaults
+
+
+25.01.2024 V1     Primera version
+27.01.2024        Karen: fix errors
+27.01.2024 v1.1   Agrega columna CPA mes previo
+11.06.2024 v1.2   Tratamiento de Subafiliados
+
+*/
+DROP PROCEDURE IF EXISTS Dash_Mob_Aff_BrandByWeek;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_Mob_Aff_BrandByWeek`(IN
+   InputCommLine    VARCHAR(250)
+   )
+
+COMMENT 'Dashboard Mobile Aff Performance Brand by week'
+ 
+BEGIN
+
+-- Defaults
+SET @Version      ='v1.2 11.06.2024';
+SET @Month        =LEFT(CURDATE(),7);
+SET @Month        =IF(DAY(CURDATE())<=5,LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7),LEFT(CURDATE(),7));
+SET @Affiliate_id ='';
+SET @Advertiser_id='ALL';
+SET @Brand        ='ALL';
+SET @Publisher_id ='ALL';
+SET @Currency     ='EUR';
+SET @Debug        ='NO';
+SET @Meta         ='NO';
+SET @ShowDate     ='YES';
+SET @ShowOwner    ='YES';
+SET @OnlyOverCap  ='NO';
+SET @Filters      ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit
+-- @InputCommLine: ----5----0----5----0----5----0----5----0--
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='month'         THEN SET @Month        =UPPER(@v); END IF;
+   IF lower(@k)='Affiliate_id'  THEN SET @Affiliate_id =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id' THEN SET @Advertiser_id=UPPER(@v); END IF;
+   IF lower(@k)='Publisher_id'  THEN SET @Publisher_id =UPPER(@v); END IF;
+   IF lower(@k)='area'          THEN SET @Area         =UPPER(@v); END IF;
+   IF lower(@k)='Filters'       THEN SET @Filters      =UPPER(@v); END IF;
+   IF lower(@k)='brand'         THEN SET @Brand        =UPPER(@v); END IF;
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+
+END WHILE;
+
+/**************************************************************************************************************/
+ 
+-- -------------------------------------------------------
+SET @WhereAffiliate_id='';
+SET @WhereAdvertiserID='';
+SET @WhereBrand='';
+SET @WherePublisher_id='';
+
+IF @Affiliate_id!="ALL"  THEN SET @WhereAffiliate_id=CONCAT(" AND Affiliate_id='",@Affiliate_id,"'"); END IF;
+-- IF @Advertiser_id!="ALL" THEN SET @WhereAdvertiserID=CONCAT(" AND G.Advertiser_id='",@Advertiser_id,"'"); END IF;
+-- IF @Publisher_id !="ALL" THEN SET @WherePublisher_id=CONCAT(" AND A.Publisher_id='",@Publisher_id,"'");   END IF;
+
+SET @Month_Report=@Month;
+IF  @Month = "CM" THEN SET @Month_Report=LEFT(CURDATE(),7); END IF;                             
+IF  @Month = "LM" THEN SET @Month_Report=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF; 
+
+SET @Prev_Month_Report=LEFT(DATE_SUB(CONCAT(@Month_Report,"-01"), INTERVAL 1 DAY),7);
+
+/************ TRATAMIENTO DE SUBAFILIADOS ******************************************/
+SET @AffiliateGroup=(SELECT group_id FROM account_account_groups 
+                     WHERE account_id=@Affiliate_id AND  group_id=6);
+IF  @AffiliateGroup IS NULL THEN SET @AffiliateGroup=0; END IF;
+/*---------------------------------------------------------------------------------*/
+
+IF @Debug!="NO" THEN SELECT @Month,@Month_Report,@Prev_Month_Report,@Advertiser_id
+                           ,@AffiliateGroup
+                           ,@Brand,@Debug,@Meta,InputCommLine; END IF;
+
+-- -----------------------------------------------------------------------------------------------------
+
+SET SESSION group_concat_max_len = 200000;
+
+SET @SQLmeta=('
+SELECT
+   "setting"
+   ,"width=100px"                         `Affiliate_id`
+   ,"width=100px"                         `Month`
+   ,"width=100px"                         `Week`
+   ,"width=110px,sortable=yes"            `Brand`
+   ,"width=090px, right=true"             `CPA`
+   ,"width=090px, right=true"             `FTD`
+   ,"width=090px, right=true"             `Views`
+   ,"width=090px, right=true"             `Clicks`
+   ,"width=090px, right=true"             `Signups`
+   ,"width=110px, right=true"             `CPA Prev Mth`
+	FROM DUAL WHERE @Meta="YES"
+UNION ALL '
+);
+-- ------------------------------- 
+SET @SQL=CONCAT('
+WITH
+Set_Acum_CM_LM as (
+   SELECT
+      Affiliate_id
+     ,"',@Month_Report,'"              as `Month`
+     ,CASE 
+         WHEN DAY(DATE) BETWEEN 01 AND 07 THEN 1
+         WHEN DAY(DATE) BETWEEN 08 AND 14 THEN 2
+         WHEN DAY(DATE) BETWEEN 15 AND 21 THEN 3
+         WHEN DAY(DATE) BETWEEN 22 AND 28 THEN 4
+         ELSE 5 END                     as `Week`
+     ,Brand                                         
+     ,sum(IFNULL(Qualified_Players,0) ) AS `CPA`
+     ,sum(IFNULL(First_Time_Deposit,0)) AS `FTD`
+     ,sum(IFNULL(Views,0)             ) AS `Views`
+     ,sum(IFNULL(Clicks,0)            ) AS `Clicks` 
+     ,sum(IFNULL(Signups,0)           ) AS `Signups`
+     ,0                                 as `CPA PM`
+   FROM Snapshot_day_by_day_fact2
+   WHERE LEFT(DATE,7) ="',@Month_Report,'" ',@WhereAffiliate_id,'
+   GROUP BY Brand,`Week`
+   UNION ALL
+   SELECT
+      Affiliate_id
+     ,"',@Month_Report,'"              as `Month`
+     ,CASE 
+         WHEN DAY(DATE) BETWEEN 01 AND 07 THEN 1
+         WHEN DAY(DATE) BETWEEN 08 AND 14 THEN 2
+         WHEN DAY(DATE) BETWEEN 15 AND 21 THEN 3
+         WHEN DAY(DATE) BETWEEN 22 AND 28 THEN 4
+         ELSE 5 END                     as `Week`
+     ,Brand                                         
+     ,0                                 AS `CPA`
+     ,0                                 AS `FTD`
+     ,0                                 AS `Views`
+     ,0                                 AS `Clicks` 
+     ,0                                 AS `Signups`
+     ,sum(IFNULL(Qualified_Players,0) ) as `CPA PM`   
+   FROM Snapshot_day_by_day_fact2
+   WHERE LEFT(DATE,7) ="',@Prev_Month_Report,'" ',@WhereAffiliate_id,'
+   GROUP BY Brand,`Week`   
+),
+Set_Acumulados as (
+   SELECT
+      Affiliate_id
+     ,`Month`
+     ,`Week`
+     ,Brand                                         
+     ,sum(`CPA`)        AS `CPA`
+     ,sum(`FTD`)        AS `FTD`
+     ,sum(`Views`)      AS `Views`
+     ,sum(`Clicks`)     AS `Clicks` 
+     ,sum(`Signups`)    AS `Signups`
+     ,sum(`CPA PM`)     as `CPA PM`
+   FROM Set_Acum_CM_LM
+   GROUP BY Brand,`Week`
+) ',
+IF(@Meta="YES",@SQLmeta," "),
+'
+SELECT "data",A.* FROM Set_Acumulados A
+   ORDER BY Brand,`Week`
+;');
+
+/************ TRATAMIENTO DE SUBAFILIADOS ******************************************/
+IF  @AffiliateGroup=6 THEN
+    SET @SQL=REPLACE(@SQL,"Snapshot_day_by_day_fact2","sub_Snapshot_day_by_day_fact3");
+--  SET @SQL=REPLACE(@SQL,"campaign_marketing_source","sub_campaign_marketing_source");
+--  SET @SQL=REPLACE(@SQL,"campaign_mkt_source_deal","sub_campaign_mkt_source_deal");
+--  SET @SQL=REPLACE(@SQL,"campaign_deal_affiliate","sub_campaign_deal_affiliate");
+--  SET @SQL=REPLACE(@SQL,"account_landing_pages","sub_account_landing_pages");
+--  SET @SQL=REPLACE(@SQL,"account_payment_methods","sub_account_payment_methods");
+--  SET @SQL=REPLACE(@SQL,"account_account_bills","sub_account_account_bills");
+--  SET @SQL=REPLACE(@SQL,"view_monthly_fact_aff4","sub_view_monthly_fact_aff4");
+END IF;
+/*---------------------------------------------------------------------------------*/
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug!="YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+Ejemplos:
+
+call Dash_Mob_Aff_BrandByWeek(' '); 			-- error: Afiliado debe informarse
+call Dash_Mob_Aff_BrandByWeek('Month=CM,affiliate_id=39,meta=ye,debug=ye'); 		
+call Dash_Mob_Aff_BrandByWeek('Month=CM,affiliate_id=527,meta=ye,debug=ye');     --  sub
+*/

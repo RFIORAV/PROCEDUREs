@@ -1,0 +1,93 @@
+/*
+PROCEDURE_CopyTablesToDEV.sql -  ACTUALIZAR TABLAS euroaffiliati_dev desde euroaffiliati2
+
+29.08.2024 v1
+
+*/
+
+DROP PROCEDURE IF EXISTS CopyTablesToDEV;
+    
+
+-- -------------------------------------------------------------
+DELIMITER //
+
+CREATE PROCEDURE CopyTablesToDEV()
+
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE tableName VARCHAR(255);
+
+    DECLARE cur CURSOR FOR 
+        SELECT TABLE_NAME 
+        FROM `information_schema`.`TABLES` 
+        WHERE TABLE_SCHEMA = 'euroaffiliati2' 
+        AND table_type = 'BASE TABLE' 
+        AND (
+            TABLE_NAME LIKE 'account_%' OR  
+            TABLE_NAME LIKE 'Snapshot%' OR  
+            TABLE_NAME LIKE 'campaign_%' OR  
+            TABLE_NAME LIKE 'master_%' OR  
+            TABLE_NAME LIKE 'super_%' OR 
+            TABLE_NAME LIKE 'comm_%' OR 
+            TABLE_NAME LIKE 'dash%' OR 
+            TABLE_NAME LIKE 'players_netrefer_API' OR 
+            TABLE_NAME LIKE 'postback%' OR            
+            TABLE_NAME LIKE 'util_%'
+        )
+        AND TABLE_NAME NOT LIKE '%history'
+        AND TABLE_NAME NOT LIKE '%_202%'
+        AND TABLE_NAME NOT LIKE '%copy'
+        AND TABLE_NAME NOT LIKE '%_url'       
+--         AND TABLE_NAME NOT LIKE 'notification%' 
+        ORDER BY `TABLE_NAME` ASC;
+
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+    SET FOREIGN_KEY_CHECKS = 0;
+    TRUNCATE euroaffiliati_dev.campaign_mkt_source_url;
+
+    OPEN cur;
+
+    read_loop: LOOP
+        FETCH cur INTO tableName;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+
+        SELECT tableName FROM DUAL;
+        
+        SET @copyTableQuery = CONCAT('CREATE TABLE IF NOT EXISTS euroaffiliati_dev.', tableName, ' LIKE euroaffiliati2.', tableName);
+        PREPARE stmt FROM @copyTableQuery;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+
+        SET @copyTableQuery = CONCAT('TRUNCATE euroaffiliati_dev.', tableName, ';');
+        PREPARE stmt FROM @copyTableQuery;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+        
+        SET @insertDataQuery = CONCAT('INSERT INTO euroaffiliati_dev.', tableName, ' SELECT * FROM euroaffiliati2.', tableName);
+        PREPARE stmt FROM @insertDataQuery;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END LOOP;
+
+    CLOSE cur;
+
+    UPDATE account_account a
+    SET a.id_alias='2',a.id_default='2',a.username_alias="Gestor_Fra",a.username_default="Gestor_Fra"
+    WHERE id IN (449, 508, 334, 177, 179);   
+    
+    CALL total_monthy_comm_ges_upd();
+    CALL total_monthy_comm_aff_upd();
+    
+END //
+
+DELIMITER ;
+
+/*
+
+CALL CopyTablesToDEV();
+
+*/

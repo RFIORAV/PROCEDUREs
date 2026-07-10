@@ -1,0 +1,126 @@
+/* PROCEDURE_Total_CommByAdvertiser.sql
+   02.09.2022 V1 Suma comisiones por Advertiser
+   06.09.2022 V2 Pasa de 2 a 4 parámetros
+   10.09.2022 Data Currency
+
+   Observaciones: 
+      Parámetro ROLLUP se aplica al GROUP BY Data_Currency,OWNER,Brand
+   
+   Parámetros ( [AdvertiserID | ALL] , [Month] , [Owner | ALL] , [Currency | ALL], [ROLLUP | ' '] )
+   
+   Ejemplos:
+      call Total_CommByAdvertiser('ALL','2022-09','ALL','EUR','ROLLUP');
+      call Total_CommByAdvertiser('ALL','2022-09','ALL','EUR','');
+      call Total_CommByAdvertiser('ALL','2022-06','2'  ,'ALL','ROLLUP');
+      call Total_CommByAdvertiser('64' ,'2022-08','ALL','EUR','');
+*/
+DROP PROCEDURE IF EXISTS Total_CommByAdvertiser;
+
+DELIMITER $$
+CREATE PROCEDURE Total_CommByAdvertiser(IN
+   AdvertiserID VARCHAR(50),
+   Month VARCHAR(7),
+   Owner VARCHAR(50),
+   Curr_result VARCHAR(3),
+   RollUp VARCHAR(6)
+   )
+   COMMENT 'Comisiones Advertiser/ALL] [Month] x [Owner/ALL]'
+   -- LANGUAGE SQL
+    
+BEGIN
+	IF LOWER(AdvertiserID)='all' THEN
+   	SET @AdvertiserID_from='0';
+      SET @AdvertiserID_until='9999999999999';
+   ELSE
+   	SET @AdvertiserID_from=CAST(AdvertiserID AS UNSIGNED INTEGER);
+      SET @AdvertiserID_until=CAST(AdvertiserID AS UNSIGNED INTEGER);
+	END IF;
+
+	IF LOWER(ifnull(Owner,'ALL'))='all' THEN
+   	SET @Owner_from='0';
+      SET @Owner_until='9999999999999';
+   ELSE
+   	SET @Owner_from=CAST(Owner AS UNSIGNED INTEGER);
+      SET @Owner_until=CAST(Owner AS UNSIGNED INTEGER);
+	END IF;
+
+   SET @Month_Report=CONCAT("'",Month,"'");
+   
+	IF LOWER(ifnull(RollUp,''))='rollup' THEN
+      SET @RollUp=' with rollup;';
+   ELSE
+      SET @RollUp='; -- with rollup';
+	END IF;
+
+   SET @Curr_result=upper(Curr_result);
+   
+-- SET @AdvertiserID_from='0',@AdvertiserID_until='999999999',@Month_Report="'2022-09'";
+-- SET @Owner_from='0',@Owner_until='9999999999',@RollUp=' ; -- with rollup';
+-- select @AdvertiserID_from,@AdvertiserID_until,@Month_Report,@Owner_from,@Owner_until,@RollUp;
+
+SET SESSION group_concat_max_len = 100000;
+
+SET @SQL = CONCAT(
+'SELECT Owner,DATE,Brand
+   ,`Data_Currency`
+   ,SUM(CPA)             AS `Sum_CPA`
+   ,SUM(CPA_Value)       AS `CPA_Value`
+   ,SUM(CPA_Val_AJ_RS)   AS `CPA_Val_AJ_RS`
+   ,SUM(Net_Revenue)     AS `Net_Revenue`
+   ,SUM(RS_Value)        AS `RS_Value`
+   ,SUM(RS_AJUST)        AS `RS_AJUST`
+   ,SUM(TOTAL_AJUST)     AS `TOTAL_AJUST`
+   ,Curr_Aff
+   ,SUM(Aff_Comm_CPA)    AS `Aff_Comm_CPA`
+   ,SUM(Aff_Comm_Tot)    AS `Aff_Comm_Tot`
+   ,CASE WHEN Data_Currency = Curr_Aff THEN ROUND(SUM(CPA_Value)-SUM(Aff_Comm_CPA),2)   ELSE 0 END AS `Margin_CPA`
+   ,CASE WHEN Data_Currency = Curr_Aff THEN ROUND(SUM(TOTAL_AJUST)-SUM(Aff_Comm_Tot),2) ELSE 0 END AS `Margin_Tot` 
+ FROM (
+ SELECT G.OWNER,G.Date,G.Brand
+ 	  ,IF(',CONCAT("'",@Curr_result,"'"),'="ALL",Data_Currency,',CONCAT("'",@Curr_result,"'"),') as `Data_Currency`
+     ,SUM(G.CPA           )	as CPA
+     ,ROUND(SUM(G.CPA_Value     )/xx.Coef,2)	as CPA_Value
+     ,ROUND(SUM(G.CPA_Val_AJ_RS )/xx.Coef,2)	as CPA_Val_AJ_RS
+     ,ROUND(SUM(G.Net_Revenue   )/xx.Coef,2)	as Net_Revenue
+     ,ROUND(SUM(G.RS_Value      )/xx.Coef,2)	as RS_Value
+     ,ROUND(SUM(G.RS_AJUST      )/xx.Coef,2)	as RS_AJUST
+     ,ROUND(SUM(G.CPA_Val_AJ_RS )+SUM(G.RS_AJUST)/xx.Coef,2) AS TOTAL_AJUST
+     ,"EUR" AS Curr_Aff
+     ,(SELECT SUM(G1.CPA_Val_AJ_RS)+SUM(G1.RS_AJUST) FROM view_monthly_fact_aff2 G1 
+         WHERE LEFT(DATE,7) =',@Month_Report,' AND G.OWNER=G1.OWNER AND G.Brand=G1.Brand)
+         AS Aff_Comm_Tot
+     ,(SELECT SUM(G1.CPA_Value)  FROM view_monthly_fact_aff2 G1 
+         WHERE LEFT (DATE, 7)=',@Month_Report,'AND G.OWNER = G1.OWNER AND G.Brand = G1.Brand)
+        AS Aff_Comm_CPA
+     ,Ges_RS_Base AS `BaseAcumula`,
+      Ges_Carry_Over AS Carry,
+      Ges_RS_Against_CPA AS RSrestaCPA,
+      Ges_CPA AS `ValxCPA`,
+      Ges_RS AS `RS` 
+ FROM total_monthy_comm_ges G
+    LEFT JOIN LATERAL (SELECT
+     (SELECT Rate FROM exchange_rate x WHERE x.Currency=G.Data_Currency)/
+     (SELECT Rate FROM exchange_rate x WHERE x.Currency='
+     ,IF(@Curr_result="ALL","G.Data_Currency",CONCAT("'",@Curr_result,"'")),') as Coef) 
+      AS xx ON TRUE
+ WHERE LEFT(G.DATE,7)=',@Month_Report,' 
+      AND Advertiser_id BETWEEN ',@AdvertiserID_from,' AND ',@AdvertiserID_until,'
+      and G.Owner       BETWEEN ',@Owner_from,'        AND ',@Owner_until,'
+ GROUP BY G.OWNER, G.Brand 
+) AS XXX
+GROUP BY Data_Currency,OWNER,Brand',@RollUp,';');
+
+-- select @SQL;
+PREPARE stmt1 FROM @SQL;
+EXECUTE stmt1;
+
+END$$
+DELIMITER ;
+
+/*
+-- TEST --------------
+      call Total_CommByAdvertiser('ALL','2022-09','ALL','EUR','ROLLUP');
+      call Total_CommByAdvertiser('ALL','2022-09','ALL','EUR','');
+      call Total_CommByAdvertiser('ALL','2022-06','2'  ,'ALL','ROLLUP');
+      call Total_CommByAdvertiser('39' ,'2022-08','ALL','EUR','');
+*/

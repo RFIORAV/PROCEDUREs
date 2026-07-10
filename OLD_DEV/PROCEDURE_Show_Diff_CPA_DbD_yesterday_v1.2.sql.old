@@ -1,0 +1,105 @@
+/* PROCEDURE_Show_Diff_CPA_DbD_yesterday.sql - Check Raw Data: CPA missing from yesterday
+
+   25.09.2022 V1     Compara CPA Snapshot_day_by_day ayer con Snapshot_day_by_day_fact1 de hoy
+                     Detecta CPA quitadas por MS/Afiliado
+   19.10.2022 V1.1   Columna Meta
+   01.11.2022 V1.2   Día 1 compara con mes anterior
+   23.02.2023 V1.2   fix error en comparación
+   
+Parámetros: [ view | set ]
+   view=Muestra las diferencias
+   set=Reemplaza contenido de Snapshot_day_by_day_diff por Snapshot_day_by_day_fact1
+
+Ejemplos:
+
+CALL Show_Diff_CPA_DbD_yesterday('VIEW');
+CALL Show_Diff_CPA_DbD_yesterday('SET'); -- ejecutado por EVENT a partir de las 23
+   
+*/
+DROP PROCEDURE IF EXISTS Show_Diff_CPA_DbD_yesterday;
+
+DELIMITER $$
+CREATE PROCEDURE Show_Diff_CPA_DbD_yesterday(IN View_OR_set varchar (20))
+   
+   COMMENT 'Check Raw Data: CPA missing from yesterday'
+   LANGUAGE SQL
+
+BEGIN
+
+SET @Version='v1.2 23.02.2023';
+SET @Meta="YES";
+
+IF upper(View_OR_set)='SET' then SET @view='NO'; else SET @view='YES'; END IF;
+
+IF   DAY(CURDATE())<=3 THEN SET @Curr_Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+ELSE SET @Curr_Month=left(CURDATE(),7); END IF;
+
+CREATE TABLE IF NOT EXISTS `Snapshot_day_by_day_diff` (
+	`Month` VARCHAR(7) NULL DEFAULT NULL,
+	`Brand` VARCHAR(50) NULL DEFAULT '0',
+	`Username` VARCHAR(50) NULL DEFAULT '0',
+	`Tracker_Name` VARCHAR(50) NULL DEFAULT NULL,
+	`Tracker_id` VARCHAR(50) NULL DEFAULT NULL,
+	`Product` VARCHAR(50) NULL DEFAULT NULL,
+	`Qualified_Players` INT(10) NULL DEFAULT '0',
+	`Hour_Update` DATETIME NULL DEFAULT NULL,
+	`Creation_date` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE INDEX `Month` (`Month`, `Brand`, `Username`, `Tracker_Name`, `Tracker_id`, `Product`) USING BTREE
+)
+;
+-- --------------------------------------------
+IF @view='NO' THEN
+   TRUNCATE Snapshot_day_by_day_diff;
+   INSERT IGNORE INTO Snapshot_day_by_day_diff 
+      SELECT left(DATE,7) as Month,Brand,Username,Tracker_Name,Tracker_id,Product,sum(Qualified_Players) AS CPA,Hour_Update,now()
+      FROM  Snapshot_day_by_day D
+      WHERE left(DATE,7)=@Curr_Month
+      GROUP BY Brand,Username,Tracker_Name,Tracker_id,Product HAVING CPA<>0;
+END IF;
+-- --------------------------------------------
+WITH Day_by_Day AS (
+   SELECT left(DATE,7) as Month,Brand,Username_id,Affiliate,Tracker_Name,Tracker_id,Product,sum(Qualified_Players) AS CPA,Hour_Update
+   FROM  Snapshot_day_by_day_fact1 D
+   WHERE LEFT(DATE,7)=@Curr_Month
+   GROUP BY Brand,Username_id,Tracker_Name,Tracker_id,Product HAVING CPA<>0
+),
+Day_by_Day_Diff AS (
+   SELECT Month,Brand,Username,Tracker_Name,Tracker_id,Product,sum(Qualified_Players) AS CPA,Hour_Update
+   FROM  Snapshot_day_by_day_diff D
+   WHERE Month=@Curr_Month
+   GROUP BY Brand,Username,Tracker_Name,Tracker_id,Product HAVING CPA<>0
+)
+(
+SELECT "" as Meta,
+   F.Month,F.Brand,F.Username,D.Affiliate,F.Tracker_Name,F.Tracker_id,F.Product,F.CPA as 'CPA ayer',D.CPA as 'CPA hoy'
+FROM Day_by_Day_Diff F
+left JOIN Day_by_Day D on F.Brand=D.Brand and F.Username=D.Username_id 
+         and F.Tracker_Name=D.Tracker_Name 
+         and F.Tracker_id=D.Tracker_id 
+         and F.Product=D.Product
+WHERE F.CPA>D.CPA
+)
+-- UNION ALL 
+-- (
+-- SELECT "" as Meta,
+   -- 'End report','','','','','','','','' FROM dual
+-- )   
+UNION ALL 
+(
+SELECT
+  "setting" as Meta
+  ,"width=100px" as DATE
+  ,"width=150px" as Brand
+  ,"width=100px" as Username_id
+  ,"width=150px" as Affiliate
+  ,"width=200px" as Tracker_ID
+  ,"width=150px" as Tracker_Name
+  ,"width=200px" as Product
+  ,"width=120px,right=true" as 'CPA ayer'
+  ,"width=120px,right=true" as 'CPA hoy'
+FROM DUAL WHERE @Meta="YES"
+)
+;
+END$$
+DELIMITER ;
+

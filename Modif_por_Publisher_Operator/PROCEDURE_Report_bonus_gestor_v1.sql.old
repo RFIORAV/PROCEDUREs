@@ -1,0 +1,201 @@
+/*
+PROCEDURE_Report_bonus_gestor_v1.sql - Reporte: reglas bonus gestor (campaign_deal_gestor_bonus)
+
+Listado de filas con filtros opcionales por mes válido desde, publisher y username.
+Incluye Advertiser_Name (campaign_publisher) y Username (campaign_username).
+
+Parámetro compuesto Key=Value (sin comillas en valores), separado por comas.
+Multivalor en Publisher_id y Username_id: separador ^ (ej. 12^34^56).
+Month_Valid_From: ALL (defecto), CM, LM, AAAA-MM o lista AAAA-MM^AAAA-MM.
+
+Keys:
+  Month_Valid_From = [ALL | CM | LM | AAAA-MM | AAAA-MM^...]  OPCIONAL. Default ALL
+  Publisher_id     = [ALL | id | id^id^...]                   OPCIONAL. Default ALL
+  Username_id      = [ALL | id | id^id^...]                   OPCIONAL. Default ALL
+  Filters          = [Yes | No]                               OPCIONAL. Default No. Yes = devuelve filas de filtros (Korder, Key, Value, CallKey, CallValue, Rows)
+  Meta             = [No | Yes]                               OPCIONAL. Default Yes. Fila Meta=setting con anchos/grid; filas de datos Meta=data.
+  Debug            = [No | Yes]                               OPCIONAL. Default No. Distinto de No = variables de filtro; no ejecuta listado ni Filters.
+
+Historial de versiones:
+  03.04.2026 v1.0 Versión inicial (variables locales v_, sin SQL dinámico).
+
+
+Uso:
+  CALL Report_bonus_gestor(',debug=ye');
+  CALL Report_bonus_gestor('Filters=yes,debug=ye');
+  CALL Report_bonus_gestor('Month_Valid_From=2023-10,debug=ye');
+*/
+
+DROP PROCEDURE IF EXISTS Report_bonus_gestor;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_bonus_gestor`(IN
+   InputCommLine    VARCHAR(250)
+   )
+COMMENT 'Report: bonus gestor (campaign_deal_gestor_bonus)'
+BEGIN
+
+DECLARE v_Version              VARCHAR(32);
+DECLARE v_InputLine            VARCHAR(300);
+DECLARE v_e                    INT;
+DECLARE v_c                    INT;
+DECLARE v_k                    VARCHAR(64);
+DECLARE v_v                    VARCHAR(200);
+
+DECLARE v_Month_Valid_From     VARCHAR(200);
+DECLARE v_Publisher_id         VARCHAR(200);
+DECLARE v_Username_id          VARCHAR(200);
+DECLARE v_Filters              VARCHAR(10);
+DECLARE v_Meta                 VARCHAR(10);
+DECLARE v_Debug                VARCHAR(10);
+
+DECLARE v_MonthFilter          VARCHAR(300);
+DECLARE v_PubList              VARCHAR(300);
+DECLARE v_UserList             VARCHAR(300);
+
+SET v_Version          = 'v1 03.04.2026';
+SET v_e                = 0;
+SET v_c                = 0;
+SET v_k                = '';
+SET v_v                = '';
+SET v_Month_Valid_From = 'ALL';
+SET v_Publisher_id     = 'ALL';
+SET v_Username_id      = 'ALL';
+SET v_Filters          = 'NO';
+SET v_Meta             = 'YES';
+SET v_Debug            = 'NO';
+SET v_MonthFilter      = NULL;
+SET v_PubList          = NULL;
+SET v_UserList         = NULL;
+
+SET v_InputLine = CONCAT(REPLACE(TRIM(IFNULL(InputCommLine,'')),'"',''), ',');
+
+parse_kv: WHILE INSTR(v_InputLine,'=') > 0 AND INSTR(v_InputLine,',') > 0 DO
+   SET v_e = INSTR(v_InputLine,'=');
+   SET v_c = INSTR(v_InputLine,',');
+   SET v_k = TRIM(SUBSTRING(v_InputLine,1,v_e-1));
+   SET v_v = TRIM(SUBSTRING(v_InputLine,v_e+1,v_c-(v_e+1)));
+   SET v_InputLine = SUBSTRING(v_InputLine,v_c+1);
+
+   IF LOWER(v_k)='month_valid_from' THEN SET v_Month_Valid_From = UPPER(v_v); END IF;
+   IF LOWER(v_k)='publisher_id'     THEN SET v_Publisher_id     = v_v;       END IF;
+   IF LOWER(v_k)='username_id'      THEN SET v_Username_id      = v_v;       END IF;
+   IF LOWER(v_k)='filters'          THEN SET v_Filters          = UPPER(v_v); END IF;
+   IF LOWER(v_k)='meta'             THEN SET v_Meta             = UPPER(v_v); END IF;
+   IF LOWER(v_k)='debug'            THEN SET v_Debug            = UPPER(v_v); END IF;
+END WHILE parse_kv;
+
+IF UPPER(TRIM(v_Month_Valid_From))='CM' THEN SET v_MonthFilter = LEFT(CURDATE(),7); END IF;
+IF UPPER(TRIM(v_Month_Valid_From))='LM' THEN SET v_MonthFilter = LEFT(DATE_SUB(CURDATE(),INTERVAL 1 MONTH),7); END IF;
+IF UPPER(TRIM(v_Month_Valid_From)) IN ('ALL','') THEN SET v_MonthFilter = NULL; 
+ELSE SET v_MonthFilter = v_Month_Valid_From; END IF;
+-- SET v_MonthFilter = REPLACE(TRIM(v_Month_Valid_From),'^',',');
+IF UPPER(TRIM(v_Publisher_id)) IN ('ALL','') THEN SET v_PubList = NULL; END IF;
+-- SET v_PubList = REPLACE(TRIM(v_Publisher_id),'^',',');
+IF UPPER(TRIM(v_Username_id)) IN ('ALL','') THEN SET v_UserList = NULL; END IF;
+-- SET v_UserList = REPLACE(TRIM(v_Username_id),'^',',');
+
+IF v_Debug!='NO' THEN
+   SELECT v_Version, v_Month_Valid_From, v_MonthFilter, v_Publisher_id, v_PubList, v_Username_id
+        , v_UserList, v_Filters, v_Meta, v_Debug, InputCommLine;
+END IF;
+
+IF v_Filters='YES' THEN
+
+   WITH Base AS (
+      SELECT
+           B.`id`
+         , B.`Publisher_id`
+         , B.`Username_id`
+         , B.`Month_Valid_From`
+         , IFNULL(P.`Advertiser_Name`,'') AS Publisher
+         , IFNULL(U.`username`,'')        AS Account
+      FROM `campaign_deal_gestor_bonus` B
+      LEFT JOIN `campaign_publisher`   P ON P.`id` = B.`Publisher_id`
+      LEFT JOIN `campaign_username`    U ON U.`id` = B.`Username_id`
+      WHERE 1=1
+        AND (v_MonthFilter IS NULL OR B.`Month_Valid_From`>=v_MonthFilter)
+        AND (v_PubList IS NULL
+             OR (B.`Publisher_id` IS NOT NULL
+                 AND FIND_IN_SET(CAST(B.`Publisher_id` AS CHAR), v_PubList) > 0))
+        AND (v_UserList IS NULL
+             OR (B.`Username_id` IS NOT NULL
+                 AND FIND_IN_SET(CAST(B.`Username_id` AS CHAR), v_UserList) > 0))
+   )
+   (SELECT '00' AS `Korder`,'Month Valid From' AS `Key`,`Month_Valid_From` AS `Value`,'Month_Valid_From' AS `CallKey`,`Month_Valid_From` AS `CallValue`,"" AS `Rows` FROM Base GROUP BY `Month_Valid_From`) UNION ALL
+   (SELECT '02','Publisher',`Publisher`,'Publisher_id',`Publisher_id`,COUNT(*) AS `Rows` FROM Base GROUP BY `Publisher_id`) UNION ALL
+   (SELECT '03','Account',`Account`,'Username_id',`Username_id`,COUNT(*) AS `Rows` FROM Base GROUP BY `Username_id`)
+   ORDER BY 1,3;
+
+ELSE
+
+   (SELECT 'setting' AS `Meta`
+         ,"width=80px,action=2" as `Action`
+         ,'omit=true' AS `id`
+         ,'omit=true' AS `Publisher_id`
+         ,'width=130px,sortable=yes,tooltip=yes' AS `Publisher`
+         ,'omit=true' AS `Username_id`
+         ,'width=150px,sortable=yes,tooltip=yes' AS `Account`
+         ,'width=200px,tooltip=yes' AS `Description`
+         ,'width=120px,sortable=yes' AS `Month Valid From`
+         ,'width=120px' AS `Month Valid to`
+         ,'width=100px,right=true' AS `Bonus Value`
+         ,'width=100px' AS `Conditions`
+         ,'width=080px,right=true' AS `CPA min`
+         ,'width=080px,right=true' AS `NR min`
+         ,'width=080px,right=true' AS `FTD min`
+         ,'omit=true'   AS `Status_id`
+         ,'width=100px' AS `Status`
+         ,'width=070px' AS `Currency`
+         ,'omit=true'   AS `Creation Date`
+         ,'width=130px,sortable=yes,tooltip=yes' AS `Last Update`
+         ,'width=100px' AS `User`
+    FROM DUAL WHERE v_Meta='YES')
+   UNION ALL
+   (SELECT 'data' AS `Meta`
+         ,"..." as `Action`
+         ,B.`id`
+         ,B.`Publisher_id`
+         ,IFNULL(P.`Advertiser_Name`,'') AS `Publisher`
+         ,B.`Username_id`
+         ,IFNULL(U.`username`,'') AS `Account`
+         ,B.`Description`
+         ,B.`Month_Valid_From`
+         ,B.`Month_Valid_to`
+         ,B.`Bonus_Value`
+         ,B.`Conditions`
+         ,B.`CPA_min`
+         ,B.`NR_min`
+         ,B.`FTD_min`
+         ,B.`Status_id`
+         ,B.`Status`
+         ,B.`Currency`
+         ,B.`Creation_Date`
+         ,left(B.`Last_Update`,16) AS `Last Update`
+         ,B.`Operator`
+    FROM `campaign_deal_gestor_bonus` B
+    LEFT JOIN `campaign_publisher` P ON P.`id` = B.`Publisher_id`
+    LEFT JOIN `campaign_username` U ON U.`id` = B.`Username_id`
+    WHERE 1=1
+      AND (v_MonthFilter IS NULL OR B.`Month_Valid_From`>=v_MonthFilter)
+      AND (v_PubList IS NULL
+           OR (B.`Publisher_id` IS NOT NULL
+               AND FIND_IN_SET(CAST(B.`Publisher_id` AS CHAR), v_PubList) > 0))
+      AND (v_UserList IS NULL
+           OR (B.`Username_id` IS NOT NULL
+               AND FIND_IN_SET(CAST(B.`Username_id` AS CHAR), v_UserList) > 0))
+   )
+   ORDER BY CASE `Meta` WHEN 'setting' THEN 0 ELSE 1 END
+          ,`Month Valid From`,`Publisher_id`,`Username_id`,`id`;
+
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+CALL Report_bonus_gestor('');
+CALL Report_bonus_gestor('meta=no');
+CALL Report_bonus_gestor('Filters=yes');
+CALL Report_bonus_gestor('Month_Valid_From=LM,Filters=yes');
+*/

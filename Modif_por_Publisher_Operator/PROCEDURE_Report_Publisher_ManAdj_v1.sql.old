@@ -1,0 +1,295 @@
+/*
+PROCEDURE_Report_Publisher_ManAdj_v1.sql - Edit Campaign Publisher Manual Adjustments
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Month_From      =[AAAA-MM]. OPCIONAL. Default=Last 6 Month.
+DataLapse       =[ALL | -3 | -6 | -12]. OPCIONAL. Default=all
+Publisher_id    =[ALL | id del Publisher]. OBLIGATORIO. Default=''
+Status          =[ALL | Status]. OPCIONAL. Default=ALL
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_Publisher_ManAdj(''); -- Devuelve todos los ajustes de los últimos 6 meses
+call Report_Publisher_ManAdj('debug=ye,Publisher_id=74,filters=no');
+call Report_Publisher_ManAdj('debug=ye,filters=yes');
+
+15.01.2025 V1.0        Basada en PROCEDURE_Edit_FinMov_ManAdj_v1.5.1
+*/
+ 
+DROP PROCEDURE IF EXISTS Report_Publisher_ManAdj;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Publisher_ManAdj`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Grid para Edit Campaign Publisher Manual Adjustments'
+BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 15.01.2025';
+SET @CurrentDay      =curdate();
+SET @Publisher_id    ='ALL';
+SET @DataLapse       ='-3';
+
+SET @Month_From      ="2022-01";
+SET @Operation       ='ALL';
+SET @Status          ='ALL';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+SET @Debug           ='NO';
+SET @Search          ='';
+
+SET @Owner           ='ALL';
+SET @Currency        ='EUR';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='month_from'      THEN SET @Month_From    =UPPER(@v); END IF;
+   IF lower(@k)='datalapse'       THEN SET @DataLapse     =UPPER(@v); END IF;
+   IF lower(@k)='publisher_id'    THEN SET @Publisher_id  =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='operation'       THEN SET @Operation     =      @v;  END IF;
+   IF lower(@k)='status'          THEN SET @Status        =      @v;  END IF;
+   IF lower(@k)='search'          THEN SET @Search        =      @v;  END IF;
+
+END WHILE;
+
+-- Recupera espacios reemplazados en front end por caracter "\"
+SET @Operation      =replace(@Operation,"!"," ");
+
+IF    @DataLapse!="ALL" 
+THEN  IF    @DataLapse="CM"  THEN SET @Month_From=LEFT(CURDATE(),7);                              END IF;  -- Current Month  
+      IF    @DataLapse="CY"  THEN SET @Month_From=CONCAT(YEAR(CURDATE()),"-01");                  END IF;  -- Current Year
+      IF    @DataLapse="LM"  THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);  END IF;  -- Last    month
+      IF    @DataLapse="-3d" THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 3 DAY),7);    END IF;  -- Last  3 DAYS
+      IF    @DataLapse="-3"  THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 3 MONTH),7);  END IF;  -- Last  3 months
+      IF    @DataLapse="-6"  THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 6 MONTH),7);  END IF;  -- Last  6 months
+      IF    @DataLapse="-12" THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 12 MONTH),7); END IF;  -- Last 12 months
+END IF;    
+
+IF @Debug!="NO" THEN SELECT @Month_From,@DataLapse,@Filters,@OWNER,@Publisher_id
+                           ,@Operation,@Currency,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereMonth_From    ='';
+SET @WherePublisher_id  ='';
+SET @WhereOperation     ='';
+SET @WhereStatus        ='';
+SET @WhereSearch        ='';
+
+IF    @DataLapse="-0" or @DataLapse="-1"
+THEN  SET @WhereMonth_From=concat('="',@Month_From,'"');
+ELSE  SET @WhereMonth_From=concat('>="',@Month_From,'"');
+END IF;
+
+IF @Publisher_id  !="ALL" THEN SET @WherePublisher_id  =CONCAT(" AND M.Publisher_id   =",@Publisher_id  ); END IF;
+IF @Status        !="ALL" THEN SET @WhereStatus        =CONCAT(" AND M.Status_id      =",@Status        ); END IF;
+IF @Search        !=""    THEN SET @WhereSearch        =CONCAT(" AND (M.Description LIKE '%",@Search,"%' OR M.Remarks LIKE '%",@Search,"%')"); END IF;
+
+IF @Debug!="NO" THEN SELECT @WherePublisher_id,@WhereMonth_From,@WhereStatus,@WhereSearch; END IF;
+
+/**************************************************************************************************************/
+SET @SQLmeta=concat(
+'(
+SELECT
+   "setting"                as Meta
+	,"width=80px,action=2"   as `Action`                                                      
+   ,"omit=true"             as id
+   ,"omit=true"             as Publisher_id
+   ,"width=100px"           as Date
+   ,"width=150px"           as Publisher
+   ,"omit=true"             as Month
+   ,"width=100px"           as Op_type
+   ,"width=300px"           AS `Description`
+   ,"width=070px"           AS `Currency`
+   ,"width=100px,right=yes" AS `Amount_to_invoice`
+   ,"omit=true"             as Status_id
+   ,"width=100px"           AS Status
+   ,"width=100px"           AS `Impact Profit`
+   ,"omit=true"             as Owner_id
+   ,"width=100px"           as `Owner`
+   ,"width=200px"           as `Remarks`
+   ,"omit=true"             as Creation_Date
+   ,"width=160px"           as `Last Update`
+   ,"width=100px"           as `User`
+	FROM DUAL WHERE @Meta="YES")
+UNION ALL 
+'
+);
+
+/**************************************************************************************************************/
+
+SET @CTE=concat('
+WITH Adjustments AS (
+SELECT '
+   ,IF(@Meta="YES","'data' as `Meta`,",""),'
+	 "..." as `Action`
+   ,M.`id`
+   ,M.`Publisher_id`
+   ,M.`Date`
+   ,P.`Advertiser_Name`            as Publisher
+   ,LEFT(M.Date,7)                 as MonthFrom
+   ,M.`Op_type`                    As Operation
+   ,M.`Description`
+   ,M.`Currency`
+   ,ROUND(IFNULL(M.`Amount_to_invoice`,""),2) as `Amount_to_invoice`   
+   ,M.`Status_id`
+   ,CASE M.`Status_id` 
+      WHEN 0 then "Pending" 
+      WHEN 1 then "Active" 
+      WHEN 2 then "Processed" 
+      ELSE "Inactive" 
+      END                          as `Status`
+   ,CASE M.`IncludeInProfitCalculation`
+      WHEN 0 then "No"
+      WHEN 1 then "Yes"
+      ELSE "Unknown"
+      END                          as `IncludeInProfitCalculation`
+   ,M.`Owner_id`
+   ,IFNULL(O.`username`,"")        as `Owner`
+   ,IFNULL(M.`Remarks`,"")         as `Remarks`
+   ,M.`Creation_Date`
+   ,LEFT(M.`Last_Update`,16)       as `Last_Update`
+   ,IFNULL(U.`username`,"SysOp")   as `Operator`
+FROM campaign_publisher_manual_adjustments M
+LEFT JOIN `campaign_publisher` `P` ON `P`.`id` = `M`.`Publisher_id`
+LEFT JOIN `account_account`    `O` ON `O`.`id` = `M`.`Owner_id`
+LEFT JOIN `account_account`    `U` ON `U`.`id` = `M`.`Operator`
+-- --------------------------------------------------------------------------------------
+WHERE LEFT(M.Date,7)'
+   ,@WhereMonth_From 
+   ,@WherePublisher_id
+   ,@WhereStatus
+   ,@WhereSearch
+,')'
+);
+
+SET @CloseQuery=';';
+
+SET @SQL=concat(
+@CTE,
+@SQLmeta,
+'
+(SELECT
+    `Meta`,
+		`Action`
+   ,`id`
+   ,`Publisher_id`
+   ,`Date`
+   ,`Publisher`
+   ,`MonthFrom`
+   ,`Operation`
+   ,`Description`
+   ,`Currency`
+   ,FORMAT(`Amount_to_invoice`,2) AS `Amount_to_invoice`
+   ,`Status_id`
+   ,`Status` 
+   ,`IncludeInProfitCalculation`
+   ,`Owner_id`
+   ,`Owner`
+   ,`Remarks`
+   ,`Creation_Date`
+   ,`Last_Update`
+   ,`Operator`
+FROM Adjustments M)
+UNION ALL
+(
+SELECT '
+   ,IF(@Meta="YES","'total' as `Meta`,",""),'
+    "~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"           
+   ,"~~~~~ Total ~~~~~"
+   ,`Currency`
+   ,format(sum(`Amount_to_invoice`),2) as `Amount_to_invoice`
+   ,"~~~~~"
+   ,`Status`
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+FROM Adjustments M 
+GROUP BY `Currency`,`Status`
+)
+ORDER BY case when DATE="~~~~~" then "9999-99-99" ELSE DATE end DESC,`Last Update` desc ,Publisher',@CloseQuery
+);
+
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "10" as "Korder"
+            ,"Publisher" AS "Key"
+                         ,`Publisher` AS "Value"
+                                          ,"Publisher_id" AS `CallKey`
+                                                         ,`Publisher_id` AS "CallValue"
+                                                                         ,COUNT(*) AS "Rows"
+                                                                                        FROM Adjustments GROUP BY `Publisher_id`       )  UNION ALL
+(SELECT "05","Status"     ,`Status`       ,"Status"       ,`Status_id`   ,COUNT(*) AS K FROM Adjustments GROUP BY IFNULL(`Status`     ,"")) UNION ALL
+(SELECT "02","Date range" ,"All data"      ,"DataLapse"  ,"all"          ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Current month" ,"DataLapse"  ,"CM"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Current year"  ,"DataLapse"  ,"CY"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last    month" ,"DataLapse"  ,"LM"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last  3 days"  ,"DataLapse"  ,"-3d"          ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last  3 months","DataLapse"  ,"-3"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last  6 months","DataLapse"  ,"-6"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last 12 months","DataLapse"  ,"-12"          ,"" AS K FROM DUAL) -- UNION ALL
+ORDER BY 1,3
+;');
+
+IF @Filters="yes" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Report_Publisher_ManAdj(''); -- Devuelve todos los ajustes de los últimos 6 meses
+call Report_Publisher_ManAdj('debug=ye,Publisher_id=74,filters=no,meta=yes');
+call Report_Publisher_ManAdj('debug=ye,search=invoice,filters=ye');
+call Report_Publisher_ManAdj('Publisher_id="39",status=1,meta=yes,debug=no');
+call Report_Publisher_ManAdj('Publisher_id=39,status=1,debug=no');
+call Report_Publisher_ManAdj('Publisher_id=39,debug=YE');
+
+*/

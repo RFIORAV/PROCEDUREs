@@ -1,0 +1,26 @@
+/* PROCEDURE_FX_Compare_DbD_DbD_lm.sql
+   05.09.2022 V1 COMPARA forex_day_by_day_2 contra forex_day_by_day_lm_2. Devuelve diferencias
+   10.09.2022 v2 Identifica Afiliado
+   21.09.2022 v2.1 INSERT por la diferencia y también para reemplazar todos los registros de la cuenta
+              v2.2 Hour_Update
+              v2.3 Invoca call FX_Sync_MS_DbD_DbD_lm('view');
+   Parametros (none)
+   
+*/
+
+DROP PROCEDURE IF EXISTS FX_Compare_DbD_DbD_lm;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE FX_Compare_DbD_DbD_lm()
+   COMMENT 'V2.2 COMPARA forex_day_by_day_2 vs forex_day_by_day_lm_2'
+   LANGUAGE SQL
+
+BEGIN
+    
+	call FX_Sync_MS_DbD_DbD_lm('view');
+
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call FX_Compare_DbD_DbD_lm();

@@ -1,0 +1,43 @@
+/* PROCEDURE_getDiff.sql
+   Calcula diferencia entre DbD y DbD_temp
+   11.2021 V1
+   07.09.2022 Discontinuado. Desinstalado
+
+*/
+
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `getDiff`(
+	IN `fecha_start` VARCHAR ( 50 ),
+	IN `fecha_end` VARCHAR ( 50 )
+)
+BEGIN
+(
+SELECT case when (T.Qualified_Players < IFNULL(R.Qualified_Players,0))
+        then "Diff <old" ELSE "Diff" END AS Obs
+        ,T.Date,T.Brand,A.username AS 'Affiliate',M.Affiliate_padre AS 'Owner'
+        ,T.Tracker_ID,T.Product
+        ,T.Qualified_Players AS NewCPAs,IFNULL(R.Qualified_Players,0) AS OldCPAs,T.Hour_Update, T.Language
+FROM Snapshot_day_by_day_temp T
+    LEFT JOIN Snapshot_day_by_day R ON T.Brand=R.Brand AND T.Tracker_ID=R.Tracker_ID AND T.Product=R.Product AND T.Date=R.Date
+    LEFT JOIN campaign_marketing_source M ON T.Tracker_ID=M.Code
+    LEFT JOIN account_account A ON M.Affiliate_id=A.id
+WHERE T.Date BETWEEN fecha_start AND fecha_end and (T.Qualified_Players <> IFNULL(R.Qualified_Players,0))
+    -- OR (R.Qualified_Players IS NULL AND T.Qualified_Players>0))
+)
+UNION 
+(
+SELECT "z__Tot Temp"
+        ,MAX(DATE),"zz__________","__________","__________","__________","__________"
+        ,sum(IFNULL(Qualified_Players,0)) AS NewCPAs,0,max(Hour_Update),""
+FROM Snapshot_day_by_day_temp T
+WHERE T.Date BETWEEN fecha_start AND fecha_end
+)
+UNION 
+(
+SELECT "z__Tot DayByDay"
+        ,MAX(DATE),"zz__________","__________","__________","__________","__________"
+        ,0,sum(IFNULL(Qualified_Players,0)) AS OldCPAs,max(Hour_Update),""
+FROM Snapshot_day_by_day T
+WHERE T.Date BETWEEN fecha_start AND fecha_end
+)
+;
+END

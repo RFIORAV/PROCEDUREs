@@ -1,0 +1,170 @@
+/*
+PROCEDURE_Report_MS_deals.sql - Report MS deals (campaign_mkt_source_deal)
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+MS_id      		 =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_MS_deals('MS_id=130,debug=no');
+
+09.02.2023 V1     Primera versión operativa
+15.02.2023 V1.1   Karen. Agrega campo T.id. Agrega switch=yes a Status
+25.02.2023 V1.1	Copiada y adaptada desde Report_Account_deals
+24.03.2023 V1.2	Switch enable/disable
+28.04.2023     	Karen - Fix Switch enable/disable
+
+*/
+
+DROP PROCEDURE IF EXISTS Report_MS_deals;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_MS_deals`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report MS Deals'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.2 28.04.2023';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @MS_id           ='0';
+SET @Debug           ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='MS_id'           THEN SET @MS_id         =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Mode,@Month,@View,@Filters,@MS_id,@Affiliate_id,@Account_id
+                     ,@Currency,@Total,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereMS_id='';
+
+SET @WhereMS_id=CONCAT(" AND T.MS_id=",@MS_id );
+
+SET @Count=0;
+
+/**************************************************************************************************************/
+/*
+SELECT `id`,`Advertiser_id`,`Username_id`,`Product`,`Country`,`Valid_From`,`Deal_id`,`is_active`
+      ,`Creation_Date`,`Last_Update`,`Operator` 
+FROM campaign_deal_gestor_prod_date
+*/
+SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT
+    T.`id`             as `Rule`
+   ,IF(T.`is_active`=1,"Enabled","Disabled") as `Status`
+   ,IF(T.`is_active`=1, 1 , 0)               as `Sw`     -- 28.04.2023 Karen
+   ,A.`Username`                             as `Affiliate`
+   ,CASE WHEN IFNULL(T.`Product`,"")>" " THEN  T.`Product` ELSE "Any" END as `Product`
+   ,T.`Deal_id`                              as `Deal_id`
+   ,CDA.`Deal_Name`                          as `Deal`
+   ,CASE WHEN IFNULL(T.`Country`,"")>" " THEN  T.`Country` ELSE "Any" END as `Country`
+   ,T.`Deal_Valid_From`                      as `Valid From`
+   ,IFNULL(A1.`Username`,"SysOp")            as `Operator` 
+   ,LEFT(IFNULL(T.`Last_Update`,""),16)      as `Last Update`
+   ,T.`Affiliate_id`                         as `Affiliate_id`
+   ,T.`is_active`   
+   ,T.`id`                                     -- 15.02.2023 Karen
+FROM campaign_mkt_source_deal T
+LEFT JOIN `campaign_deal_affiliate` `CDA` ON `CDA`.`id`  = `T`.`Deal_id`
+LEFT JOIN `account_account`         `A`   ON `A`.`id`    = `T`.`Affiliate_id`
+LEFT JOIN `account_account`         `A1`  ON `A1`.`id`   = `T`.`Operator`
+WHERE 1=1 '
+   ,@WhereMS_id
+,')
+');
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+	,"width=80px,action=2"     as `Action`
+   ,"width=080px"             as `Rule`
+   ,"width=080px"             as `Rule Status`       -- Hasta que se habilite el Switch=yes
+   ,"width=100px,switch=yes"  as `Switch`            -- 15.02.2023 Karen
+   ,"width=150px"             as `Affiliate`
+   ,"width=150px"             as `Product`
+   ,"width=080px"             as `Deal id`
+   ,"width=200px,tooltip=yes" as `Deal`
+   ,"width=090px"             as `Country`
+   ,"width=100px"             as `Valid From`
+   ,"width=100px"             as `Operator`    
+   ,"width=150px"             as `Updated on`
+   ,"omit=yes"                as `Affiliate_id`   
+   ,"omit=yes"                as `is_active`        
+   ,"omit=yes"                as `id`                -- 15.02.2023 Karen
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`
+	,"..." as `Action`
+	,MT.* 
+FROM Main_Table_Data MT
+order by `is_active` desc,`Valid From` desc,`Product`,id desc
+;');
+
+-- ------------------------------------------------------------
+
+-- IF @Filters!="NO" THEN SET @SQL=@SQLfilters; END IF;
+
+-- IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Report_MS_deals('MS_id=130,debug=no');
+call Report_MS_deals('MS_id=130,debug=yes');
+*/

@@ -1,0 +1,477 @@
+/*
+PROCEDURE_Dash_Mob_Aff_BrandByWeek_v2.sql - Dashboard Mobile Aff Performance Brand by week
+
+Descripcion:
+  Procedimiento Dash_Mob_Aff_BrandByWeek.
+  Metricas semanales por Brand para un affiliate, con salida Classic, AreaChart o DonutChart.
+
+Observaciones:
+  Cada Key debe estar seguida de = y el valor deseado SIN comillas
+  Cada par Key=Value debe ir seguido de una COMA
+  El conjunto de pares debe ir entre '' (comillas simples) como unico parametro string
+
+Keys:
+ Affiliate_id  = [id affiliate]. OBLIGATORIO. No admite ALL ni vacio.
+ Month         = [YYYY-MM | CM | LM]. OPCIONAL. Default=mes actual (o mes anterior si dia<=5).
+ Advertiser_id = [ALL | id]. OPCIONAL. Default=ALL.
+ Brand         = [ALL | nombre Brand]. OBLIGATORIO. ALL acumula todas las marcas.
+ Metric        = [CPA | FTD | Views | Clicks | Signups | CPA_PM | ALL]. OPCIONAL. Default=CPA. ALL solo en AreaChart (todas las series).
+ Style         = [Classic | AreaChart | DonutChart]. OPCIONAL. Default=Classic.
+ Filters       = [Yes | No]. OPCIONAL. Default=No.
+ Meta          = [No | Yes]. OPCIONAL. Default=No. Solo aplica a Style=Classic.
+ Debug         = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Salidas por Style:
+ Classic     - Todas las metricas en una fila por Brand/Week (formato tabular con Meta opcional).
+ AreaChart   - Columnas meta,label,series_name,value por semana. Metric=ALL devuelve todas las metricas como series.
+ DonutChart  - Columnas label,value con acumulado mensual de la metrica por Brand (Brand=ALL: una fila por Brand).
+
+Parametros ('[Key=Value[,...]]')
+
+Ejemplos:
+ call Dash_Mob_Aff_BrandByWeek('Affiliate_id=450,Brand=ALL');
+ call Dash_Mob_Aff_BrandByWeek('Affiliate_id=450,Brand=GoldBet,Month=LM,Style=AreaChart,Metric=Signups');
+ call Dash_Mob_Aff_BrandByWeek('Affiliate_id=450,Brand=ALL,Style=AreaChart,Metric=ALL');
+ call Dash_Mob_Aff_BrandByWeek('Affiliate_id=450,Brand=ALL,Month=LM,Style=DonutChart');
+ call Dash_Mob_Aff_BrandByWeek('Affiliate_id=450,Brand=ALL,Style=Classic,debug=KeyValues');
+
+25.01.2024 V1     Primera version
+27.01.2024        Karen: fix errors
+27.01.2024 v1.1   Agrega columna CPA mes previo
+11.06.2024 v1.2   Tratamiento de Subafiliados
+18.06.2026 v2     Quita Owner; Affiliate_id obligatorio; Metric y Style (Classic/AreaChart/DonutChart)
+18.06.2026 v2     Brand obligatorio; ALL acumula todas las marcas (Classic/AreaChart); DonutChart ALL desglosa por Brand; Metric default CPA; AreaChart Metric=ALL
+*/
+
+DROP PROCEDURE IF EXISTS Dash_Mob_Aff_BrandByWeek;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_Mob_Aff_BrandByWeek`(IN InputCommLine VARCHAR(250))
+COMMENT 'v2 18.06.2026 - Dashboard Mobile Aff Brand by week (Classic/AreaChart/DonutChart)'
+SQL SECURITY DEFINER
+proc_label:BEGIN
+    DECLARE v_Version VARCHAR(32) DEFAULT 'v2 18.06.2026';
+    DECLARE v_InputCommLine VARCHAR(500);
+    DECLARE v_Month VARCHAR(7);
+    DECLARE v_Month_Report VARCHAR(7);
+    DECLARE v_Prev_Month_Report VARCHAR(7);
+    DECLARE v_Affiliate_id VARCHAR(50) DEFAULT '';
+    DECLARE v_Advertiser_id VARCHAR(50) DEFAULT 'ALL';
+    DECLARE v_Brand VARCHAR(100) DEFAULT '';
+    DECLARE v_Metric VARCHAR(30) DEFAULT 'CPA';
+    DECLARE v_Style VARCHAR(30) DEFAULT 'CLASSIC';
+    DECLARE v_Filters VARCHAR(3) DEFAULT 'NO';
+    DECLARE v_Meta VARCHAR(3) DEFAULT 'NO';
+    DECLARE v_Debug VARCHAR(20) DEFAULT 'NO';
+    DECLARE v_AffiliateGroup INT DEFAULT 0;
+    DECLARE v_SnapshotTable VARCHAR(64) DEFAULT 'Snapshot_day_by_day_fact2';
+    DECLARE v_MetricExpr VARCHAR(80) DEFAULT '';
+    DECLARE v_MetricLabel VARCHAR(30) DEFAULT '';
+    DECLARE v_MonthFilter VARCHAR(7) DEFAULT '';
+    DECLARE v_SQL LONGTEXT DEFAULT '';
+    DECLARE v_SQLmeta LONGTEXT DEFAULT '';
+    DECLARE v_WhereAffiliate_id VARCHAR(120) DEFAULT '';
+    DECLARE v_WhereBrand VARCHAR(200) DEFAULT '';
+    DECLARE v_BrandSelectExpr VARCHAR(80) DEFAULT 'Brand';
+    DECLARE v_GroupByClause VARCHAR(80) DEFAULT 'Brand,`Week`';
+    DECLARE v_e INT;
+    DECLARE v_c INT;
+    DECLARE v_k VARCHAR(100);
+    DECLARE v_v VARCHAR(250);
+
+    SET v_Month = IF(
+        DAY(CURDATE()) <= 5,
+        LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), 7),
+        LEFT(CURDATE(), 7)
+    );
+
+    SET v_InputCommLine = CONCAT(IFNULL(InputCommLine, ''), ',');
+    SET v_InputCommLine = REPLACE(v_InputCommLine, '"', '');
+
+    WHILE v_InputCommLine > ' ' DO
+        SET v_e = INSTR(v_InputCommLine, '=');
+        SET v_c = INSTR(v_InputCommLine, ',');
+
+        IF v_e = 0 OR v_c = 0 OR v_e > v_c THEN
+            LEAVE proc_label;
+        END IF;
+
+        SET v_k = TRIM(SUBSTRING(v_InputCommLine, 1, v_e - 1));
+        SET v_v = TRIM(SUBSTRING(v_InputCommLine, v_e + 1, v_c - (v_e + 1)));
+        SET v_InputCommLine = SUBSTRING(v_InputCommLine, v_c + 1);
+
+        IF LOWER(v_k) = 'month'         THEN SET v_Month         = v_v;        END IF;
+        IF LOWER(v_k) = 'affiliate_id'  THEN SET v_Affiliate_id  = v_v;        END IF;
+        IF LOWER(v_k) = 'advertiser_id' THEN SET v_Advertiser_id = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'brand'         THEN SET v_Brand         = TRIM(v_v);  END IF;
+        IF LOWER(v_k) = 'metric'        THEN SET v_Metric        = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'style'         THEN SET v_Style         = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'filters'       THEN SET v_Filters       = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'meta'          THEN SET v_Meta          = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'debug'         THEN SET v_Debug         = UPPER(v_v); END IF;
+    END WHILE;
+
+    IF v_Affiliate_id = '' OR UPPER(v_Affiliate_id) = 'ALL' THEN
+        SELECT 'ERROR: Affiliate_id obligatorio. No admite ALL ni vacio.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    IF v_Affiliate_id NOT REGEXP '^[0-9]+$' THEN
+        SELECT 'ERROR: Affiliate_id debe ser numerico.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    IF v_Brand = '' THEN
+        SELECT 'ERROR: Brand obligatorio. Informe ALL para acumular todas las marcas.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    IF UPPER(v_Brand) <> 'ALL' THEN
+        SET v_WhereBrand = CONCAT(' AND Brand = "', REPLACE(v_Brand, '"', '""'), '" ');
+        SET v_BrandSelectExpr = 'Brand';
+        SET v_GroupByClause = 'Brand,`Week`';
+    ELSE
+        SET v_WhereBrand = '';
+        SET v_BrandSelectExpr = "'ALL'                         as `Brand`";
+        SET v_GroupByClause = '`Week`';
+    END IF;
+
+    IF v_Style NOT IN ('CLASSIC', 'AREACHART', 'DONUTCHART') THEN
+        SELECT 'ERROR: Style invalido. Valores permitidos: Classic, AreaChart, DonutChart.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    SET v_Month_Report = v_Month;
+    IF UPPER(v_Month) = 'CM' THEN
+        SET v_Month_Report = LEFT(CURDATE(), 7);
+    ELSEIF UPPER(v_Month) = 'LM' THEN
+        SET v_Month_Report = LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), 7);
+    END IF;
+
+    IF CHAR_LENGTH(v_Month_Report) <> 7
+       OR SUBSTRING(v_Month_Report, 5, 1) <> '-'
+       OR STR_TO_DATE(CONCAT(v_Month_Report, '-01'), '%Y-%m-%d') IS NULL THEN
+        SELECT 'ERROR: Month invalido. Formato esperado YYYY-MM (o alias CM / LM).' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    SET v_Prev_Month_Report = LEFT(DATE_SUB(CONCAT(v_Month_Report, '-01'), INTERVAL 1 DAY), 7);
+
+    IF v_Metric = 'ALL' AND v_Style <> 'AREACHART' THEN
+        SELECT 'ERROR: Metric=ALL solo aplica a Style=AreaChart.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    IF v_Metric NOT IN ('CPA', 'FTD', 'VIEWS', 'CLICKS', 'SIGNUPS', 'CPA_PM', 'ALL') THEN
+        SELECT 'ERROR: Metric invalido. Valores permitidos: CPA, FTD, Views, Clicks, Signups, CPA_PM, ALL.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    SELECT IFNULL(MAX(group_id), 0) INTO v_AffiliateGroup
+    FROM account_account_groups
+    WHERE account_id = CAST(v_Affiliate_id AS UNSIGNED)
+      AND group_id = 6;
+
+    IF v_AffiliateGroup = 6 THEN
+        SET v_SnapshotTable = 'sub_Snapshot_day_by_day_fact3';
+    END IF;
+
+    SET v_WhereAffiliate_id = CONCAT(' AND Affiliate_id = ', v_Affiliate_id, ' ');
+
+    IF v_Debug = 'KEYVALUES' THEN
+        SELECT
+            v_Version             AS version,
+            v_Month               AS month_input,
+            v_Month_Report        AS month_report,
+            v_Prev_Month_Report   AS prev_month_report,
+            v_Affiliate_id        AS affiliate_id,
+            v_Advertiser_id       AS advertiser_id,
+            v_Brand               AS brand,
+            v_Metric              AS metric,
+            v_Style               AS style,
+            v_AffiliateGroup      AS affiliate_group,
+            v_SnapshotTable       AS snapshot_table,
+            v_Meta                AS meta,
+            v_Debug               AS debug;
+    END IF;
+
+    IF v_Debug NOT IN ('NO', 'KEYVALUES') THEN
+        SELECT
+            v_Month_Report      AS month_report,
+            v_Prev_Month_Report AS prev_month_report,
+            v_Affiliate_id      AS affiliate_id,
+            v_Style             AS style,
+            v_Metric            AS metric,
+            InputCommLine       AS input_comm_line;
+    END IF;
+
+    SET SESSION group_concat_max_len = 200000;
+
+    IF v_Style = 'CLASSIC' THEN
+        SET v_SQLmeta = '
+SELECT
+   "setting"
+   ,"width=100px"                         `Affiliate_id`
+   ,"width=100px"                         `Month`
+   ,"width=100px"                         `Week`
+   ,"width=110px,sortable=yes"            `Brand`
+   ,"width=090px, right=true"             `CPA`
+   ,"width=090px, right=true"             `FTD`
+   ,"width=090px, right=true"             `Views`
+   ,"width=090px, right=true"             `Clicks`
+   ,"width=090px, right=true"             `Signups`
+   ,"width=110px, right=true"             `CPA Prev Mth`
+    FROM DUAL WHERE @MetaClassic = "YES"
+UNION ALL ';
+
+        SET v_SQL = CONCAT('
+WITH
+Set_Acum_CM_LM as (
+   SELECT
+      Affiliate_id
+     ,"', v_Month_Report, '"              as `Month`
+     ,CASE
+         WHEN DAY(DATE) BETWEEN 01 AND 07 THEN 1
+         WHEN DAY(DATE) BETWEEN 08 AND 14 THEN 2
+         WHEN DAY(DATE) BETWEEN 15 AND 21 THEN 3
+         WHEN DAY(DATE) BETWEEN 22 AND 28 THEN 4
+         ELSE 5 END                     as `Week`
+     ,', v_BrandSelectExpr, '
+     ,sum(IFNULL(Qualified_Players,0) ) AS `CPA`
+     ,sum(IFNULL(First_Time_Deposit,0)) AS `FTD`
+     ,sum(IFNULL(Views,0)             ) AS `Views`
+     ,sum(IFNULL(Clicks,0)            ) AS `Clicks`
+     ,sum(IFNULL(Signups,0)           ) AS `Signups`
+     ,0                                 as `CPA PM`
+   FROM ', v_SnapshotTable, '
+   WHERE LEFT(DATE,7) ="', v_Month_Report, '" ', v_WhereAffiliate_id, v_WhereBrand, '
+   GROUP BY ', v_GroupByClause, '
+   UNION ALL
+   SELECT
+      Affiliate_id
+     ,"', v_Month_Report, '"              as `Month`
+     ,CASE
+         WHEN DAY(DATE) BETWEEN 01 AND 07 THEN 1
+         WHEN DAY(DATE) BETWEEN 08 AND 14 THEN 2
+         WHEN DAY(DATE) BETWEEN 15 AND 21 THEN 3
+         WHEN DAY(DATE) BETWEEN 22 AND 28 THEN 4
+         ELSE 5 END                     as `Week`
+     ,', v_BrandSelectExpr, '
+     ,0                                 AS `CPA`
+     ,0                                 AS `FTD`
+     ,0                                 AS `Views`
+     ,0                                 AS `Clicks`
+     ,0                                 AS `Signups`
+     ,sum(IFNULL(Qualified_Players,0) ) as `CPA PM`
+   FROM ', v_SnapshotTable, '
+   WHERE LEFT(DATE,7) ="', v_Prev_Month_Report, '" ', v_WhereAffiliate_id, v_WhereBrand, '
+   GROUP BY ', v_GroupByClause, '
+),
+Set_Acumulados as (
+   SELECT
+      Affiliate_id
+     ,`Month`
+     ,`Week`
+     ,Brand
+     ,sum(`CPA`)        AS `CPA`
+     ,sum(`FTD`)        AS `FTD`
+     ,sum(`Views`)      AS `Views`
+     ,sum(`Clicks`)     AS `Clicks`
+     ,sum(`Signups`)    AS `Signups`
+     ,sum(`CPA PM`)     as `CPA PM`
+   FROM Set_Acum_CM_LM
+   GROUP BY ', v_GroupByClause, '
+) ',
+        IF(v_Meta = 'YES', v_SQLmeta, ' '),
+        '
+SELECT "data",A.* FROM Set_Acumulados A
+   ORDER BY Brand,`Week`
+;');
+
+        SET @MetaClassic = v_Meta;
+
+        IF v_Debug = 'YES' THEN
+            SELECT v_SQL AS generated_sql;
+        ELSE
+            SET @v_stmt_sql = v_SQL;
+            PREPARE stmt1 FROM @v_stmt_sql;
+            EXECUTE stmt1;
+            DEALLOCATE PREPARE stmt1;
+        END IF;
+
+        LEAVE proc_label;
+    END IF;
+
+    IF v_Style = 'AREACHART' THEN
+        IF v_Metric = 'ALL' THEN
+            SET v_SQL = CONCAT('
+WITH WeeklyData AS (
+    SELECT
+        CASE
+            WHEN DAY(`Date`) BETWEEN 01 AND 07 THEN 1
+            WHEN DAY(`Date`) BETWEEN 08 AND 14 THEN 2
+            WHEN DAY(`Date`) BETWEEN 15 AND 21 THEN 3
+            WHEN DAY(`Date`) BETWEEN 22 AND 28 THEN 4
+            ELSE 5
+        END AS WeekNum,
+        SUM(IFNULL(Qualified_Players,0))  AS CPA,
+        SUM(IFNULL(First_Time_Deposit,0)) AS FTD,
+        SUM(IFNULL(Views,0))              AS Views,
+        SUM(IFNULL(Clicks,0))             AS Clicks,
+        SUM(IFNULL(Signups,0))            AS Signups
+    FROM ', v_SnapshotTable, '
+    WHERE LEFT(`Date`, 7) = "', v_Month_Report, '" ', v_WhereAffiliate_id, v_WhereBrand, '
+    GROUP BY WeekNum
+),
+WeeklyDataPM AS (
+    SELECT
+        CASE
+            WHEN DAY(`Date`) BETWEEN 01 AND 07 THEN 1
+            WHEN DAY(`Date`) BETWEEN 08 AND 14 THEN 2
+            WHEN DAY(`Date`) BETWEEN 15 AND 21 THEN 3
+            WHEN DAY(`Date`) BETWEEN 22 AND 28 THEN 4
+            ELSE 5
+        END AS WeekNum,
+        SUM(IFNULL(Qualified_Players,0)) AS CPA_PM
+    FROM ', v_SnapshotTable, '
+    WHERE LEFT(`Date`, 7) = "', v_Prev_Month_Report, '" ', v_WhereAffiliate_id, v_WhereBrand, '
+    GROUP BY WeekNum
+)
+SELECT meta, label, series_name, value
+FROM (
+    SELECT
+        0 AS sort_order,
+        0 AS week_num,
+        0 AS series_order,
+        "axisName" AS meta,
+        "Weeks" AS label,
+        "-" AS series_name,
+        "" AS value
+    UNION ALL 
+    SELECT 1, W.WeekNum, 1, "data", CONCAT("Week ", W.WeekNum), "CPA", W.CPA FROM WeeklyData W UNION ALL
+    SELECT 1, W.WeekNum, 2, "data", CONCAT("Week ", W.WeekNum), "FTD", W.FTD FROM WeeklyData W UNION ALL
+    SELECT 1, W.WeekNum, 3, "data", CONCAT("Week ", W.WeekNum), "Views", W.Views  FROM WeeklyData W UNION ALL
+    SELECT 1, W.WeekNum, 4, "data", CONCAT("Week ", W.WeekNum), "Clicks", W.Clicks FROM WeeklyData W UNION ALL
+    SELECT 1, W.WeekNum, 5, "data", CONCAT("Week ", W.WeekNum), "Signups", W.Signups  FROM WeeklyData W UNION ALL
+    SELECT 1, P.WeekNum, 6, "data", CONCAT("Week ", P.WeekNum), "CPA Prev Mth", P.CPA_PM  FROM WeeklyDataPM P
+) chart_rows
+ORDER BY sort_order, week_num, series_order
+;');
+        ELSE
+            SET v_MetricExpr = CASE v_Metric
+                WHEN 'CPA'      THEN 'IFNULL(Qualified_Players,0)'
+                WHEN 'FTD'      THEN 'IFNULL(First_Time_Deposit,0)'
+                WHEN 'VIEWS'    THEN 'IFNULL(Views,0)'
+                WHEN 'CLICKS'   THEN 'IFNULL(Clicks,0)'
+                WHEN 'SIGNUPS'  THEN 'IFNULL(Signups,0)'
+                WHEN 'CPA_PM'   THEN 'IFNULL(Qualified_Players,0)'
+                ELSE '0'
+            END;
+
+            SET v_MetricLabel = CASE v_Metric
+                WHEN 'CPA'      THEN 'CPA'
+                WHEN 'FTD'      THEN 'FTD'
+                WHEN 'VIEWS'    THEN 'Views'
+                WHEN 'CLICKS'   THEN 'Clicks'
+                WHEN 'SIGNUPS'  THEN 'Signups'
+                WHEN 'CPA_PM'   THEN 'CPA Prev Mth'
+                ELSE ''
+            END;
+
+            SET v_MonthFilter = IF(v_Metric = 'CPA_PM', v_Prev_Month_Report, v_Month_Report);
+
+            SET v_SQL = CONCAT('
+WITH WeeklyData AS (
+    SELECT
+        CASE
+            WHEN DAY(`Date`) BETWEEN 01 AND 07 THEN 1
+            WHEN DAY(`Date`) BETWEEN 08 AND 14 THEN 2
+            WHEN DAY(`Date`) BETWEEN 15 AND 21 THEN 3
+            WHEN DAY(`Date`) BETWEEN 22 AND 28 THEN 4
+            ELSE 5
+        END AS WeekNum,
+        SUM(', v_MetricExpr, ') AS metric_value
+    FROM ', v_SnapshotTable, '
+    WHERE LEFT(`Date`, 7) = "', v_MonthFilter, '" ', v_WhereAffiliate_id, v_WhereBrand, '
+    GROUP BY WeekNum
+)
+SELECT meta, label, series_name, value
+FROM (
+    SELECT
+        0 AS sort_order,
+        0 AS week_num,
+        "axisName" AS meta,
+        "Weeks" AS label,
+        "-" AS series_name,
+        "" AS value
+    UNION ALL
+    SELECT
+        1 AS sort_order,
+        WeekNum AS week_num,
+        "data" AS meta,
+        CONCAT("Week ", WeekNum) AS label,
+        "', v_MetricLabel, '" AS series_name,
+        metric_value AS value
+    FROM WeeklyData
+) chart_rows
+ORDER BY sort_order, week_num
+;');
+        END IF;
+
+        IF v_Debug = 'YES' THEN
+            SELECT v_SQL AS generated_sql;
+        ELSE
+            SET @v_stmt_sql = v_SQL;
+            PREPARE stmt2 FROM @v_stmt_sql;
+            EXECUTE stmt2;
+            DEALLOCATE PREPARE stmt2;
+        END IF;
+
+        LEAVE proc_label;
+    END IF;
+
+    SET v_MetricExpr = CASE v_Metric
+        WHEN 'CPA'      THEN 'IFNULL(Qualified_Players,0)'
+        WHEN 'FTD'      THEN 'IFNULL(First_Time_Deposit,0)'
+        WHEN 'VIEWS'    THEN 'IFNULL(Views,0)'
+        WHEN 'CLICKS'   THEN 'IFNULL(Clicks,0)'
+        WHEN 'SIGNUPS'  THEN 'IFNULL(Signups,0)'
+        WHEN 'CPA_PM'   THEN 'IFNULL(Qualified_Players,0)'
+        ELSE '0'
+    END;
+
+    SET v_MonthFilter = IF(v_Metric = 'CPA_PM', v_Prev_Month_Report, v_Month_Report);
+
+    IF v_Style = 'DONUTCHART' THEN
+        SET v_SQL = CONCAT('
+SELECT
+    Brand AS label,
+    SUM(', v_MetricExpr, ') AS value
+FROM ', v_SnapshotTable, '
+WHERE LEFT(`Date`, 7) = "', v_MonthFilter, '" ', v_WhereAffiliate_id, v_WhereBrand, '
+GROUP BY Brand
+HAVING SUM(', v_MetricExpr, ') <> 0
+ORDER BY value DESC
+;');
+
+        IF v_Debug = 'YES' THEN
+            SELECT v_SQL AS generated_sql;
+        ELSE
+            SET @v_stmt_sql = v_SQL;
+            PREPARE stmt3 FROM @v_stmt_sql;
+            EXECUTE stmt3;
+            DEALLOCATE PREPARE stmt3;
+        END IF;
+    END IF;
+
+END$$
+DELIMITER ;
+
+/*
+Ejemplos:
+
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=450,Brand=ALL,Meta=Yes');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=527,Brand=GoldBet,Month=CM,Style=AreaChart,Metric=Signups');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=39,Brand=ALL,Month=LM,Style=DonutChart,Metric=CPA');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=527,Brand=ALL,Style=Classic,debug=KeyValues');
+*/

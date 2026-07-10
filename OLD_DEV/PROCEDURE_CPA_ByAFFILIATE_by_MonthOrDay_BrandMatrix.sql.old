@@ -1,0 +1,118 @@
+/* 
+PROCEDURE_CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix.sql() - CPA x Month/Day x Affiliate - Matriz por Brand 
+
+Observaciones: 
+   Columnas Brands variables. 
+   Doble columna de Totales
+   Parámetro 1=ViewGES PARA VIEWS DEL GESTOR    (usa FACT1)
+   Parámetro 1=ViewAFF PARA VIEWS DEL AFILIADO  (usa FACT2)
+   Parámetro 4=ByDay agrupa info por DIA. 4<>ByDay agrupa por MES
+   Parámetro 6=ROLLUP aplica la cláusula WITH ROLLUP al GROUP BY
+
+Parámetros ( [ViewGES | ViewAFF] , [AffiliateID | ALL] , [Month] , [ByDay | ''] , [Owner | ALL] , [ROLLUP | ' '] )
+
+Ejemplos:
+   call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-08',''     ,'ALL','ROLLUP');
+   call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','ALL','2022-09','ByDay','ALL','ROLLUP');
+   call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-09',''     ,'ALL','');
+   call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-06',''     ,'2'  ,'ROLLUP');
+   call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','39' ,'2022-08','ByDay','ALL','rollup');
+
+   04.09.2022 V1 Total_FACT1_AFFILIATE_CPAbyDay_BrandMatrix
+   08.09.2022 V2 FACT1/2 Como parámetro + Currency. Unifica acumulaciones de CPA
+*/
+
+DROP PROCEDURE IF EXISTS CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix`(IN
+   AreaUser VARCHAR(50),
+   AffiliateID VARCHAR(50),
+   Month VARCHAR(7),
+   ByDay VARCHAR(6),
+   Owner VARCHAR(50),
+   RollUp VARCHAR(6)
+   )
+    COMMENT 'CPA [ViewGES/ViewAFF] x [Affiliate/ALL] [Month] x [Owner/ALL] - Matriz por Brand'
+BEGIN
+
+	IF AreaUser='ViewGES' THEN
+      SET @DataTable=" FROM Snapshot_day_by_day_fact1 ";
+   ELSE
+      SET @DataTable=" FROM Snapshot_day_by_day_fact2 ";
+	END IF;
+   
+	IF LOWER(AffiliateID)='all' THEN
+   	SET @AffiliateID_from='0';
+      SET @AffiliateID_until='9999999999999';
+   ELSE
+   	SET @AffiliateID_from=CAST(AffiliateID AS UNSIGNED INTEGER);
+      SET @AffiliateID_until=CAST(AffiliateID AS UNSIGNED INTEGER);
+	END IF;
+
+	IF LOWER(Owner)='all' THEN
+   	SET @Owner_from='0';
+      SET @Owner_until='9999999999999';
+   ELSE
+   	SET @Owner_from=CAST(Owner AS UNSIGNED INTEGER);
+      SET @Owner_until=CAST(Owner AS UNSIGNED INTEGER);
+	END IF;
+
+	IF Month is not null THEN
+      SET @Month_Report=Month;
+   ELSE
+      SET @Month_Report=LEFT(curdate(),7);
+	END IF;
+
+	IF LOWER(ByDay)='byday' THEN SET @ByDay='"yes"';
+   ELSE SET @ByDay='"no"';
+	END IF;   
+
+   IF LOWER(RollUp)='rollup' THEN SET @RollUp=' WITH ROLLUP';
+   ELSE SET @RollUp='';
+	END IF;
+   -- ----------------------------------------------------
+   IF LOWER(ByDay)='byday' THEN SET @Group_by=' GROUP BY Owner,Date ';
+   ELSE SET @Group_by=' GROUP BY Owner,left(Date,7),Affiliate ';
+   END IF;
+   IF LOWER(RollUp)='rollup' THEN SET @Order_by='';
+   ELSE SET @Order_by=' ORDER BY Owner,Date ';
+   END IF;
+   -- ----------------------------------------------------
+   
+   SET SESSION group_concat_max_len = 100000;
+	
+	-- SELECT @Month_Report,Curr_result,@Curr_result,ByDay,@ByDay,@Group_by,@RollUp,@Order_by;
+   -- ,IF(',@AffiliateID_from,'="0",if(@ByDay="yes","ALL",Affiliate),Affiliate) as 
+   
+   SET @SQL = CONCAT('SELECT Owner
+   ,IF(',@ByDay,'="yes",Date,LEFT(Date,7)) as `Date`
+   ,IF(',@AffiliateID_from,'="0",if(',@ByDay,'="yes","ALL",Affiliate),Affiliate) as`Affiliate`
+   ,SUM(Qualified_Players) AS `Total`,',
+   (SELECT GROUP_CONCAT(CONCAT("\r\nSUM(CASE WHEN Brand='", Brand,"' THEN `Qualified_Players` ELSE 0 END) AS '",Brand,"'")
+   ORDER BY Brand)
+   FROM (select distinct Brand from Snapshot_day_by_day_fact1
+         where LEFT(DATE,7)=@Month_Report AND Net_Revenue<>0
+   ) AS xx)
+   ,',\r\nSUM(Qualified_Players) AS `Total` \r\n'
+   ,@DataTable
+   ,'WHERE LEFT(DATE,7)="',@Month_Report
+   ,'" and Affiliate_id BETWEEN ',@AffiliateID_from,' AND ',@AffiliateID_until
+   ,' and Owner BETWEEN ',@Owner_from,' AND ',@Owner_until,'\r\n'
+   ,@Group_by,@RollUp,' HAVING SUM(Qualified_Players)<>0 ',@Order_by,';');
+   
+-- SELECT @SQL;
+   PREPARE stmt1 FROM @SQL;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+
+END$$
+DELIMITER ;
+
+/*
+      call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-08',''     ,'ALL','ROLLUP');
+      call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','ALL','2022-09','ByDay','ALL','ROLLUP');
+      call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-09',''     ,'ALL','');
+      call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-06',''     ,'2'  ,'ROLLUP');
+      call CPA_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','39' ,'2022-08','ByDay','ALL','rollup');
+*/

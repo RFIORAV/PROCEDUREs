@@ -1,0 +1,220 @@
+/* PROCEDURE_Check_DbD.sql - Check Main Table vs Raw data table (fact1/DbD)
+
+   05.09.2022 V1     COMPARA Snapshot_day_by_day contra Snapshot_day_by_day_fact1. Devuelve diferencias
+                     Mes corriente a partir de día 6. Antes del 6, Last Month
+   19.10.2022 V1.1   Columna Meta
+   23.10.2022        Traducción de mensajes. Warning por Deal_Aff=0
+   07.12.2022 V1.2   Warning por Deal_Aff=0 & Deal_Ges=0. Check LM hasta día 20
+   Parametros (none)
+*/
+
+DROP PROCEDURE IF EXISTS Check_DbD;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE Check_DbD()
+   COMMENT 'Check Main Table vs Raw data table (fact1/DbD)'
+   LANGUAGE SQL
+
+BEGIN
+
+SET @Version='v1.3 07.12.2022';
+SET @Meta="YES";
+
+SET @DateCM=LEFT(CURDATE(),7);
+
+IF DAY(CURDATE()) <= 20  
+THEN SET @DateFrom=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+ELSE SET @DateFrom=LEFT(CURDATE(),7);
+END IF;
+    
+-- Difrerencias de CPA entre DbD y DbD_fact1
+WITH Detail_Fact1 as (
+  SELECT "" as Meta,
+     'Fact1' as Tabla,`Date`,Brand,Username_id,Username,Affiliate
+	  ,Tracker_ID,Tracker_Name
+     ,Product
+     ,MS_ID
+	  ,CASE WHEN MS_ID IS NULL     
+           THEN '<<MS missing' 
+            ELSE CASE WHEN ifnull(Deal_Aff_id,0)=0 AND ifnull(Deal_Ges_id,0)=0 AND Affiliate NOT IN ('_Unassigned','Parking')
+                        THEN '<<DEAL G&A missing. Check Prod/ Country'
+                      WHEN ifnull(Deal_Aff_id,0)=0 AND Affiliate NOT IN ('_Unassigned','Parking')
+                      	THEN '<<DEAL Aff missing. Check Prod/ Country'
+                      WHEN ifnull(Deal_Ges_id,0)=0  
+                        THEN '<<DEAL Ges missing. Check Prod/ Country'
+            			 ELSE '' END
+				END  as Warning
+     ,Deal_Aff_id
+     ,SUM(Qualified_Players) AS CPA
+     ,SUM(Net_Revenue) AS NR
+     ,Country
+     ,Hour_Update
+  FROM Snapshot_day_by_day_fact1
+  WHERE LEFT(Date,7)>=@DateFrom 
+      AND (MS_ID IS NULL OR ifnull(Deal_Ges_id,0)=0 
+			OR (Affiliate!='_Unassigned' AND (ifnull(Deal_Aff_id,0)=0 AND Qualified_Players<>0)))
+      AND (Qualified_Players<>0 OR Net_Revenue<>0)
+  GROUP BY Brand,username,Tracker_ID,Tracker_Name,Product HAVING Warning!=''
+  /*
+  UNION ALL -- -----------------------------------------------------------------------
+    SELECT "" as Meta,
+     'Fact1' as Tabla,`Date`,Brand,Username_id,Username,'' AS Affiliate
+	  ,Tracker_ID,'' AS Tracker_Name,MS_ID
+		,CASE WHEN MS_ID IS NULL     
+				THEN '<<MS missing' 
+            ELSE CASE WHEN ifnull(Deal_Aff_id,0)=0 AND
+                           ifnull(Deal_Ges_id,0)=0 AND
+                           SUM(Qualified_Players)<>0 AND
+                           Affiliate!='_Unassigned' THEN '<<DEAL G&A missing'
+                      WHEN ifnull(Deal_Aff_id,0)=0 AND
+                           SUM(Qualified_Players)<>0 AND
+                           Affiliate!='_Unassigned' THEN '<<DEAL Aff missing'
+                      WHEN ifnull(Deal_Ges_id,0)=0  THEN '<<DEAL Ges missing'
+            			 ELSE '' END
+				END  as Warning
+      ,Product,Deal_Aff_id -- ,Deal_Ges_id
+     ,SUM(Qualified_Players) AS CPA
+     ,SUM(Net_Revenue) AS NR
+     ,Country
+     ,Hour_Update
+  FROM Snapshot_day_by_day_fact1
+  WHERE left(Date,7)>=@DateFrom 
+  		AND MS_ID IS NOT NULL 
+      AND Deal IS NULL
+      AND (Qualified_Players<>0 OR Net_Revenue<>0)      
+  GROUP BY Brand,username,Product HAVING Warning!=''
+  UNION ALL -- -----------------------------------------------------------------------
+    SELECT "" as Meta,
+     'Fact1' as Tabla,`Date`,Brand,Username_id,Username,Affiliate
+	  ,Tracker_ID,'' AS Tracker_Name,MS_ID
+		,CASE WHEN MS_ID IS NULL     
+				THEN '<<MS missing' 
+            ELSE CASE WHEN ifnull(Deal_Aff_id,0)=0 AND
+                           ifnull(Deal_Ges_id,0)=0 AND
+                           SUM(Qualified_Players)<>0 AND
+                           Affiliate!='_Unassigned' THEN '<<DEAL G&A missing'
+                      WHEN ifnull(Deal_Aff_id,0)=0 AND
+                           SUM(Qualified_Players)<>0 AND
+                           Affiliate!='_Unassigned' THEN '<<DEAL Aff missing'
+                      WHEN ifnull(Deal_Ges_id,0)=0  THEN '<<DEAL Ges missing'
+            			 ELSE '' END
+				END  as Warning
+      ,Product,Deal_Aff_id
+     ,SUM(Qualified_Players) AS CPA
+     ,SUM(Net_Revenue) AS NR
+     ,Country
+     ,Hour_Update
+  FROM Snapshot_day_by_day_fact1
+  WHERE left(Date,7)>=@DateFrom AND MS_ID IS NOT NULL 
+      AND Deal IS NOT NULL
+      AND Deal_Aff IS NULL
+      AND Qualified_Players<>0
+--     AND (
+--         (Qualified_Players<>0 AND
+--         (Deal is null OR (Deal_Aff is null and Affiliate!='_Unassigned')))
+--          OR  
+--         (Net_Revenue<>0 AND Deal is null)
+--         )
+  GROUP BY Brand,username,MS_ID,Product HAVING Warning!=''
+  */
+  -- -----------------------------------------------------------------------
+  ORDER BY Brand,Affiliate,Tracker_ID,Tracker_Name
+  -- ,Country
+),
+ Tot_Fact1 as (
+ SELECT "" as Meta
+      -- ,'Fact1' as Tabla
+     ,left(Date,7) `Month`,Brand,Username_id,Username,Affiliate
+	  ,Tracker_ID,Tracker_Name
+     ,Product
+     ,Country 
+     ,MS_ID
+     -- ,CASE WHEN MS_ID IS NULL            THEN '<<MS missing' 
+            -- WHEN MS_ID IS not NULL and ifnull(Deal_Aff_id,0)=0  THEN '<<DEAL Aff missing'
+            -- WHEN MS_ID IS not NULL and ifnull(Deal_Ges_id,0)=0  THEN '<<DEAL Ges missing'
+            -- ELSE '' END as Warning
+     ,'' as Warning
+     ,Deal_Aff_id
+     ,SUM(Qualified_Players) AS CPA
+     ,SUM(Net_Revenue) AS NR  
+     ,MAX(Hour_Update) AS `Hour_Update`
+  FROM Snapshot_day_by_day_fact1
+  WHERE left(Date,7)>=@DateFrom -- AND (Qualified_Players<>0)
+  GROUP BY Month
+)
+(
+SELECT "" as Meta
+-- 	,Tabla
+	 ,`Date`,Brand,Username_id,Username,Affiliate,Tracker_ID,Tracker_Name
+    ,Product
+    ,Country AS  `Ctry`
+    ,MS_ID
+    ,Warning
+	,CPA AS 'CPAs'
+	,NR AS 'NR'
+	,Hour_Update
+FROM Detail_Fact1
+)
+UNION ALL
+(
+SELECT "" as Meta
+-- 	,Tabla
+	,`Month`,'TOTAL Month' AS Brand
+	,'-------' AS Username_id,'-------' AS Username,'-------' AS Affiliate
+	,'-------' AS Tracker_ID ,'-------' AS Tracker_Name
+	,'-------' AS MS_ID		 
+   ,'-------' AS Product
+   ,Country
+   ,'-------' AS Warning
+   -- ,'-------' AS  CPAs_DbD
+	,ROUND(SUM(CPA),0) AS CPAs_Fa1
+	,ROUND(SUM(NR),0) AS NR_Fa1
+	,Hour_Update
+FROM Tot_Fact1 GROUP BY Month
+)
+UNION ALL
+(
+SELECT "" as Meta
+-- 	,Tabla
+	,`Month`,'Curr Month forecast' AS Brand
+	,'-------' AS Username_id,'-------' AS Username,'-------' AS Affiliate
+	,'-------' AS Tracker_ID,'-------' AS Tracker_Name
+	,'-------' AS MS_ID
+   ,'-------' AS Product
+   ,Country
+   ,'-------' AS Warning
+   -- ,'-------' AS  CPAs_DbD
+	,ROUND(SUM(CPA)/DAY(curdate())*DAY(LAST_DAY(CURDATE())),0) AS CPAs_Fa1
+   ,''
+	,Hour_Update
+FROM Tot_Fact1 WHERE Month=LEFT(CURDATE(),7)
+)
+UNION ALL 
+(
+SELECT
+  "setting" as Meta
+  -- ,"width=80px,center=true" as Tabla
+  ,"width=100px" as `Month`
+  ,"width=120px" as Brand
+  ,"width=80px"  as Username_id
+  ,"width=120px" as Username
+  ,"width=130px" as Affiliate
+  ,"width=130px" as Tracker_ID
+  ,"width=200px" as Tracker_Name
+  ,"width=160px" as Product
+  ,"width=100px" as Country
+  ,"width=80px"  as MS_ID
+  ,"width=200px" as Warning
+--   ,"width=80px" as CPAs_DbD
+  ,"width=80px"  as CPAs_Fa1
+  ,"width=80px"  as NR_Fa1
+  ,"width=160px" as Hour_Update
+FROM DUAL WHERE @Meta="YES"
+)
+;
+
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call Check_DbD();

@@ -1,0 +1,65 @@
+/* VIEW view_monthly_fact_aff - COMISIONES PARA AFILIADOS POR LOS DEALS
+	
+	rf 08.02.2022 Modificados calculos tipo (sum(D.`Qualified_Players`*IFNULL(`CDA`.`CPA_Value`,0)),2) por prioridad de la multiplicacion sobre la suma
+	rf 15.02.2022 Agregado Channel
+	rf 21.02.2022 Facturación sobre forex_day_by_day_fact1_2 que utiliza Deals x fecha forex_marketing_source_deal_date
+	rs/rf 30.03.2022 Incluido  D.Channel_id,`D`.`Tracker_ID` en group by de Subquery
+	rs/rf 06.04.2022 Subquery directo sobre forex_day_by_day_fact1_2 utilizando su CPA/RS calculadas para acumular por Brand
+   rs/rf 31.08.2022 Sobre forex_day_by_day_fact2_2
+   rf    15.09.2022 Channel_id,Advertiser_id,Username,Username_id
+   RF    11.10.2022 GROUP BY ...,Deal_Aff_id en lugar de Deal_Aff_CPA,`Deal_Aff_RS`
+   rf    21.11.2022 GROUP BY Owner,LEFT(D.DATE,7),D.`Affiliate_id`,Username_id,Deal_Aff_id 
+	
+**/
+
+CREATE OR REPLACE VIEW forex_view_monthly_fact_aff3 as
+
+SELECT Owner,DATE,Affiliate,Affiliate_id,Brand
+   ,Advertiser_id,Username,Username_id
+	,Channel_id,Channel,Channel AS Channel_Name,Product,Product_real -- 06.04.2022 campos para compatibilidad con uso en algunos programas
+   ,'EUR'                      AS Data_Currency
+	,CPA
+	,round(CPA_Value,2)         AS 'CPA_Value'
+	,round(Net_Revenue,2)       AS 'Net_Revenue'
+	,round(RS_Value,2)          AS 'RS_Value'
+	,round(CASE WHEN RS_Value<0 AND Deal_Aff_RS_Against_CPA=0 THEN 0 ELSE RS_Value END,2) AS 'RS_AJUST'
+	,round(CPA_Val_AJ_RS,2)     AS 'CPA_Val_AJ_RS'
+	,`Deal_Aff_RS_Against_CPA`
+	,`Aff_CPA`                  -- 06.04.2022 campos para compatibilidad con uso en algunos programas
+	,`Aff_RS`                   -- 06.04.2022 campos para compatibilidad con uso en algunos programas
+	
+FROM (
+	SELECT 
+		 Owner,max(DATE) AS Date,Brand,Advertiser_id
+      ,Username,Username_id
+      ,Affiliate,Affiliate_id
+		,Channel_id,Channel,Product,Product_real                                 -- 06.04.2022 campos para compatibilidad con uso en algunos programas
+		,SUM(Qualified_Players) 						AS 'CPA'
+		,SUM(CPA_Value_Affiliate) 						AS 'CPA_Value'
+		,SUM(Net_Revenue) 								AS 'Net_Revenue'
+		,SUM(Revenue_Share_Affiliate) 				AS 'RS_Value'
+		,SUM(CPA_Value_Affiliate) 						AS 'CPA_Val_AJ_RS'
+		,`Deal_Aff_id`
+		,MAX(`Deal_Aff_CPA`)								AS `Aff_CPA`			-- 30.03.2022
+		,`Deal_Aff_Carry_Over`
+		,`Deal_Aff_RS_Against_CPA`
+		,`Deal_Aff_RS_Base`
+		,MAX(`Deal_Aff_RS`)          					AS `Aff_RS`				-- 30.03.2022
+		,`Deal_Aff_Valid_From`
+		FROM 
+			`forex_day_by_day_fact2_2` `D` 
+		-- WHERE  LEFT(D.DATE,7)>='2022-01'
+		GROUP BY Owner,LEFT(D.DATE,7),D.`Affiliate_id`,Username_id,Deal_Aff_id -- Deal_Aff_CPA,`Deal_Aff_RS`
+	) AS X
+;
+/*
+SELECT Owner,left(DATE,7) AS Month,Affiliate,Brand,Username
+   ,SUM(CPA)        AS 'CPA'
+   ,SUM(CPA_Value)  AS 'CPA_Value'
+   ,SUM(Net_Revenue)AS 'Net_Revenue'
+   ,SUM(RS_Value)   AS 'RS_Value'
+   ,SUM(RS_AJUST)   AS 'RS_AJUST'
+FROM forex_view_monthly_fact_aff3 A 
+GROUP BY Owner,left(DATE,7),Affiliate,Brand,Username
+WITH ROLLUP;
+*/

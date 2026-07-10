@@ -1,0 +1,181 @@
+/* 
+PROCEDURE_Report_Referral_Deals_v1.sql() - Dash gestor Referral 
+  
+Keys:
+
+Affiliate_id    =[id del Affiliate_id | ALL ]. Id del Referral. OPCIONAL. Default=ALL
+Month           =[AAAA-MM | CM | LM ]. OPCIONAL. Default=Current Month
+Meta            =[No | Yes]. Default [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_Referral_Deals('');                                    -- ERROR Sin Affiliate_id
+call Report_Referral_Deals('Affiliate_id=ALL,Month=LM');           -- ERROR Affiliate_id=ALL
+call Report_Referral_Deals('Affiliate_id=130,Month=LM');           -- OK
+call Report_Referral_Deals('Month=LM');                            -- ERROR Affiliate_id=""
+
+19.09.2023 V1     Primera version
+
+*/
+
+DROP PROCEDURE IF EXISTS Report_Referral_Deals;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Referral_Deals`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report_Referral_Deals'
+     
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version      ='v1 19.09.2023';
+SET @Month        =LEFT(CURDATE(),7);
+SET @Affiliate_id ='ALL';
+
+SET @Filters      ='NO';
+SET @Meta         ='YES';
+SET @Debug        ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit
+-- @InputCommLine: ----5----0----5----0----5----0----5----0--
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='month'         THEN SET @Month        =UPPER(@v); END IF;
+   IF lower(@k)='Affiliate_id'  THEN SET @Affiliate_id =UPPER(@v); END IF;
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+   IF lower(@k)='filters'       THEN SET @Filters      =UPPER(@v); END IF;   
+
+END WHILE;
+
+/************ VALIDACION PARAMETROS ************************************************/
+
+IF @Month='CM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 0 MONTH),7); END IF;
+IF @Month='LM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+SET @Month_Report=@Month;
+   
+IF @Debug!="NO" THEN SELECT @Month,@Month_Report,@Filters,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereAffiliate_id  ='';
+
+IF @Affiliate_id  !="ALL" THEN SET @WhereAffiliate_id  =CONCAT(" AND M.Master_Affiliate_id=",@Affiliate_id  ); END IF;
+IF @Status        !="ALL" THEN SET @WhereStatus        =CONCAT(" AND M.`Status_id`='",@Status,"'");    END IF;
+
+IF @Debug!="NO" THEN SELECT @WhereAffiliate_id,@WhereStatus,@WhereSearch; END IF;
+
+/**************************************************************************************************************/
+
+SET @CTE=concat('
+WITH Master_Sub AS (
+SELECT M.id
+      ,Master_Affiliate_id
+      ,MC.username AS `Master`
+		,Sub_Affiliate_id
+      ,AC.username AS `Affiliate`
+		,M.Advertiser_id
+      ,AD.Advertiser_Name
+		,M.Status_id
+		,M.Valid_From,M.Valid_To
+		,M.Deal_id
+		,MD.Deal_Name 
+		,MD.Commissions_Percentage AS `Com%`
+		,MD.CPA_Value AS `ComByCPA`
+      ,MD.RS_Percentage AS `RS%`
+      ,CONCAT(AC.last_name,", ",AC.first_name) AS `LongName`
+from master_affiliate_deals_per_affiliate M
+LEFT  JOIN `account_account` AC        on M.Sub_Affiliate_id=AC.id
+LEFT  JOIN `account_account` MC        on M.Master_Affiliate_id=MC.id
+LEFT  JOIN `campaign_advertiser` AD    on M.Advertiser_id=AD.id
+LEFT  JOIN `master_affiliate_deals` MD on M.Deal_id=MD.id
+WHERE 1=1 ',@WhereAffiliate_id,' 
+)');
+SET @SQL=concat(
+@CTE,
+'
+SELECT  
+   "setting" as `Meta`
+   ,"width=100px"    as `Action`
+   ,"omit=yes"       as `id`
+   ,"omit=yes"       as `Master_Affiliate_id`
+   ,"width=150px"    as `Master`
+   ,"width=150px"    as `Affiliate`
+   ,"width=200px"    as `Aff name`
+   ,"width=150px"    as `Advertiser`
+   ,"width=100px"    as `Valid From`
+   ,"width=100px"    as `Valid To`
+   ,"width=300px"    as `Referral Deal`
+	FROM DUAL WHERE "',@Meta,'"="YES"
+UNION ALL
+SELECT  "data" as `Meta`
+   ,"..." as Action
+   ,id
+   ,Master_Affiliate_id
+	,Master
+	,Affiliate
+	,LongName
+   ,ifnull(Advertiser_Name,"Any") as Advertiser_Name
+   ,Valid_From
+   ,Valid_To
+   ,Deal_Name AS `Referral Deal`
+FROM Master_Sub MS 
+ORDER BY Meta desc, `Master`, Affiliate
+;');
+
+-- FILTERS --------------------------------------------
+SET @SQLfilters=CONCAT(
+@CTE,
+'
+SELECT "01" as "Korder","Referrer" AS "Key",`Master` AS "Value"
+                                       ,"Affiliate_id" AS `CallKey`,`Master_Affiliate_id` AS `CallValue`,"" AS "Rows" 
+                                       FROM Master_Sub group by `Master_Affiliate_id`
+ORDER BY 1, 3                                       
+;'
+);
+
+-- ----------------------------------------------------
+IF @Filters="YES" THEN SET @SQLreport=@SQLfilters; ELSE SET @SQLreport=@SQL; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQL;         END IF;   
+IF @Debug!="NO" THEN SELECT @SQLfilters;  END IF;   
+IF @Debug!="NO" THEN SELECT @SQLreport;   END IF;   
+
+IF @Debug != "YES" THEN 
+	PREPARE stmt1 FROM @SQLreport;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;   
+END IF;
+ 
+END$$
+DELIMITER ;
+
+/* Testing
+
+call Report_Referral_Deals('filters=yes,debug=ye'); 
+call Report_Referral_Deals('Affiliate_id=ALL,Month=LM');           -- ERROR Affiliate_id=ALL
+call Report_Referral_Deals('Affiliate_id=130,Month=LM');           -- OK
+call Report_Referral_Deals('Affiliate_id=130,Month=LM,meta=no');   -- OK
+call Report_Referral_Deals('Month=LM');                            -- ERROR Affiliate_id=""
+
+call Report_Referral_Deals('Affiliate_id=130,Month=2024-06,filters=ye,debug=non');  
+
+*/

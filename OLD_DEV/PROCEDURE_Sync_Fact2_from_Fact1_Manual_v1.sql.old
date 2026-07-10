@@ -1,0 +1,138 @@
+/*
+PROCEDURE_Sync_Fact2_from_Fact1() - Sync one/all MS for a given month and/of affiliate_id
+   REEMPLAZA A: Sync_MS_Fact1_Fact2_lm
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Month           =[AAAA-MM | CM | LM]. OPCIONAL. Default=CM=Current Month (Curr Month implica MS_id=ALL)
+MS_id           =[ALL | id de la MS]. OBLIGATORIO.
+						MS_id=ALL: SOLO VALIDO PARA MES CORRIENTE
+						MS_id=ALLALL: VALIDO PARA CUALQUIER OTRO MES (OBLIGATORIO informar DB)
+Debug           =[No | Yes | Other value ]. OPCIONAL. Default=No
+                  [No]  EJECUTA QUERY y devuelve resultado.
+                  [Yes] NO EJECUTA QUERY y devuelve el código del Query.
+                  [Other value] EJECUTA QUERY y devuelve el código del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Sync_Fact2_from_Fact1('');  -- Sync all curr month
+call Sync_Fact2_from_Fact1('MS_id=1581,debug=yes');  -- asume curr month
+call Sync_Fact2_from_Fact1('month=2022-10,Affiliate_id=39,MS_id=allall,debug=YE');  -- error: falta db
+
+20.07.2023 v1   
+
+*/
+
+DROP PROCEDURE IF EXISTS Sync_Fact2_from_Fact1_manual;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Sync_Fact2_from_Fact1_manual`(IN
+   InputCommLine    VARCHAR(250)
+   )
+   COMMENT 'Manual Data Sync one/all MS for a given month'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 20.07.2023';
+SET @CurrentDay      =CURDATE();
+SET @CurrentMonth    =LEFT(CURDATE(),7);
+SET @LastMonth       =LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+
+SET @Mode            ='view';
+SET @Month           =LEFT(CURDATE(),7);
+SET @MS_id           ='';
+SET @Debug           ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+-- SET @InputCommLine=replace(@InputCommLine,"'","");  -- Elimina apóstrofos
+-- SET @InputCommLine=replace(@InputCommLine,'`','');  -- Elimina ticks
+-- SET @InputCommLine=replace(@InputCommLine,'(','');  -- Elimina parentesis
+-- SET @InputCommLine=replace(@InputCommLine,')','');  -- Elimina parentesis
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='mode'         THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='month'        THEN SET @Month         =UPPER(@v); END IF;
+   IF lower(@k)='ms_id'        THEN SET @MS_id         =UPPER(@v); END IF;
+   IF lower(@k)='debug'        THEN SET @Debug         =LOWER(@v); END IF;
+END WHILE;
+
+IF UPPER(@Month)='CM' THEN SET @Month=@CurrentMonth; END IF;
+IF UPPER(@Month)='LM' THEN SET @Month=@LastMonth;    END IF;
+
+-- Validaciones ----------------------------------------------------
+-- --------------------------------- -------------------------------
+
+IF @Debug!="NO" THEN SELECT @Mode,@Month,@MS_id; END IF;
+
+-- Procesa los datos manuales LM antes de sincronizar
+CALL Snapshot_day_by_day_fact1_upd_from_dbd_manual(@Month);
+
+-- ----------------------------------------------------------------------------------------------
+BEGIN
+
+    DECLARE terminado INTEGER DEFAULT 0;
+    DECLARE p1 VARCHAR(25);
+    DECLARE p2 VARCHAR(25);
+
+    -- Declaramos un cursor para recorrer las filas de la tabla
+    DECLARE cur CURSOR FOR 
+         SELECT LEFT(DATE,7) as Month,MS_id FROM Snapshot_day_by_day_manual
+         WHERE LEFT(DATE,7)=@Month AND MS_id IS NOT NULL
+         GROUP BY MS_id;
+
+    -- Declaramos un handler para cuando no hay más filas
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET terminado = 1;
+
+    OPEN cur;
+
+    read_loop: LOOP
+        FETCH cur INTO p1, p2;
+
+        IF terminado = 1 THEN 
+            LEAVE read_loop;
+        END IF;
+
+        -- Aquí es donde llamamos al procedimiento almacenado con los parámetros
+        -- CALL mi_procedimiento(p1, p2);
+        -- call Sync_Fact2_from_Fact1('MS_id=1581,month=2022-12');
+        SET @Parametros=CONCAT("mode=RUN,MS_id=",p2,",Month=",p1);
+        call Sync_Fact2_from_Fact1(@Parametros);
+        
+    END LOOP;
+
+    CLOSE cur;
+END;
+
+-- Actualizacion de comisiones de afiliado
+CALL total_monthy_comm_aff_upd();
+
+END$$
+DELIMITER ;
+
+/*
+call Sync_Fact2_from_Fact1_manual('month=LM,debug=ye')
+*/

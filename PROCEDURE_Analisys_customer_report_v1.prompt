@@ -1,0 +1,119 @@
+La tabla descrita contiene información acerca de las actividades de jugadores on line en varias empresas de juegos.
+
+CREATE TABLE IF NOT EXISTS `customer_report_API_4_analysis` (
+   `Date` DATE NULL DEFAULT NULL,
+   `MS_id` INT NULL DEFAULT '0',
+   `Affiliate` VARCHAR(100) NOT NULL DEFAULT '' ,
+   `Affiliate_id` INT NOT NULL DEFAULT '0',
+   `Brand` VARCHAR(50) NULL DEFAULT NULL ,
+   `Username` VARCHAR(50) NULL DEFAULT NULL ,
+   `Username_id` INT NULL DEFAULT NULL,
+   `Product` VARCHAR(50) NULL DEFAULT NULL ,
+   `Customer_ID` VARCHAR(50) NULL DEFAULT NULL ,
+   `Customer_alias` VARCHAR(50) NULL DEFAULT NULL ,
+   `Country` VARCHAR(50) NULL DEFAULT NULL ,
+   `Signup_Date` VARCHAR(50) NULL DEFAULT NULL ,
+   `Reward_Plan` VARCHAR(50) NULL DEFAULT NULL ,
+   `Tracker_Name` VARCHAR(50) NULL DEFAULT NULL ,
+   `Tracker_id` VARCHAR(50) NULL DEFAULT NULL ,
+   `Customer_Level` VARCHAR(50) NULL DEFAULT NULL ,
+   `CPA_Processed_Date` VARCHAR(50) NULL DEFAULT NULL ,
+   `Gross_Revenue` DECIMAL(10,2) NULL DEFAULT NULL,
+   `Deposits` DECIMAL(10,2) NULL DEFAULT NULL,
+   `Turnover` DECIMAL(10,2) NULL DEFAULT NULL,
+   `Payouts` DECIMAL(10,2) NULL DEFAULT NULL,
+   `Transactions` INT NULL DEFAULT NULL,
+   `Total_Net_Revenue` DECIMAL(10,2) NULL DEFAULT NULL
+)
+COLLATE='utf8mb4_0900_ai_ci'
+ENGINE=InnoDB
+;
+
+Los agentes intervinientes en la info son:
+
+1. Empresa de juegos (EJ)
+2. Jugador (J)
+3. Afiliado (A)
+3. Network (N) 
+
+La información está producida por al EJ.
+La información es recibida y analizada por el N.
+
+Para mayor claridad el contenido de los campos principales es:
+`Affiliate_id`: Códigos de Identificación del A atribuido por la EJ
+`Customer_ID`,`Customer_alias`: Códigos de Identificación del J atribuido por la EJ
+`Username_id` Identificación de la cuenta del N en la EJ.
+`Country` desde el cual accede el J
+`Signup_Date` fecha en la cual el J abrió su cuenta en la EJ
+`Reward_Plan`: forma abreviada de las comisiones pactadas con la EJ. Hay muchas variantes pero en general hay un par de enteros de dos dígitos separados por el signo "+"
+               en los cuales el primer entero representa el valor de la CPA y el otro el porcentaje de Revenue Share que se calcula sobre `Total_Net_Revenue`
+`Tracker_Name`, `Tracker_id`, `MS_id`: identificación del tracking code asignado por la EJs al A que ha encontrado ese J y al cual pagará por CPA y por Revenue Share
+`Total_Net_Revenue`: es el valor que ha ganado o perdido la EJ con las actividades del J, y se deriva de restar unos costes a `Gross_Revenue`
+`Deposits`: importe acumulado durante el mes que el J a ingresado a la EJ
+`Payouts`: importe acumulado durante el mes que la EJ ha pagado al J
+`Turnover`: importe acumulado durante el mes que el J ha apostado
+
+Info indirecta, derivada de la info en la tabla:
+1. CPA (Cost per Aquisition): 
+   - comisión o premio pagada al A por la EJ. Se denomina Triggered CPA cuando se produce.
+   - Se paga solo una vez por cada J cuando se cumple el requisito de que el J ingresa a la EJ un importe mínimo (`Deposits`).
+   - El campo `CPA_Processed_Date` indica cuándo se ha pagado el CPA.
+   - El valor del CPA no se menciona directamente en esta info sino que surge del campo `Reward_Plan`
+
+2. RS (Revenue Share):
+   - Es un porcentaje sobre `Total_Net_Revenue` que se acredita al A que puede existir o no dependiendo de `Reward_Plan`
+
+Escribe un script MySQL 8.4 en el file D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_Analisys_customer_report_v5.sql 
+que examine los datos y produzca un reporte de aquellos jugadores que tengan un comportamiento compatible con fraude.
+Estudia los antecedentes sobre fraude en apuestas on line por parte de afiliados (no por jugadores) y ten en cuenta los posibles comportamientos
+que podrían detectarse a través de esta información,por ejemplo:
+
+Patrones de fraude detectados (todos requieren CPA Triggered):
+  F1: Deposit-withdrawal cycling — Payouts >= Deposits + Turnover <= Deposits
+      Ref: "bonus abuse networks" que reclaman bonos, cumplen playthrough mínimo y retiran
+  F2: Jugador fantasma — Deposits < MinDeposit + sin actividad en meses siguientes
+      Ref: fake players / incentivized users que hacen un depósito mínimo y desaparecen
+  F3: Minimal engagement — Transactions <= MinTransactions + Deposits > 0
+      Ref: CPA farming con mínima interacción real
+  F5: Rapid CPA trigger — CPA procesado en el mismo mes calendario que Signup sin más operaciones
+      Ref: conversión sospechosamente rápida, common en tráfico incentivizado
+  F6: Multi-geo anomaly — País del jugador distinto al país principal del afiliado
+      Ref: geo-spoofing, fake KYC, redes de cuentas en múltiples jurisdicciones
+  F7: Deposit-to-threshold match — Depósito total cercano al umbral mínimo de CPA
+      Ref: depósito mínimo exacto para disparar CPA sin intención real de juego
+  F8: High CPA velocity — Afiliado disparó más de MaxCPAperMonth CPAs en el mismo mes
+      Ref: CPA farming organizado, tráfico falso o incentivado en lotes
+  F9: Depósito sin juego — Deposits > 0 pero Turnover = 0
+      Ref: deposita solo para activar CPA, sin ninguna actividad de juego real
+
+El resultado debe ser:
+1. Un reporte ordenado por `Affiliate_id` con la siguiente info
+    Affiliate,
+    Affiliate_id,
+    Brand,
+    MS_id,
+    Customer_ID,
+    Signup_Date,
+    CPA_Processed_Date,
+   `Deposits`,
+   `Turnover`,
+   `Payouts`,    
+    F1,F2,..,final
+    Tracker_id,
+    Tracker_Name,
+    Customer_alias
+
+   para todos los caso en que se produzca F1, F2, o final (o cualquier otra situación que
+    te parezca que deba ser puesta en evidencia)
+   . Agrupar el reporte por `Affiliate_id`,`MS_id`,Customer_ID
+
+La inforamción que nos interesa debe corresponer a Customer_ID que hayan producido CPA Trigger y que 
+tengan una fecha de signup igual o posterior al parámetro de entrada Signup_Month (YYYY-MM)
+
+Si Deposits > 100 no se incluye en el report. Este valor debe ser un parámetro.
+
+
+El file "D:\Reinaldo\_FRA\db\dump\customer_report_API_4_analysis-2026-02-16 12_31_18-12.31.sql" 
+es un dump de la información de la tabla customer_report_API_4_analysis que tienes que examinar para
+determinar los distintos casos de fraud (Fn) además de la investigación en internet para
+aprender de los fraudes conocidos.

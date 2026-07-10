@@ -1,0 +1,197 @@
+-- DROP TABLE IF EXISTS `Snapshot_day_by_day_fact1_res`;
+
+CREATE TABLE IF NOT EXISTS `Snapshot_day_by_day_fact1_res` (
+	`id` INT(10) NULL DEFAULT NULL,
+	`Origin` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Area` VARCHAR(50) NULL DEFAULT 'gaming' COLLATE 'utf8mb4_0900_ai_ci',
+	`Owner` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Affiliate` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Affiliate_id` INT(10) NULL DEFAULT NULL,
+	`Deal` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Deal_Aff` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Hour_Update` DATETIME NULL DEFAULT NULL,
+	`Date` DATE NULL DEFAULT NULL,
+	`Username` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Username_id` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Portal` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Brand` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Advertiser_id` INT(10) NULL DEFAULT NULL,
+	`Publisher_id` INT(10) NULL DEFAULT NULL,
+	`Brand_Group` VARCHAR(50) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+	`Brand_Group_Acum` SMALLINT(5) NULL DEFAULT '0',
+	`Tracker_ID` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Tracker_ID_DbD` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`MS_id` INT(10) NULL DEFAULT NULL,
+	`Tracker_Name` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Code_To_Affiliate` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Product` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Product_Real` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Qualified_Players` INT(10) NULL DEFAULT NULL,
+	`Qualified_Players_Adjusted` INT(10) NULL DEFAULT NULL,
+	`First_Time_Deposit` INT(10) NULL DEFAULT NULL,
+	`Views` INT(10) NULL DEFAULT NULL,
+	`Clicks` INT(10) NULL DEFAULT NULL,
+	`Signups` INT(10) NULL DEFAULT NULL,
+	`Impressions` INT(10) NULL DEFAULT NULL,
+	`Sign_Up_Offer` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Type` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Language` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Country` VARCHAR(50) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+	`Brand_Name` VARCHAR(50) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+	`Registration_Date` DATE NULL DEFAULT NULL,
+	`Deposits` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Depositing_Customers` INT(10) NULL DEFAULT NULL,
+	`Active_Customers` INT(10) NULL DEFAULT NULL,
+	`New_Depositing_Customers` INT(10) NULL DEFAULT NULL,
+	`New_Active_Customers` INT(10) NULL DEFAULT NULL,
+	`First_Time_Active_Customers` INT(10) NULL DEFAULT NULL,
+	`Turnover` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Net_Revenue` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Shortlink` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`CPA_Limit` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Channel_id` INT(10) NULL DEFAULT NULL,
+	`Channel` VARCHAR(25) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Level_1` VARCHAR(30) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',
+	`Level_2` VARCHAR(30) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',
+	`Level_3` VARCHAR(30) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',
+	`Level_4` VARCHAR(30) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',
+	`Revenue_Share_Gestor` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Revenue_Share_Affiliate` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`CPA_Value_Affiliate` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`CPA_Value_Gestor` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Deal_Aff_id` INT(10) NULL DEFAULT NULL,
+	`Deal_Aff_CPA` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Deal_Aff_Carry_Over` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Deal_Aff_RS_Against_CPA` INT(10) NULL DEFAULT NULL,
+	`Deal_Aff_RS_Base` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Deal_Aff_RS` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Deal_Aff_Valid_From` VARCHAR(10) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Deal_Ges_id` INT(10) NULL DEFAULT NULL,
+	`Deal_Ges_CPA` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Deal_Ges_Carry_Over` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Deal_Ges_RS_Against_CPA` INT(10) NULL DEFAULT NULL,
+	`Deal_Ges_RS_Base` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Deal_Ges_RS` DECIMAL(12,2) NULL DEFAULT '0.00',
+	`Deal_Ges_Valid_From` VARCHAR(10) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+	`Data_Currency` VARCHAR(10) NULL DEFAULT 'EUR' COLLATE 'utf8mb4_0900_ai_ci',
+	`is_indirect` TINYINT(1) NOT NULL DEFAULT '0',
+	`Advertiser_indirect_id` INT(10) NULL DEFAULT NULL,
+	`TimeGen` VARCHAR(16) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci'
+)
+COLLATE='utf8mb4_0900_ai_ci'
+ENGINE=InnoDB
+;
+TRUNCATE Snapshot_day_by_day_fact1_res;
+
+INSERT INTO Snapshot_day_by_day_fact1_res
+SELECT 
+    `id`                                 AS `id`
+	,`Origin`                             AS `Origin`
+	,`Area`                               AS `Area`
+	,`Owner`                              AS `Owner`
+	,`Affiliate`                          AS `Affiliate`
+	,`Affiliate_id`                       AS `Affiliate_id`
+	,`Deal`                               AS `Deal`
+	,`Deal_Aff`                           AS `Deal_Aff`
+	,`Hour_Update`                        AS `Hour_Update`
+	,`Date`                               AS `Date`
+	,`Username`                           AS `Username`
+	,`Username_id`                        AS `Username_id`
+	,`Portal`                             AS `Portal`
+	,`Brand`                              AS `Brand`
+	,`Advertiser_id`                      AS `Advertiser_id`
+	,`Publisher_id`                       AS `Publisher_id`
+	,`Brand_Group`                        AS `Brand_Group`
+	,`Brand_Group_Acum`                   AS `Brand_Group_Acum`
+	,`Tracker_ID`                         AS `Tracker_ID`
+	,`Tracker_ID_DbD`                     AS `Tracker_ID_DbD`
+	,`MS_id`                              AS `MS_id`
+	,`Tracker_Name`                       AS `Tracker_Name`
+	,`Code_To_Affiliate`                  AS `Code_To_Affiliate`
+	,`Product`                            AS `Product`
+	,`Product_Real`                       AS `Product_Real`
+	,SUM(`Qualified_Players`         )    AS `Qualified_Players`
+	,SUM(`Qualified_Players_Adjusted`)    AS `Qualified_Players_Adjusted`
+	,SUM(`First_Time_Deposit`        )    AS `First_Time_Deposit`
+	,SUM(`Views`                     )    AS `Views`
+	,SUM(`Clicks`                    )    AS `Clicks`
+	,SUM(`Signups`                   )    AS `Signups`
+	,SUM(`Impressions`               )    AS `Impressions`
+	,`Sign_Up_Offer`                      AS `Sign_Up_Offer`
+	,`Type`                               AS `Type`
+	,`Language`                           AS `Language`
+	,`Country`                            AS `Country`
+	,`Brand_Name`                         AS `Brand_Name`
+	,`Registration_Date`                  AS `Registration_Date`
+	,SUM(`Deposits`                   )   AS `Deposits`
+	,SUM(`Depositing_Customers`       )   AS `Depositing_Customers`
+	,SUM(`Active_Customers`           )   AS `Active_Customers`
+	,SUM(`New_Depositing_Customers`   )   AS `New_Depositing_Customers`
+	,SUM(`New_Active_Customers`       )   AS `New_Active_Customers`
+	,SUM(`First_Time_Active_Customers`)   AS `First_Time_Active_Customers`
+	,SUM(`Turnover`                   )   AS `Turnover`
+	,SUM(`Net_Revenue`                )   AS `Net_Revenue`
+	,`Shortlink`                          AS `Shortlink`
+	,`CPA_Limit`                          AS `CPA_Limit`
+	,`Channel_id`                         AS `Channel_id`
+	,`Channel`                            AS `Channel`
+	,`Level_1`                            AS `Level_1`
+	,`Level_2`                            AS `Level_2`
+	,`Level_3`                            AS `Level_3`
+	,`Level_4`                            AS `Level_4`
+	,SUM(`Revenue_Share_Gestor`       )   AS `Revenue_Share_Gestor`
+	,SUM(`Revenue_Share_Affiliate`    )   AS `Revenue_Share_Affiliate`
+	,SUM(`CPA_Value_Affiliate`        )   AS `CPA_Value_Affiliate`
+	,SUM(`CPA_Value_Gestor`           )   AS `CPA_Value_Gestor`
+	,`Deal_Aff_id`                        AS `Deal_Aff_id`
+	,`Deal_Aff_CPA`                       AS `Deal_Aff_CPA`
+	,`Deal_Aff_Carry_Over`                AS `Deal_Aff_Carry_Over`
+	,`Deal_Aff_RS_Against_CPA`            AS `Deal_Aff_RS_Against_CPA`
+	,`Deal_Aff_RS_Base`                   AS `Deal_Aff_RS_Base`
+	,`Deal_Aff_RS`                        AS `Deal_Aff_RS`
+	,`Deal_Aff_Valid_From`                AS `Deal_Aff_Valid_From`
+	,`Deal_Ges_id`                        AS `Deal_Ges_id`
+	,`Deal_Ges_CPA`                       AS `Deal_Ges_CPA`
+	,`Deal_Ges_Carry_Over`                AS `Deal_Ges_Carry_Over`
+	,`Deal_Ges_RS_Against_CPA`            AS `Deal_Ges_RS_Against_CPA`
+	,`Deal_Ges_RS_Base`                   AS `Deal_Ges_RS_Base`
+	,`Deal_Ges_RS`                        AS `Deal_Ges_RS`
+	,`Deal_Ges_Valid_From`                AS `Deal_Ges_Valid_From`
+	,`Data_Currency`                      AS `Data_Currency`
+	,`is_indirect`                        AS `is_indirect`
+	,`Advertiser_indirect_id`             AS `Advertiser_indirect_id`
+	,`TimeGen`                            AS `TimeGen`
+FROM Snapshot_day_by_day_fact1
+GROUP BY ifnull(Owner,2),left(DATE,7),ifnull(Affiliate_id,0),ifnull(Username_id,0),ifnull(MS_id,0)
+;
+ALTER TABLE `Snapshot_day_by_day_fact1_res`
+	ADD INDEX `Area` (`Area`),
+	ADD INDEX `Advertiser_id` (`Advertiser_id`),
+	ADD INDEX `MS_id` (`MS_id`),
+	ADD INDEX `Owner` (`Owner`),
+	ADD INDEX `Brand` (`Brand`),
+	ADD INDEX `Date` (`Date`);
+
+/*
+SELECT
+   id,`Area`,Owner,Affiliate,Affiliate_id,Deal_Aff,Date,Publisher_id,Username,Username_id,Brand
+   ,Advertiser_id,Tracker_ID,MS_id,Tracker_Name,Code_To_Affiliate,Product,Product_Real
+   ,sum(Qualified_Players) AS Qualified_Players,sum(Qualified_Players_Adjusted) AS Qualified_Players_Adjusted
+	,sum(First_Time_Deposit) AS First_Time_Deposit,sum(Views) AS Views,sum(Clicks) AS Clicks,sum(Signups) AS Signups
+   ,sum(Impressions) AS Impressions,Sign_Up_Offer,Type,Language,sum(Deposits) AS Deposits,sum(Depositing_Customers) AS Depositing_Customers,sum(Active_Customers) AS Active_Customers
+   ,sum(New_Depositing_Customers) AS New_Depositing_Customers,sum(New_Active_Customers) AS New_Active_Customers,sum(First_Time_Active_Customers) AS First_Time_Active_Customers,sum(Turnover) AS Turnover,sum(Net_Revenue) AS Net_Revenue
+   ,CPA_Limit,Channel_id,Channel,sum(Revenue_Share_Affiliate) AS Revenue_Share_Affiliate,sum(CPA_Value_Affiliate) AS CPA_Value_Affiliate,Deal_Aff_id
+   ,Deal_Aff_CPA,Deal_Aff_Carry_Over,Deal_Aff_RS_Against_CPA,Deal_Aff_RS_Base,Deal_Aff_RS
+   ,Deal_Aff_Valid_From,Data_Currency,NOW() as TimeGen
+FROM Snapshot_day_by_day_fact1
+-- WHERE MS_id IS NOT NULL AND Affiliate!="_Unassigned"
+GROUP BY ifnull(Owner,2),left(DATE,7),ifnull(Affiliate_id,0),ifnull(Username_id,0),ifnull(MS_id,0),Tracker_ID,Tracker_Name,Product_Real,Deal_Aff_CPA,Deal_Aff_RS
+;
+ALTER TABLE `Snapshot_day_by_day_fact1_res`
+	ADD INDEX `Area` (`Area`),
+	ADD INDEX `Advertiser_id` (`Advertiser_id`),
+	ADD INDEX `MS_id` (`MS_id`),
+	ADD INDEX `Owner` (`Owner`),
+	ADD INDEX `Brand` (`Brand`),
+	ADD INDEX `Date` (`Date`);
+*/   

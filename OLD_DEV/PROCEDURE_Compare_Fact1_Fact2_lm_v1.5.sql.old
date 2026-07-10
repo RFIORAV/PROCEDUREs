@@ -1,0 +1,218 @@
+/* PROCEDURE_Compare_Fact1_Fact2_lm.sql - Check/Update Last Month data: Main Table Vs Main Aff Table (Fact1/Fact2)
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [yes]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+   01.09.2022 V1     Compara last month Fact2 con Fact1. Devuelve diferencias
+   19.10.2022 V1.1   Columna Meta
+   04.11.2022 V1.2   Compara también NR y Deal_Aff_id
+   09.11.2022 V1.3   Utiliza el mismo agrupamiento de PROCEDURE_Snapshot_day_by_day_fact2_upd_cm
+                     GROUP BY Owner,Date,Affiliate_id,ifnull(MS_id,0),Product,Tracker_ID,Tracker_Name,Deal_Aff_CPA,Deal_Aff_RS
+   21.11.2022 V1.4   Propone CALL Sync cuando CPA<>CPA o CPA=CPA pero NR=NR
+   19.12.2022        Omite Affiliate!='_Unassigned' de las comparaciones
+   07.08.2023 v1.41  Qualified_Players_Adjusted=Qualified_Players para compatibilidad con DbD_manual  
+                     Qualified_Players en Fact2 viene de Qualified_Players_Adjusted Fact1
+   24.08.2023 v1.5   Karen. Conversión a parámetro de entrada para compatibilidad con backend
+   29.08.2023        Adecuación invocación Sync_MS_Fact1_Fact2_lm
+   31.08.2023        Karen. Adecuación invocación Sync_MS_Fact1_Fact2_lm para compatibilidad con backend
+
+Ejemplos:
+
+call Compare_Fact1_Fact2_lm('debug=no');
+   
+*/
+-- DROP PROCEDURE IF EXISTS Compare_Fact1_Fact2_lm1;
+DROP PROCEDURE IF EXISTS Compare_Fact1_Fact2_lm;
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Compare_Fact1_Fact2_lm`(IN
+   InputCommLine    VARCHAR(250)
+   )
+   COMMENT 'Check/Update Last Month data: Main Table Vs Main Aff Table (Fact1/Fact2)'
+   LANGUAGE SQL
+    
+BEGIN
+
+SET @Version='v1.5b 06.09.2023';
+SET @Meta="YES";
+SET @Debug='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      
+SET @InputCommLine=replace(@InputCommLine,'"','');
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+
+   SET @e=INSTR(@InputCommLine,'=');    				   
+   SET @c=INSTR(@InputCommLine,','); 					   
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+
+END WHILE;
+
+SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('                           
+WITH DbD_fact1 as (
+SELECT
+	 `Owner`
+	,LEFT(DATE,7) `Date`
+	,`Brand`
+	,`Username`
+	,`Username_id`
+	,`Affiliate`
+	,`Affiliate_id`
+	,SUM(`Qualified_Players_Adjusted`)        AS `CPA` -- 07.08.2023
+	,SUM(IF(Deal_Aff_RS>0,`Net_Revenue`,0))   AS `NR`
+	,`Tracker_Name`,`Tracker_ID`
+   ,ifnull(MS_id,0) AS MS_id
+   ,Deal_Aff_id
+FROM
+	`Snapshot_day_by_day_fact1`
+WHERE LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7) AND Affiliate!="_Unassigned"
+GROUP BY ifnull(MS_id,0) -- ,Tracker_ID,Tracker_Name -- ,Deal_Aff_CPA,Deal_Aff_RS
+-- GROUP BY Owner,Affiliate_id, Owner,Affiliate_id,ifnull(MS_id,0) -- ,Tracker_ID,Tracker_Name -- ,Deal_Aff_CPA,Deal_Aff_RS
+),      
+DbD_fact2 as (
+SELECT
+	 `Owner`
+	,LEFT(DATE,7) `Date`
+	,`Brand`
+	,`Username`
+	,`Username_id`
+	,`Affiliate`
+	,`Affiliate_id`
+	,SUM(`Qualified_Players`)                 AS `CPA`
+	,SUM(IF(Deal_Aff_RS>0,`Net_Revenue`,0))   AS `NR`
+	,`Tracker_Name`,`Tracker_ID`
+   ,ifnull(MS_id,0) AS MS_id
+   ,Deal_Aff_id
+FROM
+	`Snapshot_day_by_day_fact2`
+WHERE LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7) AND Affiliate!="_Unassigned"
+GROUP BY ifnull(MS_id,0) -- ,Tracker_ID,Tracker_Name -- ,Deal_Aff_CPA,Deal_Aff_RS
+-- GROUP BY Owner,Affiliate_id,ifnull(MS_id,0) -- ,Tracker_ID,Tracker_Name -- ,Deal_Aff_CPA,Deal_Aff_RS
+)');
+
+SET @COMILLA="'";
+
+SET @SQLmeta=CONCAT('
+(
+SELECT "data" as Meta,
+	 CASE WHEN IFNULL(F2.CPA,0)>IFNULL(F1.CPA,0) THEN "CPAs in Excess in Affiliate"
+         WHEN IFNULL(F1.CPA,0)>IFNULL(F2.CPA,0) THEN "CPAs Missing in Affiliate"
+         WHEN IFNULL(F2.NR ,0)>IFNULL(F1.NR ,0) THEN "Update Net Rev"
+         WHEN IFNULL(F1.NR ,0)>IFNULL(F2.NR ,0) THEN "Update Net Rev"
+         END AS Result
+	,F1.`Owner`,left(F1.DATE,7) AS Month,F1.Brand,F1.Affiliate
+	,F1.Tracker_Name,F1.Tracker_ID
+   ,F1.MS_id
+	,IFNULL(F2.CPA,0)                   AS `CPA in F2`
+   ,IFNULL(F1.CPA,0)                   AS `CPA in F1`
+	,IFNULL(F2.CPA,0)-IFNULL(F1.CPA,0)  AS `CPA DIFF`
+	,IFNULL(F2.NR ,0)-IFNULL(F1.NR ,0)  AS `NR DIFF`
+	,round(IFNULL(F2.NR,0),2)           AS `NR in F2`
+   ,round(IFNULL(F1.NR,0),2)           AS `NR in F1`
+   ,CASE WHEN F1.MS_id=0 THEN "" ELSE
+       CASE WHEN IFNULL(F2.CPA,0)<>IFNULL(F1.CPA,0) OR (
+                 IFNULL(F2.CPA,0)= IFNULL(F1.CPA,0) AND
+                 IFNULL(F2.NR ,0)<>IFNULL(F1.NR ,0)) 
+            THEN CONCAT("Sync_MS_Fact1_Fact2_lm(",@COMILLA,"ms_id=",F1.MS_id,@COMILLA,")")
+            ELSE "" END
+         END as "CALL TO SYNC this MS"
+FROM DbD_fact1 F1
+LEFT JOIN DbD_fact2 F2 ON IFNULL(F1.MS_id,0)=IFNULL(F2.MS_id,0) 
+WHERE F1.MS_id>0 AND (IFNULL(F1.CPA,0)!=IFNULL(F2.CPA,0) OR IFNULL(F1.NR,0)!=IFNULL(F2.NR,0))
+) 
+UNION ALL  -- -------------------------------------------------------------- '
+);
+
+/*
+            THEN CONCAT("CALL Sync_MS_Fact1_Fact2_lm(''ms_id=",F1.MS_id,"'');")
+            THEN CONCAT("CALL Sync_MS_Fact1_Fact2_lm(`ms_id=",F1.MS_id,"`);")
+            THEN CONCAT("CALL Sync_MS_Fact1_Fact2_lm(",QUOTE(\""),ms_id=",F1.MS_id,QUOTE(\""),");")
+            THEN REPLACE(CONCAT("CALL Sync_MS_Fact1_Fact2_lm(''ms_id=",F1.MS_id,"'');"),"''",'"')
+            THEN CONCAT("CALL Sync_MS_Fact1_Fact2_lm(",@COMILLA,"ms_id=",F1.MS_id,@COMILLA,");")
+*/
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+(
+SELECT 
+   "data" as Meta,
+	"Delete record from Affiliate" AS Result
+	,F1.`Owner`
+   ,left(F1.DATE,7) AS Month
+   ,F1.Brand
+   ,F1.Affiliate
+	,F1.Tracker_Name
+   ,F1.Tracker_ID
+   ,F1.MS_id
+	,IFNULL(F2.CPA,0)                   AS `CPA in F2`
+   ,IFNULL(F1.CPA,0)                   AS `CPA in F1`
+	,IFNULL(F2.CPA,0)-IFNULL(F1.CPA,0)  AS `CPA DIFF`
+	,IFNULL(F2.NR ,0)-IFNULL(F1.NR ,0)  AS `NR DIFF`
+	,round(IFNULL(F2.NR,0),2)           AS `NR in F2`
+   ,round(IFNULL(F1.NR,0),2)           AS `NR in F1`
+	,IF(F1.MS_id>0,CONCAT("Sync_MS_Fact1_Fact2_lm(",F1.MS_id,")"),"") as "CALL TO SYNC this MS"
+FROM DbD_fact2 F1
+LEFT JOIN DbD_fact1 F2 ON IFNULL(F1.MS_id,0)=IFNULL(F2.MS_id,0) 
+WHERE F1.MS_id>0 AND IFNULL(F2.MS_id,0)=0
+)
+UNION ALL 
+(
+SELECT
+"setting" as Meta          -- "data" as Meta,
+,"width=150px" as `1`      -- "Delete record from Affiliate" AS Result
+,"width=80px"  as `2`      -- ,F1.`Owner`
+,"width=80px"  as `3`      -- ,left(F1.DATE,7) AS Month
+,"width=100px" as `4`      -- ,F1.Brand
+,"width=130px" as `5`      -- ,F1.Affiliate
+,"Width=150px" as `6`      -- ,F1.Tracker_Name
+,"width=100px" as `7`      -- ,F1.Tracker_ID
+,"width=90px"  as `8`      -- ,F1.MS_id
+,"width=90px"  as `9`      -- ,IFNULL(F2.CPA,0)                   AS `CPA in F2`
+,"width=90px"  as `10`     -- ,IFNULL(F1.CPA,0)                   AS `CPA in F1`
+,"width=90px"  as `11`     -- ,IFNULL(F2.CPA,0)-IFNULL(F1.CPA,0)  AS `CPA DIFF`
+,"width=90px"  as `12`     -- ,IFNULL(F2.NR ,0)-IFNULL(F1.NR ,0)  AS `NR DIFF`
+,"width=90px"  as `13`     -- ,round(IFNULL(F2.NR,0),2)           AS `NR in F2`
+,"width=90px"  as `14`     -- ,round(IFNULL(F1.NR,0),2)           AS `NR in F1`
+,"grow=2,action=1" as "16" -- 
+FROM DUAL WHERE @Meta="YES"
+)
+ORDER BY Result,`CPA DIFF` DESC
+;');
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+ 
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call Compare_Fact1_Fact2_lm('debug=yes');

@@ -1,0 +1,81 @@
+-- Script para importar datos del CSV a las tablas
+USE affiliate_reporting;
+
+-- Configurar el modo de carga de datos
+SET GLOBAL local_infile = 1;
+
+-- Importar datos de clientes
+LOAD DATA LOCAL INFILE 'MyAffiliates - Advanced Reporting - Customer Report-4.csv'
+INTO TABLE customers
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 LINES
+(@MA_ID, @Customer, @Client_Reference, @Source_Group, @Campaign, @Customer_Country, 
+ @IP_Address, @Customer_Join_Date, @Landing_Page_ID, @Landing_Page_Description)
+SET 
+    customer_id = @MA_ID,
+    client_reference = @Client_Reference,
+    customer_country = @Customer_Country,
+    ip_address = @IP_Address,
+    join_date = STR_TO_DATE(@Customer_Join_Date, '%Y-%m-%d'),
+    landing_page_id = @Landing_Page_ID,
+    landing_page_description = @Landing_Page_Description,
+    source_group = @Source_Group,
+    campaign = @Campaign;
+
+-- Importar datos de métricas principales
+LOAD DATA LOCAL INFILE 'MyAffiliates - Advanced Reporting - Customer Report-4.csv'
+INTO TABLE main_metrics
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 LINES
+(@MA_ID, @Customer, @Client_Reference, @Source_Group, @Campaign, @Customer_Country, 
+ @IP_Address, @Customer_Join_Date, @Landing_Page_ID, @Landing_Page_Description,
+ @Signups, @First_Deposit_Count, @First_Deposit_Amount, @Deposits, @Gross_Win,
+ @Bonus, @Tax, @Turnover, @Net_Revenue, @Qualified_Players_Tier1, @Qualified_Players_Tier2,
+ @Hits)
+SET 
+    customer_id = @MA_ID,
+    affiliate_id = @Source_Group,
+    join_year_month = DATE_FORMAT(STR_TO_DATE(@Customer_Join_Date, '%Y-%m-%d'), '%Y-%m'),
+    signups = @Signups,
+    first_deposit_count = @First_Deposit_Count,
+    first_deposit_amount = @First_Deposit_Amount,
+    deposits = @Deposits,
+    gross_win = @Gross_Win,
+    bonus = @Bonus,
+    tax = @Tax,
+    turnover = @Turnover,
+    net_revenue = @Net_Revenue,
+    qualified_players_tier1 = @Qualified_Players_Tier1,
+    qualified_players_tier2 = @Qualified_Players_Tier2,
+    hits = @Hits;
+
+-- Importar datos de métricas de juegos
+LOAD DATA LOCAL INFILE 'MyAffiliates - Advanced Reporting - Customer Report-4.csv'
+INTO TABLE game_metrics
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 LINES
+(@MA_ID, @Customer, @Client_Reference, @Source_Group, @Campaign, @Customer_Country, 
+ @IP_Address, @Customer_Join_Date, @Landing_Page_ID, @Landing_Page_Description,
+ @Signups, @First_Deposit_Count, @First_Deposit_Amount, @Deposits, @Gross_Win,
+ @Bonus, @Tax, @Turnover, @Net_Revenue, @Qualified_Players_Tier1, @Qualified_Players_Tier2,
+ @Hits, @Number_Tickets, @Game_Turnover, @Game_Gross_Win, @Game_Bonus,
+ @Game_Tax, @Game_Net_Revenue)
+SET 
+    customer_id = @MA_ID,
+    game_type = CASE 
+        WHEN @Number_Tickets IS NOT NULL THEN 'casino'
+        WHEN @Game_Tax IS NOT NULL AND @Number_Tickets IS NULL THEN 'sports'
+        ELSE 'virtual'
+    END,
+    number_tickets = @Number_Tickets,
+    turnover = @Game_Turnover,
+    gross_win = @Game_Gross_Win,
+    bonus = @Game_Bonus,
+    tax = @Game_Tax,
+    net_revenue = @Game_Net_Revenue; 

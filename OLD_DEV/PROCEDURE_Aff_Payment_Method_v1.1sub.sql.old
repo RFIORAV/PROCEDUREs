@@ -1,0 +1,180 @@
+/*
+PROCEDURE_Aff_Payment_Method.sql - Mantenimiento talba  Payment_Methods
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Affiliate_id    =[ALL | Affiliate_id ]. OPCIONAL. Default=ALL
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Aff_Payment_Method('MS_id=130,debug=no');
+
+09.08.2023 v1    
+27.05.2024 v1.1   Tratamiento de Subafiliados
+
+*/
+
+DROP PROCEDURE IF EXISTS Aff_Payment_Method;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Aff_Payment_Method`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'AFFILIATES - Report Aff_Payment_Method'
+    
+proc_label:BEGIN
+
+
+SET @Version         ='v1.1 27.05.2024';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @Affiliate_id    ='';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      
+
+SET @InputCommLine=replace(@InputCommLine,'"','');  
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+
+WHILE @InputCommLine>' ' DO
+
+
+   SET @e=INSTR(@InputCommLine,'=');    				   
+   SET @c=INSTR(@InputCommLine,','); 					   
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =      @v;  END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Mode,@Month,@View,@Affiliate_id,@Debug,@Meta,InputCommLine; END IF;
+										 
+
+IF @Month='CM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 0 MONTH),7); END IF;
+IF @Month='LM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+SET @Month_Report=@Month;
+
+
+IF   @Affiliate_id IN ("","ALL")
+THEN
+    Select 'data' as Meta,'Affiliate_id mandatory' as '' from dual;
+    LEAVE proc_label;
+END IF; 
+
+ 
+SET @WhereAffiliate_id='';
+
+IF @Affiliate_id  !="ALL" THEN SET @WhereAffiliate_id=CONCAT(" Account_id=",@Affiliate_id);     END IF;
+
+IF @Debug!="NO" THEN SELECT @WhereAffiliate_id; END IF;
+
+/*
+SELECT `id`,`Account_id`,`email`,`Payment_Method`
+      ,`Card_Owner_Name`,`Card_Owner_Number`,`Card_Expiry_Date`,`Card_CVV`
+      ,`Bank_Name`,`Bank_IBAN`,`Bank_Swift`
+      ,`Insert_Date`,`Status`,`Owner_Address`
+      ,`Creation_Date`,`Last_Update`,`Operator` 
+FROM account_payment_methods
+*/
+
+/************ TRATAMIENTO DE SUBAFILIADOS ******************************************/
+SET @AffiliateGroup=(SELECT group_id FROM account_account_groups 
+                     WHERE account_id=@Affiliate_id AND  group_id=6);
+IF  @AffiliateGroup IS NULL THEN SET @AffiliateGroup=0; END IF;
+/*---------------------------------------------------------------------------------*/
+
+SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+   SELECT `id`,`Account_id`,`Payment_Method`
+         ,`Card_Owner_Name`,`Card_Owner_Number`,`Card_Expiry_Date`,`Card_CVV`
+         ,`Bank_Name`,`Bank_IBAN`,`Bank_Swift`
+         ,`Status`,`Owner_Address`
+         ,`Creation_Date`
+         ,left(ifnull(`Last_Update`,""),19) `Last_Update`
+         ,`Operator` 
+   FROM account_payment_methods
+WHERE ',@WhereAffiliate_id 
+,')
+');
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"omit=yes"                as `id`
+   ,"omit=yes"                as `Account_id`
+   ,"width=180px"             as `Method`
+   ,"width=160px"             as `Account Name`
+   ,"omit=yes"                as `Card Number`
+   ,"omit=yes"                as `Card Expiry`
+   ,"omit=yes"                as `Card_CVV`
+   ,"width=150px"             as `Bank Name`
+   ,"width=170px"             as `Bank IBAN`
+   ,"width=100px"             as `Bank Swift`
+   ,"width=100px"             as `Status`
+   ,"width=100px"             as `Owner Address`
+   ,"omit=yes"                as `Creation_Date`
+   ,"width=150px"             as `Last_Update`    
+   ,"width=100px"             as `Operator`                                                  
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`
+	,MT.* 
+FROM Main_Table_Data MT
+order by Last_Update desc
+;');
+
+/************ TRATAMIENTO DE SUBAFILIADOS ******************************************/
+IF  @AffiliateGroup=6 THEN
+    SET @SQL=REPLACE(@SQL,"account_payment_methods","sub_account_payment_methods");
+END IF;
+/*---------------------------------------------------------------------------------*/
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Aff_Payment_Method('affiliate_id=419,debug=non');
+call Aff_Payment_Method('affiliate_id=531,debug=non');  -- subaff
+
+*/

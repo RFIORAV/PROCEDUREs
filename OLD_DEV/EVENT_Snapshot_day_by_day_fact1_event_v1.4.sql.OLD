@@ -1,0 +1,36 @@
+/* EVENT_Snapshot_day_by_day_fact1_event.sql
+
+   15.07.2022 V1  Lanza Update DbD_fact1 y DbD_fact2
+   25.09.2022 v1.1 Lanza Show_Diff_CPA_DbD_yesterday('SET') a partir de las 23
+   02.10.2022 v1.2 Lanza total_monthy_comm_ges_upd()
+   09.11.2022 v1.3 Lanza CALL Status_tables_upd();
+   16.03.2023 v1.4 Lanza total_monthy_comm_aff_upd()
+   19.04.2023      Cambio de parámetro en Show_Diff_CPA_DbD_yesterday()
+*/
+
+DROP EVENT IF EXISTS Snapshot_day_by_day_fact1_event;
+-- -----------------------------------------------------
+DELIMITER //
+
+CREATE EVENT `Snapshot_day_by_day_fact1_event`
+	ON SCHEDULE EVERY 30 MINUTE STARTS '2022-01-01 00:15:00'
+	ON COMPLETION PRESERVE ENABLE
+	COMMENT 'Update Snapshot_day_by_day_fact1/fact2'
+   DO 
+BEGIN
+   SET @Version         ='v1.4 16.03.2023';
+   SET @CurrentDay      =curdate();
+   
+   CALL Snapshot_day_by_day_fact1_upd();
+   CALL Snapshot_day_by_day_fact2_upd_cm();
+   
+   IF HOUR(NOW())>22 THEN CALL Show_Diff_CPA_DbD_yesterday('Action=SET'); END IF;
+   
+   CALL total_monthy_comm_ges_upd();
+   CALL total_monthy_comm_aff_upd();
+   
+   CALL Status_tables_upd();
+     
+END;
+//
+DELIMITER ;

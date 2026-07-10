@@ -1,0 +1,300 @@
+/*
+PROCEDURE_Report_players_netrefer_v1.sql
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Affiliate_id    =[ALL | id de Affiliate]. OPCIONAL. Default=ALL.
+Data_Month
+Brand
+Account 
+Tracker_name
+Signup_month    
+Customer_ID     
+Show_products     
+
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_players_netrefer('debug=yes'); -- Devuelve todas las MS
+call Report_players_netrefer('debug=ye,filters=yeS');
+call Report_players_netrefer('debug=ye,filters=no,status=0');
+
+14.01.2025 V1     Primera versión operativa
+14.03.2025 v2     Cambio tabla players_netrefer por players_netrefer_API
+27.03.2025 v2.1   Filtro por Signup_month y Customer_ID   
+  
+*/
+
+DROP PROCEDURE IF EXISTS Report_players_netrefer;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_players_netrefer`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Affiliate Interactions'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v2.1 27.03.2025';
+SET @CurrentDay      =curdate();
+SET @Data_Month      ='ALL';
+SET @Signup_month    ='ALL';
+SET @Customer_ID     ='ALL';
+SET @CPA_month       ='ALL';
+SET @Affiliate_id    ='ALL';
+SET @Show_products   ='NO';
+SET @Account         ='ALL';
+SET @Tracker_name    ='ALL';
+SET @Brand           ='ALL';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='account'         THEN SET @Account       =UPPER(@v); END IF;
+   IF lower(@k)='tracker_name'    THEN SET @Tracker_name  =UPPER(@v); END IF;
+   IF lower(@k)='data_month'      THEN SET @Data_Month    =UPPER(@v); END IF;
+   IF lower(@k)='signup_month'    THEN SET @Signup_month  =UPPER(@v); END IF;
+   IF lower(@k)='customer_id'     THEN SET @Customer_ID   =UPPER(@v); END IF;
+   IF lower(@k)='Show_products'   THEN SET @Show_products =UPPER(@v); END IF;
+   IF lower(@k)='brand'           THEN SET @Brand         =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Month,@Filters,@Data_Month,@Signup_month,@Show_products,@Customer_ID,@Affiliate_id
+                                 ,@Username,@Tracker_name,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereAffiliate   ='';
+SET @WhereSignup_month='';
+SET @WhereCustomer_ID ='';
+SET @WhereDataMonth   ='';
+SET @WhereBrand       ='';
+SET @WhereAccount     ='';
+SET @WhereTracker_name='';
+
+SET @GROUPBY=CASE WHEN @Show_products="YES" 
+                  THEN 'GROUP BY LEFT(`Date`,7),`Username_id`,`Customer_Reference_ID`,`Prodotto` '
+                  ELSE 'GROUP BY LEFT(`Date`,7),`Username_id`,`Customer_Reference_ID` '
+             END;
+
+IF    @Affiliate_id ="null" 
+THEN  SET @WhereAffiliate=" AND M.Affiliate_id is null ";   
+ELSE
+   IF @Affiliate_id  !="ALL" THEN SET @WhereAffiliate     =CONCAT(" AND M.Affiliate_id=",@Affiliate_id );   END IF;
+END IF;
+IF @Signup_month  !="ALL" THEN SET @WhereSignup_month =CONCAT(" AND Left(`Signup_Date`,7)='",@Signup_month,"'");  END IF;
+IF @Customer_ID   !="ALL" THEN SET @WhereCustomer_ID  =CONCAT(" AND Customer_Reference_ID='",@Customer_ID,"'");   END IF;
+IF @Data_Month    !="ALL" THEN SET @WhereDataMonth    =CONCAT(" AND Left(p.`Date`,7)='",@Data_Month,"'");   END IF;
+IF @Brand         !="ALL" THEN SET @WhereBrand        =CONCAT(" AND p.`Advertiser`='",@Brand,"'");          END IF;
+IF @Account       !="ALL" THEN SET @WhereAccount      =CONCAT(" AND p.`Username`='",@Account,"'");          END IF;
+IF @Tracker_name  !="ALL" THEN SET @WhereTracker_name =CONCAT(" AND p.`Marketing_Source_Name`='",@Tracker_name,"'"); END IF;
+
+IF @Debug!="NO" THEN SELECT @WhereDataMonth,@WhereSignup_month,@WhereCustomer_ID,@WhereAffiliate,@WhereBrand
+                           ,@WhereAccount,@WhereTracker_name,@GROUPBY; END IF;
+
+SET @Count=0;
+
+/**************************************************************************************************************/
+
+SET @CTE_players=CONCAT('
+WITH Main_Table_Data AS -- Original_data as 
+(
+SELECT 
+    p.`Date`                          `Date`
+   ,p.`Advertiser`                    `Advertiser`
+   ,p.`Username`                      `Username`
+   ,p.`Username_id`                   `Username_id`
+-- ,p.`Method`                        `Method`
+   ,p.`Prodotto`                      `Prodotto`
+   ,p.`Customer_Reference_ID`         `Customer_Reference_ID`
+-- ,p.`Alias`                         `Alias`
+-- ,p.`AffiliateID`                   `AffiliateID`
+   ,p.`Country`                       `Country`
+   ,case when p.`Signup_Date` is not null
+         then DATE_FORMAT(STR_TO_DATE(Signup_Date, "%d-%m-%Y"), "%Y-%m-%d")
+         else null end                `Signup_Date`
+   ,p.`Reward_Plan`                   `Reward_Plan`
+   ,p.`Marketing_Source_Name`         `Marketing_Source_Name`
+   ,p.`Marketing_Source_ID`           `Marketing_Source_ID`
+   ,M.id                              `MS_id`
+   ,M.Affiliate_id                    `Affiliate_id`
+   ,a.Username                        `Affiliate`
+-- ,p.`URL`                           `URL`
+-- ,p.`Expiry_Date`                   `Expiry_Date`
+   ,p.`Customer_Type`                 `Customer_Type`
+   ,p.`Customer_Level`                `Customer_Level`
+   ,case when p.`CPA_Processed_Date` is not null
+         then DATE_FORMAT(STR_TO_DATE(CPA_Processed_Date, "%d-%m-%Y"), "%Y-%m-%d")
+         else null end                `CPA_Processed_Date`
+   ,p.`Brand`                         `Brand`
+   ,p.`Customer_Signup_Source`        `Customer_Signup_Source`
+   ,FORMAT(SUM(p.`Gross_Revenue`    ),2) `Gross_Revenue`
+   ,FORMAT(SUM(p.`Deposits`         ),2) `Deposits`
+   ,FORMAT(SUM(p.`Turnover`         ),2) `Turnover`
+   ,FORMAT(SUM(p.`Payouts`          ),2) `Payouts`
+   ,FORMAT(SUM(p.`Contributions`    ),2) `Contributions`
+   ,FORMAT(SUM(p.`Transactions`     ),0) `Transactions`
+   ,FORMAT(SUM(p.`Points`           ),0) `Points`
+   ,FORMAT(SUM(p.`Adj_(Chargebacks)`),2) `Adj_(Chargebacks)`
+   ,FORMAT(SUM(p.`Total_Net_Revenue`),2) `Total_Net_Revenue`
+   ,p.`Total_Net_Revenue_MTD`         `Total_Net_Revenue_MTD`
+-- ,p.`Details`                       `Details` 
+
+FROM players_netrefer_API p  
+LEFT JOIN `campaign_marketing_source` `M` ON `M`.`Username_id`=p.`Username_id` 
+                                          AND   (M.`Tracker_ID`=p.`Marketing_Source_ID`
+                                              OR M.`Tracker_Name`=p.`Marketing_Source_Name`)
+LEFT JOIN account_account     a     ON a.id=M.Affiliate_id 
+
+WHERE 1=1 '
+   ,@WhereDataMonth
+   ,@WhereBrand 
+   ,@WhereAffiliate 
+   ,@WhereAccount    
+   ,@WhereTracker_name
+,@GROUPBY,
+'
+ 
+)
+');
+
+SET @SQLmeta_players=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"width=100px"            as `Date data`
+   ,"width=100px"            as `Brand`
+   ,"width=150px,tooltip=yes" as `Account`
+   ,"omit=yes"               as `Username_id`
+   ,IF(@Show_products="YES","width=150px","omit=yes") as `Prod`
+   ,"width=100px"            as `Cust ID`
+   ,"width=100px"            as `Country`
+   ,"width=100px"            as `Signup Date`
+   ,"width=200px,tooltip=yes" as `Reward Plan`
+   ,"width=100px"            as `MS Name`
+   ,"width=100px"            as `Tracking id`
+   ,"width=100px"            as `MS_id`
+   ,"width=100px"            as `Affiliate id`
+   ,"width=200px"            as `Affiliate`
+   ,"width=100px"            as `Cust Type`
+   ,"width=100px"            as `Cust Level`
+   ,"width=100px"            as `CPA Date`
+   ,"omit=yes"               as `Web`
+   ,"width=100px"            as `Cust Sgnup Source`
+   ,"width=100px,right=true" as `Gross Revenue`
+   ,"width=100px,right=true" as `Deposits`
+   ,"width=100px,right=true" as `Turnover`
+   ,"width=100px,right=true" as `Payouts`
+   ,"width=100px,right=true" as `Contribt`
+   ,"width=100px,right=true" as `Transacts`
+   ,"width=100px,right=true" as `Points`
+   ,"width=100px,right=true" as `Adj (Chargebacks)`
+   ,"width=100px,right=true" as `Total NR`
+   ,"width=100px,right=true" as `Total NR MTD`   
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE_players,
+@SQLmeta_players,
+'
+SELECT "data" as `Meta`, -- "..." as `Action`,
+   MT.*
+FROM Main_Table_Data MT 
+WHERE 1=1 '
+   ,@WhereSignup_month
+   ,@WhereCustomer_ID, 
+'
+-- LIMIT 1000
+;'
+);
+
+-- ------------------------------------------------------------
+
+SET @Month_INI=left(DATE_SUB(CURDATE(), INTERVAL 12 MONTH),7);
+
+SET @SQLfilters=CONCAT(
+@CTE_players,
+'
+,Main_Table_Data_filter as (
+SELECT *
+FROM Main_Table_Data 
+WHERE 1=1 '
+   ,@WhereSignup_month
+   ,@WhereCustomer_ID, 
+'
+)
+(SELECT "00" as "Korder","Options" AS "Key","Show detail by prod" AS "Value","Show_products" AS "CallKey","YES" AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "04","Affiliate",ifnull(`Affiliate`,"_OldData"),"Affiliate_id",ifnull(`Affiliate_id`,"null"),COUNT(*) AS "Rows" FROM Main_Table_Data_filter GROUP BY ifnull(`Affiliate_id`,"null")) UNION ALL
+(SELECT "01","Data Month"  ,Left(`Date`,7),"Data_Month" ,Left(`Date`,7),COUNT(*) FROM Main_Table_Data_filter GROUP BY Left(`Date`,7)) UNION ALL
+(SELECT "03","Brand"       ,`Advertiser`  ,"Brand"      ,`Advertiser`  ,COUNT(*) FROM Main_Table_Data_filter GROUP BY `Advertiser`)   UNION ALL
+(SELECT "05","SignUp Month",Left(`Signup_Date`,7),"Signup_Month" ,Left(`Signup_Date`,7),COUNT(*) FROM Main_Table_Data_filter GROUP BY Left(`Signup_Date`,7)) UNION ALL
+(SELECT "07","Customer ID" ,Customer_Reference_ID,"Customer_ID" ,Customer_Reference_ID,COUNT(*) FROM Main_Table_Data_filter GROUP BY Customer_Reference_ID) UNION ALL
+(SELECT "09","Brand"       ,`Advertiser`  ,"Brand"      ,`Advertiser`  ,COUNT(*) FROM Main_Table_Data_filter GROUP BY `Advertiser`)   UNION ALL
+(SELECT "11","Account"     ,`Username`    ,"Account"    ,`Username`    ,COUNT(*) FROM Main_Table_Data_filter GROUP BY `Username`)     UNION ALL
+(SELECT "13","MS Name"     ,`Marketing_Source_Name`,"Tracker_name",`Marketing_Source_Name`,COUNT(*) FROM Main_Table_Data_filter GROUP BY `Marketing_Source_Name`) -- UNION ALL
+ORDER BY Korder ASC, 
+         CASE WHEN Korder IN ("01","05") THEN Value END DESC,
+         CASE WHEN Korder NOT IN ("01","05") THEN Value END ASC
+;');
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/* 
+
+call Report_players_netrefer('debug=ye'); -- Devuelve todas las MS
+call Report_players_netrefer('debug=ye,filters=yeS');
+call Report_players_netrefer('debug=ye,Customer_ID=42555');
+call Report_players_netrefer('debug=ye,filters=no,Affiliate_id=2');
+call Report_players_netrefer('debug=ye,filters=no,Invoice_id=10');
+call Report_players_netrefer('debug=ye,filters=no,Invoiced_Month=2024-01');
+*/
+

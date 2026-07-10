@@ -1,0 +1,315 @@
+/*
+PROCEDURE_Report_Accounts.sql - Report Accounts (campaign_username)
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Area            =[ALL | gaming / forex]. OPCIONAL. Default=ALL
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Brand           =[ALL | Nombre del Advertiser]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Product         =[ALL | Product]. OPCIONAL. Default=ALL. Si tiene más de una palabra, separar con "!" en lugar de espacio
+Status_id       =[ALL | 1 | 0 | N]. OPCIONAL. Default=ALL. 1=Active 0=Inactive 4=Paused 6=Paused NM N=Other inactiv
+Stat_aggreg     =[ALL | 1 | 0 | N]. OPCIONAL. Default=ALL. 1=Active 0=Inactive 4=Paused 6=Paused NM N=Other inactiv
+Stat_final      =[ALL | Stat* ]. OPCIONAL. Default=ALL. Stat* es el que se indica con *
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+ 
+Parámetros ('[Key=Value[,...]'])
+
+Key no utilizadas:
+
+Search          =[(dato a buscar]. OPCIONAL. Busca string en Tracker_ID/Tracker_Name/Code_To_Affiliate/MS_id/MS_id/affiliate/Channel
+Account_id      =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+DealbyProduct   =[No | Yes]. Devuelve último deal activo por cada Product. OPCIONAL. Default=no.
+
+Ejemplos:
+
+call Report_Accounts('debug=yes'); -- Devuelve todas las MS
+call Report_Accounts('debug=ye,filters=yes');
+call Report_Accounts('debug=ye,filters=no,status=0');
+
+08.02.2023 V1     Primera versión operativa
+16.03.2023 v1.1   Agrega campo Stat_aggreg
+04.04.2023 v1.2   Proceso y filtro por Publisher null
+10.08.2023 v1.3   Filtro por Brand/Advertiser_Name en lugar de Advertiser_id
+27.11.2024 V1.4   Default ORDER BY Publisher/Brand (RS)
+*/
+
+DROP PROCEDURE IF EXISTS Report_Accounts;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Accounts`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Accounts'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.4 27.11.2024';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @Area            ='ALL';
+SET @Owner           ='ALL';
+SET @Brand           ='ALL';
+SET @Publisher_id    ='ALL';
+SET @Advertiser_id   ='ALL';
+SET @Platform        ='ALL';
+SET @Product         ='ALL';
+SET @Status_id       ='ALL';
+SET @Stat_aggreg     ='ALL';
+SET @Stat_final      ='ALL';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='Stat_final'      THEN SET @Stat_final    =      @v;  END IF;
+   IF lower(@k)='advertiser_id'   THEN SET @Advertiser_id =UPPER(@v); END IF;
+   IF lower(@k)='area'            THEN SET @Area          =UPPER(@v); END IF;
+   IF lower(@k)='brand'           THEN SET @Brand         =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='owner'           THEN SET @Owner         =UPPER(@v); END IF;
+   IF lower(@k)='product'         THEN SET @Product       =      @v;  END IF;
+   IF lower(@k)='publisher_id'    THEN SET @Publisher_id  =UPPER(@v); END IF;
+   IF lower(@k)='stat_aggreg'     THEN SET @Stat_aggreg   =      @v;  END IF;
+   IF lower(@k)='status_id'       THEN SET @Status_id     =      @v;  END IF;
+   -- IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   -- IF lower(@k)='channel_id'      THEN SET @Channel_id    =UPPER(@v); END IF;
+   -- IF lower(@k)='currency'        THEN SET @Currency      =UPPER(@v); END IF;
+   -- IF lower(@k)='dealbyproduct'   THEN SET @DealbyProduct =UPPER(@v); END IF;
+   -- IF lower(@k)='groupbyms'       THEN SET @GroupByMS     =UPPER(@v); END IF;
+   -- IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   -- IF lower(@k)='month'           THEN SET @Month         =UPPER(@v); END IF;
+   -- IF lower(@k)='ms_id'           THEN SET @MS_id         =UPPER(@v); END IF;
+   -- IF lower(@k)='onlyovercap'     THEN SET @OnlyOverCap   =UPPER(@v); END IF;
+   -- IF lower(@k)='platform'        THEN SET @Platform      =      @v;  END IF;
+   -- IF lower(@k)='search'          THEN SET @Search        =     (@v); END IF;
+   -- IF lower(@k)='total'           THEN SET @Total         =UPPER(@v); END IF;
+   -- IF lower(@k)='totline'         THEN SET @TotLine       =UPPER(@v); END IF;
+   -- IF lower(@k)='view'            THEN SET @View          =UPPER(@v); END IF;
+
+END WHILE;
+
+-- Recupera espacios reemplazados en front end por caracter "!"
+IF @Product       !="ALL" THEN SET @Product      =replace(@Brand,"!"," ");       END IF;
+IF @Brand         !="ALL" THEN SET @Brand        =replace(@Brand,"!"," ");       END IF;
+
+
+IF @Debug!="NO" THEN SELECT @Mode,@Month,@View,@Filters,@OWNER,@OnlyOverCap,@Brand,@Brand_Group,@Advertiser_id,@Affiliate_id,@Account_id
+,@Channel_id,@Product,@DealbyProduct,@Platform,@Currency,@Total,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereArea='';
+SET @WhereOwner='';
+SET @WhereBrand ='';
+SET @WhereAdvertiser_id ='';
+SET @WherePublisher='';
+SET @WhereProduct='';
+SET @WhereStatus='';
+SET @WhereStat_aggreg='';
+SET @WhereStat_final='';
+
+IF @Area          !="ALL" THEN SET @WhereArea          =CONCAT(" AND T.Area='",@Area,"'");                  END IF;
+IF @Owner         !="ALL" THEN SET @WhereOwner         =CONCAT(" AND T.Owner=",@Owner);                     END IF;
+IF @Brand         !="ALL" THEN SET @WhereBrand         =CONCAT(" AND AD.`Advertiser_name`='",@Brand,"'");   END IF;
+IF @Advertiser_id !="ALL" THEN SET @WhereAdvertiser_id =CONCAT(" AND T.Advertiser_id  =",@Advertiser_id );  END IF;
+IF @Publisher_id  !="ALL" THEN SET @WherePublisher     =CONCAT(" AND T.Publisher_id   =",@Publisher_id );   END IF;
+IF @Publisher_id   ="-none-" THEN SET @WherePublisher  =CONCAT(" AND T.Publisher_id is null ");   				END IF;
+IF @Product       !="ALL" THEN SET @WhereProduct       =CONCAT(" AND T.`Product`      ='",@Product,"'");    END IF;
+IF @Status_id     !="ALL" THEN SET @WhereStatus        =CONCAT(" AND T.`Status_id`    =",@Status_id );      END IF;
+-- IF @Stat_aggreg   !="ALL" THEN SET @WhereStat_aggreg   =CONCAT(" AND T.`Stat_aggreg`  =",@Stat_aggreg );    END IF;
+-- IF @Stat_final    !="ALL" THEN SET @WhereStat_final    =CONCAT(" AND `TStat_final`    ='",@Stat_final,"'"); END IF;
+IF @Stat_aggreg   !="ALL" 
+   THEN 
+   IF @Stat_aggreg IN ("0","1","4","6") 
+      THEN SET @WhereStat_aggreg   =CONCAT(" AND T.`Stat_aggreg`  ='",@Stat_aggreg,"'"); 
+      ELSE SET @WhereStat_aggreg   =CONCAT(" AND T.`Stat_aggreg` NOT IN ('0','1','4','6') "); 
+      END IF;
+END IF;
+IF @Debug!="NO" THEN SELECT @WhereOwner,@WhereAdvertiser_id,@WhereAffiliate_id,@WhereAdv_Account_id,@WhereChannel_id,@WhereProduct,@WhereStatus,@WhereMS_id,@WhereSearch; END IF;
+
+SET @Count=0;
+
+/**************************************************************************************************************/
+/*
+SELECT `id`,`Area`,`Owner`,`Advertiser_id`,`Publisher_id`,`Username`,`Status_id`,`Status`,`is_active`
+      ,`Product`,`Country_Deal`,`Valid_From`,`Deal_Main_id`,`RSasNR`,`CPA_Limit`,`Data_Currency`,`Password`
+      ,`Identification`,`Note`,`Url`,`API`,`Client_id`,`Client_secret`,`Category`,`Deal_Secondary_id`,`Campaign_id`
+      ,`Advertiser_indirect_id`,`Affiliate_indirect`,`db_indirect`,`is_indirect`,`Creation_Date`,`Last_Update`,`Operator`
+FROM campaign_username;
+*/
+-- SET SESSION group_concat_max_len = 200000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT
+    T.`id`
+   ,ifnull(PU.`Advertiser_name`,"-none-") as `Publisher`
+   ,AD.`Advertiser_name`   as `Brand`
+   ,T.`Username`           as `Account`
+   ,T.`Status_id`
+   ,case when T.`Status_id`!=T.`Stat_aggreg` 
+         then case when T.`Status_id`=1
+                   then T.`Status`
+                   else concat(T.`Status`," *")
+                   end
+         else concat(T.`Status`," *")
+         end                                       as `UStatus`
+    ,(CASE WHEN T.`Status_id`=1 
+           THEN (CASE T.`Stat_Adve`
+                      WHEN "0" THEN "Inactive *"
+                      WHEN "1" THEN "Active"
+                      WHEN "4" THEN "Paused *"
+                      WHEN "6" THEN "Paused auto NM *"
+                      ELSE "Other *" END)
+           ELSE (CASE T.`Stat_Adve`
+                      WHEN "0" THEN "Inactive"
+                      WHEN "1" THEN "Active"
+                      WHEN "4" THEN "Paused"
+                      WHEN "6" THEN "Paused auto NM"
+                      ELSE "Other" 
+           END)
+      END)                                         as `Derived Status`        
+   ,T.`is_active`          -- as `Bot status`
+   ,T.`CPA_Limit`          -- as `CPA Limit`
+   ,T.`Data_Currency`      -- as `Data Currency`
+   ,T.`Area`
+   ,A.Username             as `Owner`
+   ,left(ifnull(T.`Last_Update`,""),16) `Last Update`
+   ,T.`Operator`
+   ,T.`Publisher_id`
+   ,T.`Advertiser_id`
+   ,T.`Owner` as `Owner_id`
+   ,T.`Stat_aggreg` as `TStat_aggreg`
+   ,T.`Status`      as `TStatus`
+   ,T.`Stat_effect` as `TStat_effect`
+   ,case when T.`Status_id`!=T.`Stat_aggreg` 
+			then case when T.`Status_id`="1" 
+                   then concat(T.`Stat_effect`," *")
+                   else concat(T.`Status`," *") end
+         else concat(T.`Status`," *") end as `TStat_final`
+FROM campaign_username T
+LEFT JOIN `account_account`      `A`   ON `A`.`id`    = `T`.`Owner`
+LEFT JOIN `campaign_advertiser`  `AD`  ON (`AD`.`id`  = `T`.`Advertiser_id`)
+LEFT JOIN `campaign_publisher`   `PU`  ON (`PU`.`id`  = `T`.`Publisher_id`)
+WHERE 1=1 '
+   ,@WhereArea
+   ,@WhereOwner
+   ,@WhereBrand
+   ,@WhereAdvertiser_id
+   ,@WherePublisher
+   ,@WhereProduct
+   ,@WhereStatus
+   ,@WhereStat_aggreg
+,')
+');
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta,"width=80px,action=2" as `Action`
+   ,"width=50px"    as `id`
+   ,"width=120px"   as `Publisher`
+   ,"width=120px"   as `Brand`
+   ,"width=150px"   as `Account`
+   ,"width=080px"   as `Status code`
+   ,"width=100px"   as `Status`
+   ,"width=100px"   as `Derived Status`
+   ,"width=080px"   as `Bot status`
+   ,"width=100px"   as `CPA Limit`
+   ,"width=080px"   as `Data Currency`
+   ,"width=080px"   as `Area`
+   ,"width=100px"   as `Owner`
+   ,"width=130px"   as `Last Update`
+   ,"width=100px"   as `Operator`
+   ,"omit=yes"      as `Publisher_id`
+   ,"omit=yes"      as `Advertiser_id`
+   ,"omit=yes"      as `Owner_id`
+   ,"omit=yes"      as `Stat_aggreg`
+   ,"omit=yes"      as `TStatus`
+   ,"omit=yes"      as `TStat_effect`
+   ,"omit=yes"      as `Stat_final`
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`,"..." as `Action`,
+   MT.*
+FROM Main_Table_Data MT
+ORDER BY `Publisher`,`Brand`,`Account`
+;'
+);
+
+-- WHERE 1=1 '
+--    ,@WhereStat_final,
+-- ------------------------------------------------------------
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "01" as "Korder","Status" AS "Key",`TStatus` AS "Value","Status_id" AS `CallKey`,`Status_id` AS "CallValue",COUNT(*) AS "Rows"
+                                                                                                FROM Main_Table_Data GROUP BY `TStatus`)                    UNION ALL
+(SELECT "03","Effective Status *",`TStat_final`,"Stat_aggreg" ,`TStat_aggreg`    ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`TStat_final` ,""))    UNION ALL
+(SELECT "04","Area" 	   ,`Area`     ,"Area"         ,`Area`                      ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Area` ,""))           UNION ALL
+(SELECT "05","Publisher",`Publisher`,"Publisher_id" ,IFNULL(`Publisher_id`,"-none-"),COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Publisher`,"-none-")) UNION ALL
+(SELECT "07","Brand" 	,`Brand`    ,"Brand"        ,replace(Brand," ","!")      ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Brand` ,""))          UNION ALL
+(SELECT "15","Owner" 	,`Owner`    ,"Owner"        ,`Owner_id`                  ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Owner_id` ,""))
+ORDER BY 1,3
+;');
+
+IF @Filters!="NO" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+
+call Report_Accounts('debug=ye'); -- Devuelve todas las MS
+call Report_Accounts('debug=ye,filters=yes');
+call Report_Accounts('debug=ye,area=forex,Stat_final=active*');
+call Report_Accounts('debug=ye,filters=no,Stat_aggreg=6');
+call Report_Accounts('debug=ye,filters=no,brand=WilliamHill');
+
+*/

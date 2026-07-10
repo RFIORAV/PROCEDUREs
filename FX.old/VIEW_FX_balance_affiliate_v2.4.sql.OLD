@@ -1,0 +1,67 @@
+/*
+   view_FX_Balance_Affiliate - Saldo actual Estimado, Confirmado e Info por afiliado
+
+   2022.08.25 V2 para corregir problema de incompatibilidad (error 1267) en MySQL8
+   2022.08.26 DATE(CONCAT(LEFT((`F`.`DATE`+INTERVAL 1 MONTH),7),'-20')
+   2022.09.15 Consolidado acceso a forex_view_monthly_fact_aff2 una sola vez
+              Inclusión de comisiones en cero
+              En observación fallo que corrompe esta view
+   2022.09.23 Recodificada con WITH
+*/
+CREATE OR REPLACE VIEW `view_FX_Balance_Affiliate` AS
+
+WITH comms_fin_adj AS (
+   SELECT
+      `F`.`Affiliate_id`                             AS `Affiliate_id`
+      ,`F`.`DATE`                                    AS `DATE`
+      ,'CPA'                                         AS `Op_type`
+      ,CONCAT_WS(' ',`F`.`Brand`,`F`.`Product_real`) AS `Description`
+      ,`F`.`CPA_Val_AJ_RS`+`F`.`RS_AJUST`            AS `Amount`
+      ,CASE WHEN DATE(CONCAT(LEFT((`F`.`DATE`+INTERVAL 1 MONTH),7),'-20'))<=CURDATE() THEN '1' ELSE 0 END AS `Status`
+      ,CASE WHEN DATE(CONCAT(LEFT((`F`.`DATE`+INTERVAL 1 MONTH),7),'-20'))<=CURDATE() THEN 'Confirmed' ELSE 'Provisional' END AS `StatusText`
+      ,0      AS `balance_est`
+      ,0      AS `balance_conf`
+   FROM `forex_view_monthly_fact_aff3` `F`
+
+   UNION ALL
+
+   SELECT
+      `F`.`Affiliate_id`            AS `Affiliate_id`
+      ,LEFT(`F`.`Date`,10)          AS `Date`
+      ,`F`.`Op_type`                AS `Op_type`
+      ,`F`.`Description`            AS `Description`
+      ,(`F`.`Amount_Debit`*-(1))    AS `Amount`
+      ,TRIM(IFNULL(`F`.`Status`,0)) AS `Status`
+      ,(CASE TRIM(IFNULL(`F`.`Status`,0)) WHEN '0' THEN 'Pending' WHEN '1' THEN 'Accepted' WHEN '2' THEN 'Paid' WHEN '3' THEN 'Denied' WHEN '5' THEN 'INFO' ELSE 'INFO'
+         END) AS `StatusText`
+      ,0      AS `balance_est`
+      ,0      AS `balance_conf`
+   FROM `forex_account_financial_movement` `F`
+
+   UNION ALL
+
+   SELECT
+      `F`.`Affiliate_id`            AS `Affiliate_id`
+      ,LEFT(`F`.`Date`,10)          AS `Date`
+      ,`F`.`Op_type`                AS `Op_type`
+      ,`F`.`Description`            AS `Description`
+      ,`F`.`Amount_Credit`          AS `Amount`
+      ,TRIM(IFNULL(`F`.`Status`,0)) AS `Status`
+      ,(CASE TRIM(IFNULL(`F`.`Status`,0)) WHEN '0' THEN 'Pending' WHEN '1' THEN 'Accepted' WHEN '2' THEN 'Paid' WHEN '3' THEN 'Denied' WHEN '5' THEN 'INFO' ELSE 'INFO'
+         END) AS `StatusText`
+      ,0      AS `balance_est`
+      ,0      AS `balance_conf`
+   FROM `forex_account_manual_adjustments` `F`
+   WHERE (IFNULL(`F`.`Status`,0) IN(1,2))
+   )
+
+SELECT
+    `Affiliate_id`                                                            AS `Affiliate_id`
+   ,IFNULL(`A`.`username`, '_Unassigned') 	                                 AS `Affiliate`
+   ,ROUND(SUM((CASE WHEN(X.`Status` IN(0,1,2)) THEN `Amount` ELSE 0 END)),2)  AS `Estimated`
+   ,ROUND(SUM((CASE WHEN(X.`Status` IN(1,2)) THEN `Amount` ELSE 0 END)),2)    AS `Confirmed`
+   ,ROUND(SUM((CASE WHEN(X.`Status`=5) THEN `Amount` ELSE 0 END)),2)          AS `INFO`
+FROM comms_fin_adj X
+LEFT JOIN `account_account` `A` ON `A`.`id`=`Affiliate_id`
+GROUP BY `Affiliate`
+;

@@ -1,0 +1,50 @@
+/**
+	PROCEDURE_Status_tables_upd.sql
+   
+	Actualiza Status de las siguientes tablas
+      - campaign_advertiser
+      - campaign_username
+   
+	Se lanza desde EVENT
+	
+   09.11.2022 V1 
+*/
+
+DROP PROCEDURE IF EXISTS Status_tables_upd;
+-- -----------------------------------------------------
+DELIMITER //
+
+CREATE PROCEDURE Status_tables_upd()
+COMMENT 'Status update - tables campaign_advertiser/campaign_username'
+DETERMINISTIC
+MODIFIES SQL DATA
+-- SQL SECURITY INVOKER
+
+BEGIN
+-- Defaults
+SET @Version         ='v1 09.11.2022 ';
+SET @CurrentDay      =curdate();
+
+UPDATE campaign_advertiser
+SET Status=(
+   CASE Status_id
+        WHEN '1' then 'Active'
+        WHEN '4' then 'Paused'
+        ELSE          'Inactive' END
+);
+UPDATE campaign_username
+SET Status=(
+   CASE Status_id
+        WHEN '1' then 'Active'
+        WHEN '4' then 'Paused'
+        ELSE          'Inactive' END
+);
+
+END;
+//
+DELIMITER ;
+	
+-- -----------------------------------------------------
+-- CALL Status_tables_upd();
+-- -----------------------------------------------------
+

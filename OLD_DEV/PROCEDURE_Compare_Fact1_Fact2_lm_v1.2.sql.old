@@ -1,0 +1,105 @@
+/* PROCEDURE_Compare_Fact1_Fact2_lm.sql - Check/Update Last Month data: Main Table Vs Main Aff Table (Fact1/Fact2)
+
+   01.09.2022 V1   Compara last month Fact2 con Fact1. Devuelve diferencias
+   19.10.2022 V1.1 Columna Meta
+   04.11.2022 V1.2 Compara también NR y Deal_Aff_id
+   Parametros (none)
+   
+*/
+-- DROP PROCEDURE IF EXISTS Compare_Fact1_Fact2_lm1;
+DROP PROCEDURE IF EXISTS Compare_Fact1_Fact2_lm;
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE Compare_Fact1_Fact2_lm()
+   COMMENT 'Check/Update Last Month data: Main Table Vs Main Aff Table (Fact1/Fact2)'
+   LANGUAGE SQL
+    
+BEGIN
+
+SET @Version='v1.2 04.11.2022';
+SET @Meta="YES";
+
+SELECT "" as Meta,
+	 CASE WHEN SUM(CPA_AF)>SUM(CPA_GE) THEN 'Quitar CPAs al Afiliado'
+         WHEN SUM(CPA_AF)<SUM(CPA_GE) THEN 'Dar CPAs al Afiliado' 
+         ELSE 'Update Net Rev' END AS Result
+	 -- IF(SUM(CPA_AF)>SUM(CPA_GE),'Quitar CPAs al Afiliado','Dar CPAs al Afiliado') AS Result
+	,`Owner`,left(DATE,7) AS Month,Brand,Affiliate
+	,Tracker_Name,Tracker_ID,MS_id
+	,SUM(CPA_AF) AS CPA_AFF
+   ,SUM(CPA_GE) AS CPA_Ges
+	,SUM(CPA_AF)-SUM(CPA_GE) AS `CPA_DIFF`
+	,SUM(Net_Rev_AF)-SUM(Net_Rev_GE) AS `NR_DIFF`
+	,round(SUM(Net_Rev_AF),2) AS Net_Rev_AF
+   ,round(SUM(Net_Rev_GE),2) AS Net_Rev_Ges
+   ,Deal_Aff_id as 'DealAff'
+	,CONCAT("CALL Sync_MS_Fact1_Fact2_lm(",MS_id,");") as 'CALL TO SYNC this MS'
+FROM (
+SELECT
+	 `Owner`
+	,`Date`
+	,`Brand`
+	,`Username`
+	,`Username_id`
+	,`Affiliate`
+	,`Affiliate_id`
+	,SUM(`Qualified_Players`)  AS 'CPA_AF'
+	,SUM(`Net_Revenue`)        AS 'Net_Rev_AF'
+	,0 AS 'CPA_GE'
+	,0 AS 'Net_Rev_GE'
+	,`Tracker_Name`,`Tracker_ID`,ifnull(MS_id,0) AS MS_id
+   ,Deal_Aff_id
+FROM
+	`Snapshot_day_by_day_fact2`
+WHERE (`Qualified_Players`<>0 or `Net_Revenue`<>0) AND LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7) -- and Tracker_Name = 'a47mou'
+GROUP BY left(DATE,7),Username_id,ifnull(MS_id,0),Tracker_Name,Tracker_ID,Affiliate_id,Deal_Aff_id
+UNION ALL -- -----------------------------------------------------------------
+SELECT
+	 `Owner`
+	,`Date`
+	,`Brand`
+	,`Username`
+	,`Username_id`
+	,`Affiliate`
+	,`Affiliate_id`
+	, 0 AS 'CPA_AF'
+	, 0 AS 'Net_Rev_AF'
+	,SUM(`Qualified_Players`)  AS 'CPA_GE'
+	,SUM(`Net_Revenue`)        AS 'Net_Rev_GE'
+	,`Tracker_Name`,`Tracker_ID`,ifnull(MS_id,0) AS MS_id
+   ,Deal_Aff_id
+FROM
+	`Snapshot_day_by_day_fact1`
+WHERE (`Qualified_Players`<>0 or `Net_Revenue`<>0) AND LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7) -- and Tracker_Name = 'a47mou'
+GROUP BY left(DATE,7),Username_id,ifnull(MS_id,0),Tracker_Name,Tracker_ID,Affiliate_id,Deal_Aff_id
+) AS XX
+WHERE ifnull(MS_id,0)>0
+GROUP BY left(DATE,7),Username_id,MS_id,Tracker_Name,Tracker_ID HAVING `CPA_DIFF`<>0 or `NR_DIFF`<>0 -- WITH ROLLUP 
+-- UNION ALL SELECT "" as Meta,'{End report}', '','΋','', '','','', '','','' ,'','','', '' FROM dual 
+UNION ALL 
+
+SELECT
+"setting" as Meta
+,"width=150px" as '1'
+,"width=80px"  as '2'
+,"width=80px"  as '3'
+,"width=100px" as '4'
+,"width=100px" as '5'
+,"Width=200px" as '6'
+,"width=90px"  as '7'
+,"width=90px"  as '8'
+,"width=90px"  as '9'
+,"width=90px"  as '10'
+,"width=90px"  as '11'
+,"width=90px"  as '12'
+,"width=90px"  as '13'
+,"width=90px"  as '14'
+,"width=90px"  as '15'
+,"grow=2,action=1" as '16'
+FROM DUAL WHERE @Meta="YES"
+ORDER BY Month,Owner,`Brand`,Affiliate
+;
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call Compare_Fact1_Fact2_lm();

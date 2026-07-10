@@ -1,0 +1,145 @@
+/*
+PROCEDURE_economics_by_affiliate_v1.sql - GENERACION DE RESUMEN ECONOMICS - SOLO SE USA INVOCADO DESDE DJANGO
+
+01.03.2022 v1
+
+*/	
+-- -----------------------------------------------------
+DROP PROCEDURE IF EXISTS economics_by_affiliate;
+-- -----------------------------------------------------
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `economics_by_affiliate`(
+	IN `AffiliateID` INT
+)
+    COMMENT 'RESUMEN [Affiliate_id] de Comisiones, Pagos, Ajustes desde el inicio, en forma de cuadro contabilidad'
+
+ProcedureBody: BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 01.03.2022';
+SET @CurrentDay      =curdate();
+
+SET @bal_est=0;
+SET @bal_cnf=0;
+SET @row_num=0;   	
+
+select left(date,7) as Month,Date,Description,Op_type,Amount,StatusText
+	,round(balance_est,2) AS Bal_Estimated,round(balance_conf,2) AS Bal_Confirmed
+from (
+select Date,Description,Op_type,Amount,StatusText
+	,CASE WHEN Status in (0,1,2) THEN @bal_est:=@bal_est+Amount ELSE @bal_est END AS balance_est
+   ,CASE WHEN Status in (1,2)   THEN @bal_cnf:=@bal_cnf+Amount ELSE @bal_cnf END AS balance_conf
+	,@row_num:=@row_num+1 as RowNum
+from (
+SELECT Affiliate_id,DATE,"CPA" AS Op_type,CONCAT_WS(" ",Brand,Product_Real) AS Description,(CPA_Val_AJ_RS) AS Amount
+	,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),'-20')<=CURDATE() THEN "1" 			ELSE 0 END AS Status
+	,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),'-20')<=CURDATE() THEN "Accepted" ELSE "Provisional" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+FROM view_monthly_fact_aff2 F WHERE F.Affiliate_id=AffiliateID AND (CPA_Val_AJ_RS)<>0
+
+UNION
+SELECT Affiliate_id,DATE,"RShare" AS Op_type,CONCAT_WS(" ",Brand,Product_Real) AS Description,(RS_AJUST) AS Amount
+	,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),'-20')<=CURDATE() THEN "1" 			ELSE 0 END AS Status
+	,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),'-20')<=CURDATE() THEN "Accepted" 	ELSE "Provisional" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+FROM view_monthly_fact_aff2 F WHERE F.Affiliate_id=AffiliateID AND (RS_AJUST)<>0
+UNION
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,Amount_Debit*-1 AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est, 0 as balance_conf
+FROM account_financial_movement F WHERE F.Affiliate_id=AffiliateID AND ifnull(F.Status,0)<>3
+UNION
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,Amount_Credit AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" 
+									WHEN 3 THEN "Denied" WHEN 5 THEN "INFO" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+FROM account_manual_adjustments F WHERE F.Affiliate_id=AffiliateID AND ifnull(F.Status,0)<>3
+ORDER BY DATE ASC
+) AS x ) as xx
+ORDER BY RowNum DESC;
+
+END;
+$$
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- -----------------------------------------------------
+/*
+
+CALL  economics_by_affiliate(39);
+
+*/
+/*  -------- query en aplicación ----------- 12.01.2024
+-- Financial Movements
+SELECT 
+	Affiliate_id
+	,LEFT(Date,7) AS "Periodo"
+	,DATE
+	,"CPA" AS Op_type
+	,CONCAT_WS(" ",Brand,Product_Real,Channel_Name) AS Description
+	,IFNULL(CPA_Val_AJ_RS,0) AS Amount
+  ,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),"-20")<=CURDATE() THEN "1" ELSE 0 END AS Status
+	,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),"-20")<=CURDATE() THEN "Confirmed" ELSE "Provisional" END AS StatusText
+	,0 as balance_est
+	,0 as balance_conf
+FROM view_monthly_fact_aff2 F 
+WHERE F.Affiliate_id="39" AND (CPA_Val_AJ_RS)<>0
+
+UNION
+
+SELECT 
+	Affiliate_id
+	,LEFT(Date,7) AS "Periodo"
+	,DATE
+	,"RShare" AS Op_type
+	,CONCAT_WS(" ",Brand,Product_Real,Channel_Name) AS Description
+	,IFNULL(RS_AJUST,0) AS Amount
+	,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),"-20")<=CURDATE() THEN "1" ELSE 0 END AS Status
+	,CASE WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),"-20")<=CURDATE() THEN "Confirmed" ELSE "Provisional" END AS StatusText
+	,0 as balance_est
+	,0 as balance_conf
+FROM view_monthly_fact_aff2 F 
+WHERE F.Affiliate_id="39" AND (RS_AJUST)<>0
+
+UNION
+
+SELECT 
+	Affiliate_id
+	,LEFT(Date,7) AS "Periodo"
+	,LEFT(Date,10) AS "DATE"
+	,Op_type,Description
+	,IFNULL((Amount_Debit*-1),0) AS Amount
+	,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Confirmed" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" ELSE "INFO" END AS StatusText
+	,0 as balance_est
+	,0 as balance_conf
+FROM account_financial_movement F 
+WHERE F.Affiliate_id="39" AND ifnull(F.Status,0)<>3
+
+UNION
+
+SELECT 
+	Affiliate_id
+	,LEFT(Date,7) AS "Periodo"
+	,LEFT(Date,10) AS "DATE"
+	,Op_type
+	,Description
+	,IFNULL(Amount_Credit,0) AS Amount
+	,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Confirmed" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" ELSE "INFO" END AS StatusText
+	,0 as balance_est
+	,0 as balance_conf
+FROM account_manual_adjustments F 
+WHERE F.Affiliate_id="39" AND ifnull(F.Status,0) in (1,2)
+ORDER BY DATE DESC
+
+
+
+-- LOS CALCULOS DE BALANCE EST Y BALANCE CONF SE REALIZAN EN DJANGO
+-- Itera sobre los datos que devueleve la consulta anterior en orden inverso (de atrás hacia adelante).
+-- Si Status < 3 entonces balance_est es el acumulado de la columna 'Amount' y balance_conf se mantiene el valor de la consuta
+-- Si Status == 1 o 2 entonces balance_conf es el acumulado de la columna 'Amount' y balance_est se mantiene el valor de la consulta
+-- Si Status == 5 entonces balance_est y balance_conf es el valor de la siguiente posicion respectivamente
+
+*/

@@ -1,0 +1,129 @@
+/*
+PROCEDURE_Report_Documents.sql - Reports Invoices uploaded by Affiliates
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+mode             =[ GESTOR | AFFILIATE | MAF ] OBLIGATORIO. 
+MasterAff_id     =[ MasterAff_id ]. SOLO PARA MAF EN MODO MAF. Default=''
+Affiliate_id     =[id de affiliate]
+Op_Type          =[ Withdraw | "" ] Tipo de documento. Default='Withdraw'
+Month            =[YYYY-MM]. Filtro por mes en formato YYYY-MM. Filtra registros de account_account_bills por Creation_Date. OPCIONAL. Default=''
+ActionTaken      =[ "ALL" | "Pending" | "Accepted" | "Paid" | "Blocked" | "Other" ] Status de la operación en account_financial_movement. Default=ALL 
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_invoices_aff('Mode=Gestor,filters=yes,debug=ye');         -- TODOS
+call Report_invoices_aff('Mode=Gestor,filters=yes,month=2025-07,debug=ye');
+call Report_invoices_aff('Mode=Gestor,Affiliate_id=334');
+
+
+10.10.2023 V1     Karen. Primera versión operativa
+01.02.2024 V2     Karen. Se agregó "Op Type" y "Financial_Movement_id"
+27.03.2024 v2.1   RF. Cambios en la presentación del grid (RS)
+09.04.2024 v2.2   RR. Muestra Confirmed y Estimated Balance
+27.05.2024 v2.3   Tratamiento de Subafiliados
+                  Tratamiento de Master Affiliate
+11.09.2024 v2.4   CALL PROCEDURE_Report_Documents Op_Type=Withdraw
+22.09.2025 v2.5   Agregado parámetro Month para filtrar por mes en Creation_Date
+                              
+*/
+
+DROP PROCEDURE IF EXISTS Report_invoices_aff;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_invoices_aff`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report docs Invoices Affiliate'
+    
+proc_label:BEGIN
+ 
+SET @Version         ='v2.5 22.09.2025';
+SET @CurrentDay      =curdate();
+SET @Affiliate_id    ='all';
+SET @MasterAff_id    ='';
+SET @ActionTaken     ='ALL';
+SET @Op_Type         ='Withdraw';
+SET @Mode            ='';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+SET @Month           ='';
+
+-- --------------------------------------------------------------------------
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =      @v;  END IF;
+   IF lower(@k)='masteraff_id'    THEN SET @MasterAff_id  =      @v;  END IF;
+   IF lower(@k)='actiontaken'     THEN SET @ActionTaken   =      @v;  END IF;
+   IF lower(@k)='op_type'         THEN SET @Op_Type       =      @v;  END IF;
+	IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;   
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='month'           THEN SET @Month         =      @v;  END IF;
+ 
+END WHILE;
+-- --------------------------------------------------------------------------
+IF @Debug!="NO" THEN SELECT @Mode,@MasterAff_id,@Affiliate_id,@ActionTaken,@Op_Type,@Debug,@Filters,@Meta,InputCommLine; END IF;
+
+SET @CallParam="Op_Type=Withdraw";
+SET @CallParam=CONCAT(@CallParam,",",IF(@Affiliate_id!="",CONCAT("affiliate_id=",@Affiliate_id),""));
+SET @CallParam=CONCAT(@CallParam,",",IF(@MasterAff_id!="",CONCAT("MasterAff_id=",@MasterAff_id),""));
+SET @CallParam=CONCAT(@CallParam,",",IF(@ActionTaken!="",CONCAT("ActionTaken=",@ActionTaken),""));
+SET @CallParam=CONCAT(@CallParam,",",IF(@Month!="",CONCAT("Month=",@Month),""));
+SET @CallParam=CONCAT(@CallParam,",",IF(@Mode!="",CONCAT("Mode=",@Mode),""));
+SET @CallParam=CONCAT(@CallParam,",",IF(@Meta!="",CONCAT("Meta=",@Meta),""));
+SET @CallParam=CONCAT(@CallParam,",",IF(@Filters!="",CONCAT("Filters=",@Filters),""));
+SET @CallParam=CONCAT(@CallParam,",",IF(@Debug!="",CONCAT("Debug=",@Debug),""));
+
+
+SET @CallParam=REPLACE(@CallParam,',,',',');
+SET @CallParam=REPLACE(@CallParam,',,',',');
+
+IF @Debug!="NO" THEN SELECT @CallParam; END IF;
+
+CALL Report_Documents(@CallParam);
+
+END$$
+DELIMITER ;
+
+/*
+call Report_invoices_aff('Mode=Gestor,filters=yes,debug=ye');         -- TODOS
+call Report_invoices_aff('Mode=Gestor,Affiliate_id=39,ActionTaken=paid,debug=ye');     
+call Report_invoices_aff('Mode=affiliate,Affiliate_id=334,debug=ye'); -- Aff normal
+call Report_invoices_aff('Mode=affiliate,Affiliate_id=834,debug=ye'); -- sub aff
+call Report_invoices_aff('Mode=MAF,debug=ye');                        -- ERROR falta Master Aff
+call Report_invoices_aff('Mode=MAF,MasterAff_id=440,debug=ye');       -- Master Aff
+call Report_invoices_aff('Mode=MAF,MasterAff_id=334,debug=ye');       -- ERROR no es Master Aff
+*/
+

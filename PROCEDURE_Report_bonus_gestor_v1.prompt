@@ -1,0 +1,59 @@
+Escribir el SP `Report_bonus_gestor` en el archivo
+`D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_Report_bonus_gestor_v1.sql`
+que liste registros de `campaign_deal_gestor_bonus` con filtros opcionales.
+
+## Fuente de datos y joins
+- Tabla principal: `campaign_deal_gestor_bonus` (alias `B`).
+- `LEFT JOIN campaign_publisher P ON P.id = B.Publisher_id` — mostrar el nombre del publisher en columna **`Publisher`** (valor `Advertiser_Name`).
+- `LEFT JOIN campaign_username U ON U.id = B.Username_id` — mostrar el login en columna **`Account`** (campo `username` de `campaign_username`).
+
+## Parámetro de entrada
+- Un solo argumento `InputCommLine VARCHAR(250)` con pares **Key=Value** separados por **comas**, sin comillas en los valores (mismo estilo que
+  `PROCEDURE_InvoiceToPubliser_v1.2_bonus.sql`): añadir coma de cierre al parsear, eliminar comillas dobles del string.
+- **Variables locales** con prefijo **`v_`**; **no** usar variables de sesión `@` para la lógica del procedimiento.
+- **`DECLARE`** sin cláusula **DEFAULT**; inicializar todo con **`SET`** inmediatamente después de las declaraciones.
+
+## Keys soportadas (todas opcionales salvo indicación)
+| Key | Valores | Default | Efecto |
+|-----|---------|---------|--------|
+| `Month_Valid_From` | `ALL`, `CM`, `LM`, `AAAA-MM` | ALL | Sin filtro (`v_MonthFilter` NULL); `CM`/`LM` resueltos a `AAAA-MM` actual o anterior; en otro caso el valor literal se usa en `B.Month_Valid_From >= v_MonthFilter` (orden lexicográfico válido para `YYYY-MM`). |
+| `Publisher_id` | `ALL`, id o lista con **`^`** | ALL | Sin filtro o restricción por id(s) (`FIND_IN_SET` sobre lista separada por comas interna). |
+| `Username_id` | `ALL`, id o lista con **`^`** | ALL | Igual que publisher. |
+| `Filters` | `Yes` / `No` | No | Si **Yes**: salida de **filtros** (no el grid principal). |
+| `Meta` | `Yes` / `No` | Yes | Si **Yes**: primera fila **`Meta=setting`** con metadatos de columnas para grid (anchos, omit, sortable, tooltip, right); filas de datos **`Meta=data`**. Si **No**, omitir la fila `setting`. |
+| `Debug` | `No` / `Yes` (u otros distintos de `No` si se desea) | No | Si activo: devolver solo diagnóstico de variables parseadas / filtros resueltos; **no** ejecutar listado principal ni `Filters`. |
+
+## Flujo de ejecución (mutuamente excluyente)
+1. Si **Debug** ≠ `No` → un `SELECT` de depuración (versión, raw keys, listas resueltas, `Meta`, `Filters`, etc.).
+2. Si **Filters** = `Yes` → consulta con CTE **`Base`** (mismos joins y criterios de filtro que el listado), y **`UNION ALL`** de cada opción de filtro en **una sola línea** por `SELECT` (estilo `PROCEDURE_Report_Bonus_Affiliate_v1.1.sql`), columnas típicas: `Korder`, `Key`, `Value`, `CallKey`, `CallValue`, `Rows`; `ORDER BY` coherente (p. ej. por orden de clave y valor).
+3. En caso contrario → listado principal: **`UNION ALL`** entre fila **`Meta=setting`** (desde `DUAL WHERE v_Meta='YES'`) y filas **`Meta=data`** con todas las columnas de negocio alineadas en nombre con la fila `setting` (etiquetas legibles con espacios donde aplique: p. ej. `Month Valid From`, `Month Valid to`, `Bonus Value`, `CPA min`, `Creation Date`, `Last Update`, `User` para operador, etc.). `ORDER BY` debe dejar la fila `setting` primera y luego ordenar datos (mes, publisher, username, id).
+
+## Convenciones de código
+- Sin SQL dinámico (`PREPARE`/`EXECUTE`) salvo que haga falta; preferir `WITH` / `UNION ALL` estático.
+- `COMMENT` en el `CREATE PROCEDURE`, cabecera de archivo con historial de versiones y ejemplos `CALL Report_bonus_gestor('...');`.
+- Compatible **MySQL 8.0.37+**, `DEFINER` coherente con el resto de procedimientos del repo.
+
+## Esquema de referencia `campaign_deal_gestor_bonus`
+
+```sql
+CREATE TABLE IF NOT EXISTS `campaign_deal_gestor_bonus` (
+   `id`                 INT(10)    NOT NULL AUTO_INCREMENT,
+   `Publisher_id`       INT(10)        NULL DEFAULT NULL,
+   `Username_id`        INT(10)        NULL DEFAULT NULL,
+   `Description`        VARCHAR(50)    NULL DEFAULT '',
+   `Month_Valid_From`   VARCHAR(7)     NULL DEFAULT '',
+   `Month_Valid_to`     VARCHAR(7)     NULL DEFAULT NULL,
+   `Bonus_Value`        DECIMAL(10,0)  NULL DEFAULT '0',
+   `Conditions`         VARCHAR(30)    NULL DEFAULT 'ANY',
+   `CPA_min`            INT(10)        NULL DEFAULT '0',
+   `NR_min`             INT(10)        NULL DEFAULT '0',
+   `FTD_min`            INT(10)        NULL DEFAULT '0',
+   `Status_id`          SMALLINT(5)    NULL DEFAULT '1',
+   `Status`             VARCHAR(30)    NULL DEFAULT 'Active',
+   `Currency`           VARCHAR(5)     NULL DEFAULT 'EUR',
+   `Creation_Date`      DATETIME       NULL DEFAULT CURRENT_TIMESTAMP,
+   `Last_Update`        DATETIME       NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   `Operator`           VARCHAR(30)    NULL DEFAULT 'SysOp',
+   PRIMARY KEY (`id`) USING BTREE
+);
+```

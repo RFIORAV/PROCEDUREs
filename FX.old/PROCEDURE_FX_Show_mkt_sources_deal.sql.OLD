@@ -1,0 +1,40 @@
+/* PROCEDURE_FX_Show_mkt_sources_deal.sql
+   26.10.2022 V1 Muestra los registros de una MS en forex_marketing_source_deal_date
+   
+*/
+DROP PROCEDURE IF EXISTS FX_MktSrcDeal;
+
+DELIMITER $$
+CREATE PROCEDURE FX_MktSrcDeal(IN MS_id_IN int)
+   
+   COMMENT 'forex_marketing_source_deal_date - Show records'
+   LANGUAGE SQL
+
+BEGIN
+
+SET @Version         ='v1 26.10.2022';
+SET @Month           =left(curdate(),7);
+SET @MS_id           =MS_id_IN;
+
+SELECT D.`id`,D.`MS_id`,D.`Deal_Valid_From`,IFNULL(D.`Product`,"Any non defined") AS Product
+   ,IFNULL(`A`.`username`, "_Unassigned") AS `Affiliate`
+   ,IFNULL(`CDA`.`Deal_Name`,"") AS `Deal`
+   ,IFNULL(`CH`.`landing_page_name`,"") AS `Channel`
+   ,D.`Affiliate_id`,D.`Channel_id`,D.`Deal_id`
+   ,D.`is_active`,D.`Code`
+   ,D.`Creation_Date`,D.`Last_Update`,D.`Operator` 
+FROM forex_marketing_source_deal_date D
+LEFT JOIN `account_account` `A` ON `A`.`id` = `D`.`Affiliate_id`
+LEFT JOIN `forex_deal_affiliate` `CDA` ON `CDA`.`id` = `D`.`Deal_id`
+LEFT JOIN `forex_landing_pages_2` `CH` ON `CH`.`id` = `D`.`Channel_id`
+WHERE D.MS_id=@MS_id
+
+;
+
+END$$
+DELIMITER ;
+
+/*
+CALL FX_MktSrcDeal(1791);
+
+*/

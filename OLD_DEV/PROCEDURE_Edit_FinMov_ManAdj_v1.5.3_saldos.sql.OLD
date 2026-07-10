@@ -1,0 +1,495 @@
+/*
+PROCEDURE_Edit_FinMov_ManAdj_v1.sql - Edit Financial Mov/Manual Adjustment
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Month_From      =[AAAA-MM]. OPCIONAL. Default=Last 6 Month.
+DataLapse       =[ALL | -3 | -6 | -12]. OPCIONAL. Default=all
+FinMov          =[Yes | No]. OPCIONAL. Incluir Financial Movements. Default=yes
+ManAdj          =[Yes | No]. OPCIONAL. Incluir Manual Adjustements. Default=yes
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+Status          =[ALL | Status]. OPCIONAL. Default=ALL
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Edit_FinMov_ManAdj(''); -- Devuelve todas los movimientos de los últimos 6 meses
+call Edit_FinMov_ManAdj('FinMov=yes,filters=ye,meta=yes,debug=non');
+call Edit_FinMov_ManAdj_dev('FinMov=yes,filters=ye,meta=yes,debug=non');
+call Edit_FinMov_ManAdj('debug=ye,Affiliate_id=74,filters=no,meta=yes');
+call Edit_FinMov_ManAdj('debug=ye,filters=yes');
+call Edit_FinMov_ManAdj('Affiliate_id="39",status=active,meta=yes,debug=no');
+call Edit_FinMov_ManAdj('Affiliate_id=39,status=active,DealbyProduct=yes,debug=no');
+call Edit_FinMov_ManAdj('Affiliate_id=39,debug=YE');
+
+20.08.2024 V1        Basada en PROCEDURE_Report_FinMov_ManAdj_v1.1
+26.08.2024           Karen: agregada columna Action
+                     Quitado del filtro la selección FinMov/ManAdj para que no salga en producción
+10.09.2024 v1.1      Agregada opción Last Year (Fra)
+13.09.2024 v1.2      Karen: ,"width=90px,color=[Paid:ambar;Pending:#4cfcd9]" AS Status
+09.10.2024 v1.3      Agregada columna "Confirmed balance" (pedido Fra)
+21.10.2024 v1.3.1    Agregada opción Last 3 days (Fra)
+02.11.2024 v1.5      Utiliza monthly_comms_affiliate_v5 en lugar de view_monthly_fact_aff4
+24.03.2025 v.1.5.1   Adecuación Status
+15.08.2025           Karen: Description tooltip=yes
+15.08.2025           Karen: Description tooltip=yes
+29.01.2026 v.1.5.2   Karen: Renombrada los valores de la columna Op. por "Affects GM" y "Doesn´t Affect GM"
+08.02.2026           Karen: Agregado filtro de "Operation"
+15.02.2026 v.1.5.3   Karen: Agregado cálculo de balance por affiliate
+*/
+ 
+DROP PROCEDURE IF EXISTS Edit_FinMov_ManAdj;
+DROP PROCEDURE IF EXISTS Edit_FinMov_ManAdj_dev;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Edit_FinMov_ManAdj`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Grid para Edit Financial Mov / Manual Adjustments'
+BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.5.3 15.02.2026';
+SET @CurrentDay      =curdate();
+SET @Affiliate_id    ='ALL';
+SET @DataLapse       ='-3';
+
+SET @Month_From      ="2022-01";
+SET @Operation       ='ALL';
+SET @Status          ='ALL';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+SET @Debug           ='NO';
+SET @FinMov          ='';
+SET @ManAdj          ='YES';
+SET @Search          ='';
+
+SET @Owner           ='ALL';
+SET @Currency        ='EUR';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month_From,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='month_from'      THEN SET @Month_From    =UPPER(@v); END IF;
+   IF lower(@k)='datalapse'       THEN SET @DataLapse     =UPPER(@v); END IF;
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='operation'       THEN SET @Operation     =      @v;  END IF;
+   IF lower(@k)='status'          THEN SET @Status        =      @v;  END IF;
+   IF lower(@k)='finmov'          THEN SET @FinMov        =      @v;  END IF;
+   IF lower(@k)='manadj'          THEN SET @ManAdj        =      @v;  END IF;
+   IF lower(@k)='search'          THEN SET @Search        =      @v;  END IF;
+
+END WHILE;
+
+-- Recupera espacios reemplazados en front end por caracter "\"
+SET @Operation      =replace(@Operation,"!"," ");
+
+--
+IF @FinMov="YES" THEN SET @ManAdj="NO"; END IF;
+IF @ManAdj="YES" THEN SET @FinMov="NO"; END IF;
+
+IF    @DataLapse!="ALL" 
+THEN  IF    @DataLapse="CM"  THEN SET @Month_From=LEFT(CURDATE(),7);                              END IF;  -- Current Month  
+      IF    @DataLapse="CY"  THEN SET @Month_From=CONCAT(YEAR(CURDATE()),"-01");                  END IF;  -- Current Year
+      IF    @DataLapse="LM"  THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);  END IF;  -- Last    month
+      IF    @DataLapse="-3d" THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 3 DAY),7);    END IF;  -- Last  3 DAYS
+      IF    @DataLapse="-3"  THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 3 MONTH),7);  END IF;  -- Last  3 months
+      IF    @DataLapse="-6"  THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 6 MONTH),7);  END IF;  -- Last  6 months
+      IF    @DataLapse="-12" THEN SET @Month_From=LEFT(DATE_SUB(CURDATE(), INTERVAL 12 MONTH),7); END IF;  -- Last 12 months
+END IF;    
+
+IF @Debug!="NO" THEN SELECT @Month_From,@DataLapse,@View,@Filters,@OWNER,@finmov,@manadj,@Affiliate_id
+                           ,@Operation,@Currency,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereMonth_From    ='';
+SET @WhereAffiliate_id  ='';
+SET @WhereOperation     ='';
+SET @WhereStatus        ='';
+SET @WhereSearch        ='';
+
+IF    @DataLapse="-0" or @DataLapse="-1"
+THEN  SET @WhereMonth_From=concat('="',@Month_From,'"');
+ELSE  SET @WhereMonth_From=concat('>="',@Month_From,'"');
+END IF;
+
+IF @Affiliate_id  !="ALL" THEN SET @WhereAffiliate_id  =CONCAT(" AND M.Affiliate_id   =",@Affiliate_id  ); END IF;
+IF @Status        !="ALL" THEN SET @WhereStatus        =CONCAT(" AND M.`Status`       ='",@Status,"'");    END IF;
+IF @Operation     !="ALL" THEN SET @WhereOperation     =CONCAT(" AND M.`Op_type`      ='",@Operation,"'");    END IF; -- K 08.02.2026
+-- ----------------------------------------------------------------
+SET @LMonth=left(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+SET @Date_confirm=CONCAT(LEFT(CURDATE(),7),"-20");
+
+IF @Debug!="NO" THEN SELECT @WhereAffiliate_id,@WhereMonth_From,@WhereStatus,@WhereSearch,@LMonth,@Date_confirm; END IF;
+
+/**************************************************************************************************************/
+SET @SQLmeta=concat(
+'(
+SELECT
+   "setting"                as Meta
+	,"width=80px,action=2"   as `Action` -- 24.08.2024                                                      
+   ,"omit=true"             as id
+   ,"omit=true"             as Affiliate_id
+   ,"width=100px"           as Date
+   ,"width=150px"           as Affiliate
+   ,"omit=true"             as Month
+	,"omit=true"             as Op_type  -- K 08.02.2026
+   ,"width=140px"           as Op       -- K 29.01.2026
+   ,"width=300px,tooltip=yes" AS `Desc`  -- K 13.08.2025
+   ,"width=070px"           AS `Currency`
+   ,"width=100px,right=yes" AS `Amount`
+   ,"omit=true"             as Status_id
+   -- ,"width=120px,colorBg=[Paid:green;Pending:red;Rejected:orange;Confirmed:green;Non_applied:red]" AS Status
+   ,"width=100px"            AS Status
+   ,"omit=true"             as extra
+   ,"width=100px,right=yes" AS `Estimated balance`
+   ,"width=100px,right=yes" AS `Confirmed balance`
+   ,"width=100px,right=yes" AS `Confirmed 20th day`
+   ,"omit=true"             as Creation_Date
+   ,"width=160px"           as `Last Update`
+   ,"width=100px"           as `User`
+	FROM DUAL WHERE @Meta="YES")
+UNION ALL 
+'
+);
+/**************************************************************************************************************/
+DROP TEMPORARY TABLE IF EXISTS `tmp_balance_by_affiliate`;
+CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_balance_by_affiliate` (
+   `Affiliate_id` INT NOT NULL DEFAULT '0',
+   `Currency` varchar(10) not NULL DEFAULT "EUR",
+   `Estimated` DECIMAL(20,2) NULL DEFAULT NULL,
+   `Confirmed` DECIMAL(20,2) NULL DEFAULT NULL,
+   `Confirmed21` DECIMAL(20,2) NULL DEFAULT NULL,
+   `Financial Currency` varchar(10) NULL DEFAULT NULL,
+   `Financial Confirmed` DECIMAL(20,2) NULL DEFAULT NULL,
+   `Status` VARCHAR(30) NULL DEFAULT NULL,
+   `Status_id` VARCHAR(30) NULL DEFAULT NULL,
+   `last_login` VARCHAR(30) NULL DEFAULT NULL,
+   PRIMARY KEY (`Affiliate_id`, `Currency`) USING BTREE
+);
+
+-- Cálulo extraído de procedure Report_balance_by_affiliate
+SET @SQL_Affiliate_balance=concat(' 
+INSERT IGNORE INTO `tmp_balance_by_affiliate`
+with Main_data as (
+SELECT Affiliate_id,ifnull(A.username,"_Unassigned") AS `Affiliate`,`Currency`
+	,round(sum(case when x.Status in (0,1,2)		then Amount ELSE 0 END),2) AS `Estimated`
+	,round(sum(case when x.Status IN (1,2)			then Amount ELSE 0 END),2) AS `Confirmed`
+	,round(sum(case when x.Status_21 IN (1,2)		then Amount ELSE 0 END),2) AS `Confirmed21`
+   ,@Currency                                                              as `Financial Currency`
+	,round(sum(case when x.Status IN (1,2)			then getCurrencyConversion(Amount,Currency,@Currency)
+                                                            ELSE 0 END),2) AS `Financial Confirmed`
+   ,A.Status
+   ,A.Status_id
+   ,A.last_login
+FROM (
+
+SELECT Affiliate_id
+	,(DATE_ADD(DATE_SUB(CONCAT(`Month`,"-01"), INTERVAL 1 DAY), INTERVAL 1 MONTH)) as `DATE`
+	,"CPA" AS Op_type
+   ,CONCAT_WS(" ",Brand,Product_Real) AS Description
+   ,sum(net_Total_comm) AS Amount
+	,CASE WHEN `Month`<@LMonth THEN "1" 
+         WHEN `Month`=@LMonth and @CurrentDay>=@Date_confirm THEN "1"
+         ELSE 0 END                                                        AS Status
+	,CASE WHEN `Month`<@LMonth THEN "Confirmed"
+         WHEN `Month`=@LMonth and @CurrentDay>=@Date_confirm THEN "Confirmed"
+         ELSE "Provisional" END                                            AS StatusText
+	,0 as balance_est,0 as balance_conf
+	,CASE WHEN `Month`<@LMonth THEN "1" 
+         WHEN `Month`=@LMonth and @CurrentDay<@Date_confirm THEN "1"
+         ELSE 0 END                                                        AS Status_21
+   -- ,getCurrencyConversion(net_CPA_Val,Currency,@Currency) AS Transact
+   ,Currency
+FROM monthly_comms_affiliate_v5 F 
+GROUP BY Affiliate_id,DATE,Currency
+
+UNION ALL
+
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,sum(Amount_Debit*-1) AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est, 0 as balance_conf
+	,IFNULL(Status,0) AS Status_21
+   ,IFNULL(Currency,@Currency)  as "Currency"
+FROM account_financial_movement F WHERE ifnull(F.Status,0) IN (1,2)
+GROUP BY Affiliate_id,"DATE",F.Currency
+
+UNION ALL
+
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,sum(Amount_Credit) AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+	,IFNULL(Status,0) AS Status_21
+   ,IFNULL(Currency,@Currency)  as "Currency"
+FROM account_manual_adjustments F WHERE ifnull(F.Status,0) in (1,2)
+GROUP BY Affiliate_id,"DATE",F.Currency
+) AS x
+LEFT JOIN account_account A ON Affiliate_id	=A.id
+GROUP BY Affiliate,Currency 
+),
+Main_dataRollUp AS (
+SELECT 
+       Affiliate_id,`Currency`,
+       sum(`Estimated`          )                   `Estimated`          
+      ,sum(`Confirmed`          )                   `Confirmed`          
+      ,sum(`Confirmed21`        )                   `Confirmed21`        
+      ,`Financial Currency` 
+      ,sum(`Financial Confirmed`)                   `Financial Confirmed`
+      ,Status
+      ,Status_id
+      ,last_login
+FROM Main_data M 
+GROUP BY Affiliate_id,`Currency`
+)
+SELECT * FROM Main_dataRollUp; 
+;');
+
+IF @Debug!="NO" THEN SELECT @SQL_Affiliate_balance; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL_Affiliate_balance;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+-- IF @Debug!="NO" THEN SELECT @SQLmeta; END IF;
+
+-- SET SESSION group_concat_max_len = 200000;
+/*
+SELECT `id`,`Affiliate_id`,`Date`,`Op_type`,`Description`,`Amount_Debit`,`Amount_Credit`,`Balance`,`Status`,`Extra`
+      ,`Creation_Date`,`Last_Update`,`Operator`
+FROM account_financial_movement
+
+SELECT `id`,`Affiliate_id`,`Date`,`Op_type`,`Description`,`Amount_Debit`,`Amount_Credit`,`Balance`,`Status`,`Extra`
+      ,`Creation_Date`,`Last_Update`,`Operator`
+FROM account_manual_adjustments
+
+*/
+SET @CTE=concat('
+WITH Movements AS (
+SELECT '
+   ,IF(@Meta="YES","'data' as `Meta`,",""),'
+	 "..." as `Action`  -- 24.08.2024
+   ,M.`id`
+   ,M.`Affiliate_id`
+   ,M.`Date`
+   ,A.`username`                 as Affiliate
+   ,LEFT(M.Date,7)               as MonthFrom
+	 ,M.`Op_type`     -- K 08.02.2029
+   ,CASE WHEN M.`Op_type`="Adjustment" THEN "Affects GM"
+				 WHEN M.`Op_type`="Payment" THEN "Doesn´t Affect GM"
+				 ELSE "Other"
+		END As Operation -- K 29.01.2026
+   ,M.`Description`
+   ,M.`Currency`
+   ,ROUND(IFNULL(M.`Amount_Debit`,""),2) as `Amount`   
+   ,M.`Status`                   as `Status_id`
+   ,CASE M.`Status` 
+      WHEN "0" then "Pending" 
+      WHEN "1" then "Pending" 
+      WHEN "2" then "Paid" 
+      ELSE "Rejected" 
+      END                        as `Status`
+   ,IFNULL(M.`Extra`,"")         as `Extra`
+   ,CAST(NULL AS DECIMAL(65,2))   AS `Estimated`
+   ,CAST(NULL AS DECIMAL(65,2))   AS `Confirmed`
+   ,CAST(NULL AS DECIMAL(65,2))   AS `Confirmed21`
+   ,M.`Creation_Date`
+   ,LEFT(M.`Last_Update`,16)     as `Last_Update`
+   ,IFNULL(A1.`username`,IFNULL(M.`Operator`,"SysOp")) as `Operator`
+FROM account_financial_movement M
+LEFT JOIN `account_account` `A`  ON `A`.`id`  = `M`.`Affiliate_id`
+LEFT JOIN `account_account` `A1` ON `A1`.`id` = `M`.`Operator`
+-- --------------------------------------------------------------------------------------
+WHERE @FinMov="yes"
+  AND LEFT(M.Date,7)',@WhereMonth_From 
+   ,@WhereAffiliate_id
+   ,@WhereStatus
+	,@WhereOperation  -- K 08.02.2029
+	,'  
+UNION ALL
+SELECT '
+   ,IF(@Meta="YES","'data' as `Meta`,",""),'
+	 "..." as `Action`  -- 24.08.2024
+   ,M.`id`
+   ,M.`Affiliate_id`
+   ,M.`Date`
+   ,A.`username`                 as Affiliate
+   ,LEFT(M.Date,7)               as MonthFrom
+   ,M.`Op_type`      -- K 08.02.2029           
+	 ,CASE WHEN M.`Op_type`="Adjustment" THEN "Affects GM"
+				 WHEN M.`Op_type`="Payment" THEN "Doesn´t Affect GM"
+				 ELSE "Other"
+		END As Operation -- K 29.01.2026                                
+   ,M.`Description`
+   ,M.`Currency`
+   ,ROUND(IFNULL(M.`Amount_Credit`,""),2) as `Amount`
+   ,M.`Status`                   as `Status_id`
+   ,case M.`Status` 
+      when "0" then "Pending" 
+      when "1" then "Confirmed" 
+      when "2" then "Confirmed" 
+      ELSE "Non_applied" 
+      end as `StatusText`
+   ,IFNULL(M.`Extra`,"")         as `Extra`
+   ,CAST(NULL AS DECIMAL(65,2))   AS `Estimated`
+   ,CAST(NULL AS DECIMAL(65,2))   AS `Confirmed`
+   ,CAST(NULL AS DECIMAL(65,2))   AS `Confirmed21` 
+   ,M.`Creation_Date`
+   ,LEFT(M.`Last_Update`,16)     as `Last_Update`
+   ,IFNULL(A1.`username`,IFNULL(M.`Operator`,"SysOp")) as `Operator`
+FROM account_manual_adjustments M
+LEFT JOIN `account_account` `A`  ON `A`.`id`  = `M`.`Affiliate_id`
+LEFT JOIN `account_account` `A1` ON `A1`.`id` = `M`.`Operator`
+-- --------------------------------------------------------------------------------------
+WHERE @ManAdj="yes"
+  AND LEFT(M.Date,7)',@WhereMonth_From 
+   ,@WhereAffiliate_id
+   ,@WhereStatus
+   ,@WhereOperation  -- K 08.02.2029                                   
+,')'
+);
+
+-- -----------------------------------------------------
+SET @CTE=REPLACE(@CTE,"@LMonth",@LMonth);
+SET @CTE=REPLACE(@CTE,"@Date_confirm",@Date_confirm);
+-- -----------------------------------------------------
+
+SET @CloseQuery=';';
+
+SET @SQL=concat(
+@CTE,
+@SQLmeta,
+'
+(SELECT
+    `Meta`,
+		`Action` -- 24.08.2024
+   ,M.`id`
+   ,M.`Affiliate_id`
+   ,M.`Date`
+   ,M.`Affiliate`
+   ,M.`MonthFrom`
+	,M.`Op_type`  -- K 08.02.2029                             
+   ,M.`Operation`
+   ,M.`Description`
+   ,M.`Currency`
+   ,FORMAT(M.`Amount`,2) AS `Amount`
+   ,M.`Status_id`
+   ,M.`Status` 
+   ,M.`Extra`
+   ,B.`Estimated`
+   ,B.`Confirmed`
+   ,B.`Confirmed21`
+   ,M.`Creation_Date`
+   ,M.`Last_Update`
+   ,M.`Operator`
+FROM Movements M
+LEFT JOIN tmp_balance_by_affiliate B ON B.Affiliate_id = M.Affiliate_id AND B.Currency = M.Currency)
+UNION ALL
+(
+SELECT '
+   ,IF(@Meta="YES","'total' as `Meta`,",""),'
+    "~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"   -- K 08.02.2029                               
+   ,"~~~~~"           
+   ,"~~~~~ Total ~~~~~"
+   ,M.`Currency`
+   ,format(sum(`Amount`),2) as `Amount`
+   ,"~~~~~"
+   ,`Status` -- "~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+FROM Movements M 
+GROUP BY `Currency`,`Status`
+)
+ORDER BY case when DATE="~~~~~" then "9999-99-99" ELSE DATE end DESC,`Last Update` desc ,Affiliate',@CloseQuery
+);
+
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "10" as "Korder"
+            ,"Affiliate" AS "Key"
+                         ,`Affiliate` AS "Value"
+                                          ,"Affiliate_id" AS `CallKey`
+                                                         ,`Affiliate_id` AS "CallValue"
+                                                                         ,COUNT(*) AS "Rows"
+                                                                                        FROM Movements GROUP BY `Affiliate_id`       )  UNION ALL
+(SELECT "05","Status"     ,`Status`       ,"Status"       ,`Status_id`   ,COUNT(*) AS K FROM Movements GROUP BY IFNULL(`Status`     ,"")) UNION ALL
+-- (SELECT "01","Data"       ,"Fin Movements","FinMov"     ,"yes"        ,"" AS K FROM DUAL) UNION ALL
+-- (SELECT "01","Data"       ,"Manual Adjust","ManAdj"     ,"yes"        ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"All data"      ,"DataLapse"  ,"all"          ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Current month" ,"DataLapse"  ,"CM"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Current year"  ,"DataLapse"  ,"CY"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last    month" ,"DataLapse"  ,"LM"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last  3 days"  ,"DataLapse"  ,"-3d"          ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last  3 months","DataLapse"  ,"-3"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last  6 months","DataLapse"  ,"-6"           ,"" AS K FROM DUAL) UNION ALL
+(SELECT "02","Date range" ,"Last 12 months","DataLapse"  ,"-12"          ,"" AS K FROM DUAL) UNION ALL
+(SELECT "06","Operation"  ,`Operation` ,"Operation"  ,`Op_type`   ,COUNT(*) AS K FROM Movements GROUP BY IFNULL(`Op_type`  ,"")) -- K 08.02.2029
+ORDER BY 1,3
+;');
+ 
+IF @Filters="yes" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Edit_FinMov_ManAdj(''); -- Devuelve todas los movimientos de los últimos 6 meses
+call Edit_FinMov_ManAdj('debug=ye,Affiliate_id=74,filters=no,meta=yes');
+call Edit_FinMov_ManAdj('debug=ye,FinMov=yes,Affiliate_id=39,filters=ye');
+call Edit_FinMov_ManAdj('debug=ye,FinMov=yes,Affiliate_id=all,filters=ye');
+call Edit_FinMov_ManAdj('debug=ye,filters=yeS');
+call Edit_FinMov_ManAdj('Affiliate_id="39",status=active,meta=yes,debug=no');
+call Edit_FinMov_ManAdj('Affiliate_id=39,status=active,DealbyProduct=yes,debug=no');
+call Edit_FinMov_ManAdj('Affiliate_id=39,debug=YE');
+
+*/

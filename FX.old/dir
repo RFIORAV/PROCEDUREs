@@ -1,0 +1,57 @@
+ Volume in drive D is Sam201602ssd
+ Volume Serial Number is 43FB-F955
+
+ Directory of d:\Reinaldo\_FRA\db\PROCEDUREs\FX
+
+29/01/2023  23:13            16.244 PROCEDURE_FX_Aff_MarketingSources_v1.sql
+29/01/2023  23:13             4.139 PROCEDURE_FX_Balance_Affiliate.sql
+29/01/2023  23:13             7.251 PROCEDURE_FX_Check_DbD_v1.3.sql
+29/01/2023  23:13               760 PROCEDURE_FX_Compare_DbD_DbD_lm_v2.3.sql
+29/01/2023  23:13             5.635 PROCEDURE_FX_Compare_Fact1_Fact2_lm_v1.4.sql
+29/01/2023  23:13            20.760 PROCEDURE_FX_Dash_BrandMatrix_v1.2.sql
+29/01/2023  23:13             6.497 PROCEDURE_FX_Dash_GestorOrAffiliate_TotalByAffiliate.sql
+29/01/2023  23:13             6.839 PROCEDURE_FX_Dash_Gestor_ProfitByAff_v1.1.sql
+29/01/2023  23:13            21.976 PROCEDURE_FX_Dash_Gestor_TotalByAdvertiser_v3.5.sql
+29/01/2023  23:13             9.885 PROCEDURE_FX_economics_by_affiliate_v1.2.sql
+29/01/2023  23:13            15.967 PROCEDURE_FX_Gestor_MarketingSources_v1.sql
+29/01/2023  23:13            22.825 PROCEDURE_FX_Gestor_MonthlySources_v2.7.sql
+29/01/2023  23:13             5.640 PROCEDURE_FX_NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix.sql
+29/01/2023  23:13            12.600 PROCEDURE_FX_Report_Affiliates_v1.sql
+29/01/2023  23:13            10.841 PROCEDURE_FX_Report_Brands_v1.sql
+29/01/2023  23:13            12.143 PROCEDURE_FX_Report_Deal_MktPlace_v1.sql
+29/01/2023  23:13            14.767 PROCEDURE_FX_Report_FinMov_ManAdj_v1.sql
+29/01/2023  23:13            26.101 PROCEDURE_FX_Report_MarketingSources_v2.1.sql
+29/01/2023  23:13            10.843 PROCEDURE_FX_Report_Publisher_v1.sql
+29/01/2023  23:13             2.630 PROCEDURE_FX_ShowNotif_Affiliate.sql
+29/01/2023  23:13             3.643 PROCEDURE_FX_Show_Diff_CPA_DbD_yesterday_v1.2.sql
+29/01/2023  23:13             1.173 PROCEDURE_FX_Show_mkt_sources_deal.sql
+29/01/2023  23:13            17.663 PROCEDURE_FX_Snapshot_day_by_day_fact1_upd_from_dbd_v3.4.sql
+29/01/2023  23:13             1.205 PROCEDURE_FX_Snapshot_day_by_day_fact1_upd_lm_v2.sql
+29/01/2023  23:13             1.440 PROCEDURE_FX_Snapshot_day_by_day_fact1_upd_v2.sql
+29/01/2023  23:13             3.226 PROCEDURE_FX_Snapshot_day_by_day_fact2_upd_cm_v1.2.sql
+29/01/2023  23:13            14.532 PROCEDURE_FX_Sync_Fact2_from_Fact1_v1.2.sql
+29/01/2023  23:13             7.430 PROCEDURE_FX_Sync_MS_DbD_DbD_lm_v1.5.sql
+29/01/2023  23:13             3.895 PROCEDURE_FX_Sync_MS_Fact1_Fact2_lm_v1.1.sql
+29/01/2023  23:13             2.476 PROCEDURE_FX_total_monthy_comm_ges_upd_v1.sql
+29/01/2023  23:13             2.328 TRIGGER_FX_campaign_deal_affiliate_before_insert.sql
+29/01/2023  23:13             2.317 TRIGGER_FX_campaign_deal_gestor_before_insert.sql
+29/01/2023  23:13             5.425 TRIGGER_FX_campaign_deal_marketplace_after_update.SQL
+29/01/2023  23:13             1.430 TRIGGER_FX_campaign_marketing_source_after_insert.SQL
+29/01/2023  23:13             3.272 TRIGGER_FX_campaign_marketing_source_after_update_deal.sql
+29/01/2023  23:13             2.117 TRIGGER_FX_campaign_marketing_source_before_update_status.sql
+29/01/2023  23:13             1.387 TRIGGER_FX_campaign_username_after_insert.SQL
+29/01/2023  23:13             1.951 TRIGGER_FX_campaign_username_after_update_deal.SQL
+29/01/2023  23:13             1.618 TRIGGER_FX_forex_advertiser_account_after_insert.SQL
+29/01/2023  23:13             2.784 TRIGGER_FX_forex_advertiser_account_before_update.sql
+29/01/2023  23:13             1.447 TRIGGER_FX_forex_marketing_source_after_insert.SQL
+29/01/2023  23:13             3.507 TRIGGER_FX_forex_marketing_source_before_update.sql
+29/01/2023  23:13             3.203 VIEW_FX_balance_affiliate_v2.4.sql
+29/01/2023  23:13             3.062 VIEW_FX_monthly_fact_aff3.sql
+29/01/2023  23:13             4.331 VIEW_FX_monthly_fact_gestor_v3.4.sql
+29/01/2023  23:13             2.368 VIEW_FX_Snapshot_monthly_fact.SQL
+29/01/2023  23:13             4.666 VIEW_FX_Totali_affiliate_CPA_brand_matrix.SQL
+29/01/2023  23:13             2.680 VIEW_FX_Totali_affiliate_new.sql
+29/01/2023  23:13             2.673 VIEW_FX_Totali_affiliate_NR_brand_matrix.SQL
+29/01/2023  23:13             2.579 VIEW_FX_Totali_username_new.sql
+              50 File(s)        346.171 bytes
+               0 Dir(s)  354.827.862.016 bytes free

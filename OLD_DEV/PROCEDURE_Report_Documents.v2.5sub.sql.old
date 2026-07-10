@@ -1,0 +1,292 @@
+/*
+PROCEDURE_Report_Documents.sql - Reports Documents
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+mode             =[ GESTOR | AFFILIATE | MAF ] OBLIGATORIO.
+MasterAff_id     =[ MasterAff_id ]. SOLO PARA MAF EN MODO MAF. Default=''
+Affiliate_id     =[id de affiliate]
+Op_Type          =[ Withdraw | "NoWithdraw" ] Tipo de documento. Default='NoWithdraw'
+ActionTaken      =[ "ALL" | "Pending" | "Accepted" | "Paid" | "Blocked" | "Other" ] Status de la operación en account_financial_movement. Default=ALL
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_Documents('Mode=Gestor,Affiliate_id=334');
+
+
+10.10.2023 V1     Karen. Primera versión operativa
+01.02.2024 V2     Karen. Se agregó "Op Type" y "Financial_Movement_id"
+27.03.2024 v2.1   RF. Cambios en la presentación del grid (RS)
+09.04.2024 v2.2   RR. Muestra Confirmed y Estimated Balance
+27.05.2024 v2.3   Tratamiento de Subafiliados
+                  Tratamiento de Master Affiliate
+11.09.2024 v2.4   Agregado filtros
+09.10.2024 v2.5   Agregado Description
+*/
+
+DROP PROCEDURE IF EXISTS Report_Documents;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Documents`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Documents - Gestor/Affiliate'
+
+proc_label:BEGIN
+
+SET @Version         ='v2.5 09.10.2024';
+SET @CurrentDay      =curdate();
+SET @Affiliate_id    ='';
+SET @MasterAff_id    ='';
+SET @ActionTaken     ='ALL';
+SET @Op_Type         ='NoWithdraw';
+SET @Mode            ='';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+-- --------------------------------------------------------------------------
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =      @v;  END IF;
+   IF lower(@k)='masteraff_id'    THEN SET @MasterAff_id  =      @v;  END IF;
+   IF lower(@k)='actiontaken'     THEN SET @ActionTaken   =      @v;  END IF;
+   IF lower(@k)='op_type'         THEN SET @Op_Type       =      @v;  END IF;
+	IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+
+END WHILE;
+-- --------------------------------------------------------------------------
+IF @Debug!="NO" THEN SELECT @Mode,@MasterAff_id,@Affiliate_id,@ActionTaken,@Op_Type,@Debug,@Filters,@Meta,InputCommLine; END IF;
+
+-- Validaciones --------------------------------------------------
+IF   @Affiliate_id IN ("","ALL") AND @MODE NOT IN ("GESTOR","MAF")
+THEN
+    Select 'data' as Meta,'Affiliate_id mandatory' as '' from dual;
+    LEAVE proc_label;
+END IF;
+IF   @MasterAff_id IN ("","ALL") AND @MODE="MAF"
+THEN
+    Select 'data' as Meta,'MasterAff_id mandatory' as '' from dual;
+    LEAVE proc_label;
+END IF;
+-- ----------------------------------------------------------------
+
+SET @LMonth=left(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+SET @Date_confirm=CONCAT(LEFT(CURDATE(),7),"-20");
+
+/************ TRATAMIENTO DE SUBAFILIADOS ******************************************/
+SET @AffiliateGroup=(SELECT group_id FROM account_account_groups
+                     WHERE account_id=@Affiliate_id AND group_id=6);
+IF  @AffiliateGroup IS NULL THEN SET @AffiliateGroup=0; END IF;
+/************ TRATAMIENTO DE MASTER AFFILIATE **************************************/
+SET @MasterAffGroup=(SELECT group_id FROM account_account_groups
+                     WHERE account_id=@MasterAff_id AND group_id=4);
+IF  @MasterAffGroup IS NULL THEN SET @MasterAffGroup=0; END IF;
+
+SET @Affiliate_list="";
+IF @MasterAffGroup = 4 THEN CALL Master_Sub_Affiliate(@MasterAff_id, @Affiliate_list); END IF;
+
+/*---------------------------------------------------------------------------------*/
+
+IF @Debug!="NO" THEN SELECT "after call",@Affiliate_id,@AffiliateGroup,@MasterAff_id,@MasterAffGroup,@Affiliate_list; END IF;
+
+IF   @MODE="MAF" AND @MasterAffGroup!=4
+THEN
+    Select 'data' as Meta,'MasterAff_id must be MAF' as '' from dual;
+    LEAVE proc_label;
+END IF;
+
+SET @WhereAffiliate_id='';
+SET @WhereActionTaken='';
+SET @WhereOp_Type='';
+
+IF  @Mode="AFFILIATE"  THEN SET @WhereAffiliate_id=CONCAT(" AND b.Account_id  =",@Affiliate_id);      END IF;
+IF  @Mode="GESTOR" AND @Affiliate_id NOT IN ("","ALL")
+                       THEN SET @WhereAffiliate_id=CONCAT(" AND b.Account_id  =",@Affiliate_id);      END IF;
+IF  @Mode="MAF"        THEN SET @WhereAffiliate_id=CONCAT(" AND b.Account_id IN ",@Affiliate_list);   END IF;
+
+IF  @Mode!="AFFILIATE"  THEN 
+    IF  @Op_Type="Withdraw" THEN SET @WhereOp_Type    =CONCAT(" AND b.Op_Type='",@Op_Type,"'");
+                            ELSE SET @WhereOp_Type    =" AND b.Op_Type!='Withdraw'";                      
+    END IF;
+END IF;
+IF  @ActionTaken!="ALL" THEN SET @WhereActionTaken=CONCAT(" AND ActionTaken='",@ActionTaken,"'");     END IF;
+
+
+IF  @Debug!="NO" THEN SELECT @WhereAffiliate_id,@WhereActionTaken,@WhereOp_Type,@AffiliateGroup,@MasterAffGroup,@Affiliate_list; END IF;
+
+-- --------------------------------------------------------------------------
+-- --------------------------------------------------------------------------
+-- SET SESSION group_concat_max_len = 200000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT
+     b.`id`
+	 ,b.`doc_Filename`
+    ,b.`Description`
+	 ,b.Op_Type
+    ,a.`username` as `Affiliate`
+    ,a.`id`       as `Affiliate_id`
+	 ,LEFT(b.Creation_Date,16) AS `Exp_Date`
+    ,FORMAT(ifnull(f.Amount_Debit,"0"),2) AS `Ammount`
+    ,FORMAT(
+    (SELECT IFNULL(sum(net_Total_comm),0) as `Ammount`
+     FROM view_monthly_fact_aff4 F
+     WHERE F.Affiliate_id=b.Account_id AND (DATE<"@LMonth" OR (DATE="@LMonth" and CURDATE()>="@Date_confirm")))
+    +
+    (SELECT IFNULL(sum(Amount_Credit),0) as `Ammount`
+     FROM account_manual_adjustments F
+     WHERE F.Affiliate_id=b.Account_id AND ifnull(F.Status,0) in (1,2))
+    -
+    (SELECT IFNULL(sum(Amount_Debit),0) as `Ammount`
+     FROM account_financial_movement F
+     WHERE F.Affiliate_id=b.Account_id AND ifnull(F.Status,0) in (1,2))
+    ,2)                           AS `ConfBalance`
+    ,ifnull(f.`Status`,"") AS `Action_Status_id`
+    ,case ifnull(f.`Status`,"")
+                  when "0" then "Pending"
+                  when "1" then "Accepted"
+                  when "2" then "Paid"
+                  when "3" then "Blocked"
+                  ELSE "Other"
+     end as `ActionTaken`
+    ,case when ifnull(f.`Status`,"") IN ("1","2","3")
+      then left(f.`Last_Update`,16)
+      end AS `Reviewed on`
+    ,case when ifnull(f.`Status`,"") IN ("3")
+      then f.Description
+      ELSE ""
+      end AS `Remarks`
+    ,b.url_file 
+FROM account_account_bills b
+LEFT JOIN account_account            a ON b.Account_id=a.id
+LEFT JOIN account_financial_movement f ON b.Financial_Movement_id=f.id
+WHERE 1=1 '
+   ,@WhereOp_Type
+   ,@WhereAffiliate_id
+,')
+');
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting"                                          as Meta
+	 ,"width=90px,action=2,center=yes"                 as `action`
+    ,"omit=yes"                                       as `id`
+	 ,"width=250px,tooltip=yes"                        as `Name`
+	 ,"width=250px,tooltip=yes"                        as `Description`
+	 ,"width=100px"                                    as `Op. Type`
+	 ,IF(@Mode="GESTOR","width=150px","omit=yes")      as `Affiliate`
+    ,"omit=yes"                                       as `Affiliate_id`
+    ,"width=140px"                                    as `Date submitted`
+	 ,IF(@Op_Type="Withdraw" OR @Mode="AFFILIATE","width=100px,right=yes"  ,"omit=yes") as `Amount`
+	 ,IF(@Op_Type="Withdraw" OR @Mode="AFFILIATE","width=100px,right=yes"  ,"omit=yes") as `Confirm. Balance`
+	 ,IF(@Op_Type="Withdraw" OR @Mode="AFFILIATE","omit=yes"               ,"omit=yes") as `Action_Status_id`
+	 ,IF(@Op_Type="Withdraw" OR @Mode="AFFILIATE","width=100px"            ,"omit=yes") as `Action taken`
+	 ,IF(@Op_Type="Withdraw" OR @Mode="AFFILIATE","width=130px"            ,"omit=yes") as `Reviewed on`
+    ,IF(@Op_Type="Withdraw" OR @Mode="AFFILIATE","width=300px,tooltip=yes","omit=yes") as `Remarks`
+    ,"omit=yes"                                       as `url` 
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @CTE=REPLACE(@CTE,"@LMonth",@LMonth);
+SET @CTE=REPLACE(@CTE,"@Date_confirm",@Date_confirm);
+
+/************ TRATAMIENTO DE MASTER AFFILIATE **************************************/
+IF  @AffiliateGroup=6 or @MasterAffGroup=4 THEN
+    SET @CTE=REPLACE(@CTE,"Snapshot_day_by_day_fact2","sub_Snapshot_day_by_day_fact3");
+    SET @CTE=REPLACE(@CTE,"campaign_marketing_source","sub_campaign_marketing_source");
+    SET @CTE=REPLACE(@CTE,"campaign_mkt_source_deal","sub_campaign_mkt_source_deal");
+    SET @CTE=REPLACE(@CTE,"campaign_deal_affiliate","sub_campaign_deal_affiliate");
+    SET @CTE=REPLACE(@CTE,"account_landing_pages","sub_account_landing_pages");
+    SET @CTE=REPLACE(@CTE,"account_payment_methods","sub_account_payment_methods");
+    SET @CTE=REPLACE(@CTE,"account_account_bills","sub_account_account_bills");
+    SET @CTE=REPLACE(@CTE,"view_monthly_fact_aff4","sub_view_monthly_fact_aff4");
+END IF;
+/*---------------------------------------------------------------------------------*/
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`
+  ,"..." as `Action`
+	,MT.*
+FROM Main_Table_Data MT
+WHERE 1=1 ',@WhereActionTaken,
+'
+ORDER BY `Date submitted` desc
+;');
+
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "01" as "Korder"
+            ,"Affiliate" AS "Key"
+                         ,`Affiliate` AS "Value"
+                                          ,"Affiliate_id" AS `CallKey`
+                                                         ,`Affiliate_id` AS "CallValue"
+                                                                         ,COUNT(*) AS "Rows"
+FROM Main_Table_Data GROUP BY `Affiliate_id`
+) union all
+(SELECT "05","Action taken",`ActionTaken`,"ActionTaken",`ActionTaken`,COUNT(*) FROM Main_Table_Data MT GROUP BY MT.`ActionTaken`)
+ORDER BY 1,3
+;');
+
+IF @Debug!="NO"   THEN SELECT @SQL;          END IF;
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+IF @Debug!="NO"   THEN SELECT @SQLfilters;   END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Report_Documents('Mode=Gestor,filters=ye,debug=ye');        -- TODOS
+call Report_Documents('Mode=Gestor,Affiliate_id=39,ActionTaken=ALL,debug=ye');
+call Report_Documents('Mode=affiliate,Affiliate_id=334,debug=ye'); -- Aff normal
+call Report_Documents('Mode=affiliate,Affiliate_id=834,debug=ye'); -- sub aff
+call Report_Documents('Mode=MAF,debug=ye');                        -- ERROR falta Master Aff
+call Report_Documents('Mode=MAF,MasterAff_id=440,debug=ye');       -- Master Aff
+call Report_Documents('Mode=MAF,MasterAff_id=334,debug=ye');       -- ERROR no es Master Aff
+call Report_Documents('Mode=affiliate,Affiliate_id=39,debug=ye');
+call Report_Documents('Mode=Gestor,Affiliate_id=all,Op_Type=Withdraw,ActionTaken=ALL,debug=ye');
+*/

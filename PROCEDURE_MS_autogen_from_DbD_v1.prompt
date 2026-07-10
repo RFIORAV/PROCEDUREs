@@ -1,0 +1,201 @@
+Siguiendo la misma estructura y estilo de D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_Report_Publisher_v1.4.1.sql 
+escribir el procedure
+D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_MS_autogen_from_DbD_v1.sql
+que haga lo siguiente:
+
+Este procedure deberá crear en `campaign_marketing_source_missing` (de igual extructura que `campaign_marketing_source`)
+todas las `campaign_marketing_source` que debe extraer de Snapshot_day_by_day y que no estén en `campaign_marketing_source`
+
+Una MS está ya en `campaign_marketing_source` si se cumple lo siguiente:
+`Tracker_ID`,`Tracker_Name` y `Username_id` de campaign_marketing_source son iguales a 
+`Tracker_ID`,`Tracker_Name` y `Username` de Snapshot_day_by_day
+
+Recibe como parámetros de entrada 'Month=YYYY-MM, debug=xxx' para seleccionar la información de ese mes desde Snapshot_day_by_day (campo DATE)
+
+Inserta en `campaign_marketing_source_missing`:
+   `Tracker_ID`      (Lo obtiene de Snapshot_day_by_day)
+   , `Tracker_Name`  (Lo obtiene de Snapshot_day_by_day)       
+           
+   , `Affiliate_id` = 2       
+   , `Advertiser_id`  (Lo obtiene de campaign_username)      
+   , `Publisher_id`   (Lo obtiene de campaign_username)      
+   , `Username_id`    (Lo obtiene de Snapshot_day_by_day, campo username)      
+         
+   ) 
+   
+   Los diseños de las tablas son:
+   
+   CREATE TABLE `Snapshot_day_by_day` (
+   `id` INT NULL DEFAULT NULL,
+   `Owner` VARCHAR(55) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Affiliate` VARCHAR(55) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Campaign` VARCHAR(150) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Deal` VARCHAR(150) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Deal_Aff` VARCHAR(150) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Hour_Update` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP),
+   `Date` DATE NULL DEFAULT NULL,
+   `Username` VARCHAR(55) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',
+   `Portal` VARCHAR(55) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Brand` VARCHAR(55) NOT NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Tracker_ID` VARCHAR(55) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Tracker_Name` VARCHAR(500) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Code_To_Affiliate` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Product` VARCHAR(55) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Product_Real` VARCHAR(55) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Qualified_Players` INT NULL DEFAULT '0',
+   `Qualified_Players_Adjusted` INT NULL DEFAULT '0',
+   `Criteria_Type` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Level_Reached` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `First_Time_Deposit` INT NULL DEFAULT '0',
+   `Views` INT NULL DEFAULT '0',
+   `Clicks` INT NULL DEFAULT '0',
+   `Signups` INT NULL DEFAULT '0',
+   `Impressions` INT NULL DEFAULT '0',
+   `Sign_Up_Offer` VARCHAR(55) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Type` VARCHAR(55) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Language` VARCHAR(55) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Country` VARCHAR(50) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Brand_Name` VARCHAR(50) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Registration_Date` DATE NULL DEFAULT NULL,
+   `Deposits` DECIMAL(12,2) NULL DEFAULT '0.00',
+   `Depositing_Customers` INT NULL DEFAULT '0',
+   `Active_Customers` INT NULL DEFAULT '0',
+   `New_Depositing_Customers` INT NULL DEFAULT '0',
+   `New_Active_Customers` INT NULL DEFAULT '0',
+   `First_Time_Active_Customers` INT NULL DEFAULT '0',
+   `Turnover` DECIMAL(12,2) NULL DEFAULT '0.00',
+   `Net_Revenue` DECIMAL(12,2) NULL DEFAULT '0.00',
+   `Revenue_Share_Gestor` DECIMAL(12,2) NULL DEFAULT '0.00',
+   `Revenue_Share_Affiliate` DECIMAL(12,2) NULL DEFAULT '0.00',
+   `CPA_Value_Affiliate` DECIMAL(12,2) NULL DEFAULT '0.00',
+   `CPA_Value_Gestor` DECIMAL(12,2) NULL DEFAULT '0.00',
+   INDEX `Date` (`Date`, `Tracker_Name`) USING BTREE,
+   INDEX `Username` (`Username`) USING BTREE,
+   INDEX `Brand` (`Brand`) USING BTREE,
+   INDEX `Tracker_ID` (`Tracker_ID`) USING BTREE,
+   INDEX `Owner` (`Owner`) USING BTREE
+)
+COLLATE='utf8mb4_0900_ai_ci'
+ENGINE=InnoDB
+;
+
+CREATE TABLE `campaign_marketing_source` (
+   `id` INT NOT NULL AUTO_INCREMENT,
+   `Owner` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Code` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Tracklink` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Tracker_ID` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Tracker_Name` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Code_To_Affiliate` VARCHAR(50) NULL DEFAULT '0' COLLATE 'utf8mb4_0900_ai_ci',
+   `Product` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Source` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `CPA_Limit` VARCHAR(30) NULL DEFAULT '0' COLLATE 'utf8mb4_0900_ai_ci',
+   `Status` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_id` VARCHAR(2) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `NotUse_StatEf` VARCHAR(2) NULL DEFAULT '0' COLLATE 'utf8mb4_0900_ai_ci',
+   `Stat_effect` VARCHAR(30) NULL DEFAULT 'Active' COLLATE 'utf8mb4_0900_ai_ci',
+   `Stat_aggreg` VARCHAR(2) NULL DEFAULT '1' COLLATE 'utf8mb4_0900_ai_ci',
+   `Stat_Chan` VARCHAR(2) NULL DEFAULT '1' COLLATE 'utf8mb4_0900_ai_ci',
+   `Stat_Acct` VARCHAR(2) NULL DEFAULT '1' COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_Adv_id` VARCHAR(2) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_Acct_id` VARCHAR(2) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_Aff_id` VARCHAR(2) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_Channel_id` VARCHAR(2) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_Pub_id` VARCHAR(2) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Valid_From` DATE NULL DEFAULT NULL,
+   `Valid_Until` DATE NULL DEFAULT NULL,
+   `Description` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Affiliate_id` INT NULL DEFAULT NULL,
+   `Advertiser_id` INT NULL DEFAULT NULL,
+   `Advertiser_id_OK` INT NULL DEFAULT NULL,
+   `Publisher_id` INT NULL DEFAULT NULL,
+   `Campaign_id` INT NULL DEFAULT NULL,
+   `Username_id` INT NULL DEFAULT NULL,
+   `Channel_id` INT NULL DEFAULT NULL,
+   `Deal_id` INT NULL DEFAULT NULL,
+   `Country_Deal` VARCHAR(2) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Product_Deal` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Deal_Valid_From` DATE NULL DEFAULT NULL,
+   `Shortlink` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Shortlink_id` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Manual_Adjustment_CPA` VARCHAR(30) NULL DEFAULT '0' COLLATE 'utf8mb4_0900_ai_ci',
+   `Manual_Adjustment_Euro` VARCHAR(30) NULL DEFAULT '0' COLLATE 'utf8mb4_0900_ai_ci',
+   `Priority` INT NULL DEFAULT NULL,
+   `Ad_Code` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Ad_Valid_From` DATE NULL DEFAULT NULL,
+   `Ad_Valid_to` DATE NULL DEFAULT NULL,
+   `Creation_Date` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP),
+   `Last_Update` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP,
+   `Operator` VARCHAR(30) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',
+   PRIMARY KEY (`id`) USING BTREE,
+   UNIQUE INDEX `ms_Tracker_ID` (`Tracker_ID`, `Username_id`) USING BTREE,
+   INDEX `campaign_marketing_s_Affiliate_id_dcad8227_fk_account_a` (`Affiliate_id`) USING BTREE,
+   INDEX `campaign_marketing_s_Platform_Connection__03b439eb_fk_campaign_` (`Username_id`) USING BTREE,
+   INDEX `campaign_marketing_s_Advertiser_id_eabc6286_fk_campaign_` (`Advertiser_id`) USING BTREE,
+   INDEX `campaign_marketing_s_Channel_id_ba3fa26d_fk_account_l` (`Channel_id`) USING BTREE,
+   INDEX `campaign_marketing_source_Deal_id_3bf3a268` (`Deal_id`) USING BTREE,
+   INDEX `ms_Code_id` (`Code`, `Username_id`) USING BTREE,
+   INDEX `ms_Tracker_Name_ID` (`Tracker_Name`, `Username_id`) USING BTREE,
+   CONSTRAINT `campaign_marketing_s_Advertiser_id_eabc6286_fk_campaign_` FOREIGN KEY (`Advertiser_id`) REFERENCES `campaign_advertiser` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+   CONSTRAINT `campaign_marketing_s_Channel_id_ba3fa26d_fk_account_l` FOREIGN KEY (`Channel_id`) REFERENCES `account_landing_pages` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+   CONSTRAINT `campaign_marketing_s_Deal_id_3bf3a268_fk_campaign_` FOREIGN KEY (`Deal_id`) REFERENCES `campaign_deal_affiliate` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+   CONSTRAINT `campaign_marketing_s_Username_id_e2720474_fk_campaign_` FOREIGN KEY (`Username_id`) REFERENCES `campaign_username` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
+)
+COLLATE='utf8mb4_0900_ai_ci'
+ENGINE=InnoDB
+AUTO_INCREMENT=5581
+;
+
+   
+   CREATE TABLE `campaign_username` (
+   `id` INT NOT NULL AUTO_INCREMENT,
+   `Area` VARCHAR(50) NULL DEFAULT 'gaming' COLLATE 'utf8mb4_0900_ai_ci',
+   `Owner` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Advertiser_id` INT NULL DEFAULT NULL,
+   `Publisher_id` INT NULL DEFAULT NULL,
+   `Username` VARCHAR(100) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_id` VARCHAR(2) NULL DEFAULT '1' COLLATE 'utf8mb4_0900_ai_ci',
+   `Status` VARCHAR(30) NULL DEFAULT 'Active' COLLATE 'utf8mb4_0900_ai_ci',
+   `Stat_effect` VARCHAR(30) NULL DEFAULT 'Active' COLLATE 'utf8mb4_0900_ai_ci',
+   `Stat_aggreg` VARCHAR(2) NULL DEFAULT '1' COLLATE 'utf8mb4_0900_ai_ci',
+   `Stat_Adve` VARCHAR(2) NULL DEFAULT '1' COLLATE 'utf8mb4_0900_ai_ci',
+   `is_active` TINYINT(1) NULL DEFAULT '1',
+   `Product` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Product_Deal` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Country_Deal` VARCHAR(2) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Valid_From` DATE NULL DEFAULT NULL,
+   `Deal_Main_id` INT NULL DEFAULT NULL,
+   `RSasNR` TINYINT(1) NULL DEFAULT NULL,
+   `CPA_Limit` INT NULL DEFAULT '0',
+   `Data_Currency` VARCHAR(3) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Password` VARCHAR(300) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Identification` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Note` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Url` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `API` VARCHAR(200) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Client_id` VARCHAR(200) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Client_secret` VARCHAR(200) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Category` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Deal_Secondary_id` INT NULL DEFAULT NULL,
+   `Campaign_id` INT NULL DEFAULT NULL,
+   `Advertiser_indirect_id` INT NULL DEFAULT NULL,
+   `Affiliate_indirect` VARCHAR(100) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `db_indirect` VARCHAR(100) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `is_indirect` TINYINT(1) NULL DEFAULT NULL,
+   `Creation_Date` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP),
+   `Last_Update` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP,
+   `Operator` VARCHAR(30) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',
+   PRIMARY KEY (`id`) USING BTREE,
+   INDEX `campaign_username_Advertiser_id_1b15687b_fk_campaign_` (`Advertiser_id`) USING BTREE,
+   INDEX `campaign_username_Deal_Main_id_bf5f72cc_fk_campaign_` (`Deal_Main_id`) USING BTREE,
+   INDEX `campaign_username_Advertiser_indirect__b8bde538_fk_campaign_` (`Advertiser_indirect_id`) USING BTREE,
+   INDEX `FK_campaign_username_euroaffiliati2.campaign_publisher` (`Publisher_id`) USING BTREE,
+   INDEX `idx_id_advertiser` (`id`, `Advertiser_id`) USING BTREE,
+   CONSTRAINT `campaign_username_Deal_Main_id_bf5f72cc_fk_campaign_` FOREIGN KEY (`Deal_Main_id`) REFERENCES `campaign_deal_gestor` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+   CONSTRAINT `FK_campaign_username_euroaffiliati2.campaign_publisher` FOREIGN KEY (`Publisher_id`) REFERENCES `campaign_publisher` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
+)
+COLLATE='utf8mb4_0900_ai_ci'
+ENGINE=InnoDB
+AUTO_INCREMENT=257
+;
+

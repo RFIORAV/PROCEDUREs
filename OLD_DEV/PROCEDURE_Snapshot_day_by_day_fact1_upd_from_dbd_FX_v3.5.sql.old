@@ -1,0 +1,248 @@
+/**
+	PROCEDURE_Snapshot_day_by_day_fact1_upd_from_dbd.sql
+
+	**	Actualiza tabla Snapshot_day_by_day_fact1 desde Snapshot_day_by_day
+   ** Reemplaza a Snapshot_day_by_day_fact1_upd() que iba sobre view Snapshot_day_by_day_fact
+	**	Se lanza desde EVENT
+	29.09.2022 V1   Parametro de entrada LM/CM (Last Month / Current Month)
+   23.10.2022 v2   Cambia forma de atribuir Deal_Aff y Affiliate_id`
+   05.11.2022      Opción AllAll para regenerar Fact1 completa
+   09.11.2022 v3   Recodificado selecc de Affiliate_id y Deal_by_Product
+   18.11.2022 v3.1 CPA_Value_Gestor en DbD para calcular Qualified_Players
+-- 28.11.2022      campos agregados: Advertiser_indirect_id
+-- 30.11.2022      campos agregados: `Country`,`Brand_Name`
+-- 02.12.2022 v3.2 Nuevo algoritmo selección MS
+-- 07.12.2022 v3.3 Nuevos parámetros de entrada
+   21.12.2022      Condición OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0') para Curr_Last_Month='ALLALL'
+   21.01.2023 v3.4 Trata nuevo concepto Publisher (pagador)
+   31.01.2023 v3.5 Trata datos de forex
+   20.02.2023      Origin
+*/
+
+DROP PROCEDURE IF EXISTS FX_Snapshot_day_by_day_fact1_upd_from_dbd;
+DROP PROCEDURE IF EXISTS Snapshot_day_by_day_fact1_upd_from_dbd_FX;
+-- -------------------------------------------------------------
+DELIMITER //
+
+CREATE PROCEDURE Snapshot_day_by_day_fact1_upd_from_dbd_FX(IN Curr_Last_Month varchar(7))
+COMMENT 'Actualiza FACT1 desde DbD FX - Last Month y Cte / AAAA-MM'
+DETERMINISTIC
+MODIFIES SQL DATA
+-- SQL SECURITY INVOKER
+
+BEGIN
+SET @Version='v3.5 fx 31.01.2023';
+SET @DateFrom=LEFT(CURDATE(),7);    -- Asume Curr Month por defecto
+
+IF UPPER(Curr_Last_Month)='LM' THEN SET @DateFrom=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+IF UPPER(Curr_Last_Month)='ALLALL' THEN SET @DateFrom='2022-01'; END IF;
+
+IF LEFT(Curr_Last_Month,3)='202' AND
+   SUBSTRING(Curr_Last_Month,6,2) IN ('01','02','03','04','05','06','07','08','09','10','11','12')
+THEN SET @DateFrom=LEFT(Curr_Last_Month,7);
+END IF;
+
+DELETE FROM Snapshot_day_by_day_fact1 WHERE IFNULL(`Origin`,'')<>'manual' AND `Area`='forex'
+      AND (LEFT(DATE,7)=@DateFrom OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0'));
+-- DELETE FROM Snapshot_day_by_day_fact1 WHERE `Area`='forex'
+      -- AND (LEFT(DATE,7)=@DateFrom OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0'));
+
+-- ------------------------------------------------------------------------
+-- Historial de la view Snapshot_day_by_day_fact
+-- 06.06.2022 EN USO EN PRODUCCION
+-- Corregido acceso a campaign_deal_gestor_prod_date
+-- 12.07.2022 Corregida logica atribucion MS
+-- 30.07.2022 Moneda datos Data_Currency
+-- 30.07.2022 Corregida logica atribucion Deal aff/gestor: Si no encuentra deal para el Product
+-- busca deal para Product en blanco
+-- 05.08.2022 Owner se extrae de campaign_username
+-- 05.09.2022 Se activa para actualización automática
+-- 29.09.2022 Caso de RS en campo NR (ej Pokerstars). Nuevo campo `RSasNR` en campaign_username
+-- 29.09.2022 Pasa a ser PROCEDURE para usar variable @NR por Net_Revenue
+-- 11.10.2022 Agregado Brand_Group
+-- 12.10.2022 Tratamiento de Product=null or '' or ' '
+-- 22.10.2022 Cambio atribucion deal con campaign_mkt_source_deal
+-- 26.10.2022 if ms=null Tracker_id de DbD
+-- 28.10.2022 IFNULL(`AD`.`Brand_Group_Acum`,0) AS `Brand_Group_Acum`,
+-- 30.10.2022 `AD`.`Advertiser_Name` AS `Brand`,
+-- 05.11.2022 Fix error Deal_Valid_From Aff y Ges
+-- 09.11.2022 Recodificado selecc de Affiliate_id y Deal_by_Product y Deal_Gestor_by_Product
+-- 18.11.2022 v3.1 CPA_Value_Gestor en DbD para calcular Qualified_Players
+-- 28.11.2022 se agrega campo Advertiser_indirect_id
+-- 30.11.2022 campos agregados: `Country`,`Brand_Name`
+-- 02.12.2022 v3.2 Nuevo algoritmo selección MS
+-- 21.01.2023 v3.4 Trata nuevo concepto Publisher (pagador) de tabla campaing_username
+-- ------------------------------------------------------------------------
+INSERT IGNORE INTO Snapshot_day_by_day_fact1
+SELECT
+   `D`.`id` AS `id`,
+   ''                                     as `Origin`,
+   "forex"                                as `Area`,
+   `CU`.`Owner` 			 	 	 				AS `Owner`,          -- 05.08.2022
+   IFNULL(`A`.`username`, '_Unassigned') 	AS `Affiliate`,
+   IFNULL(`A`.`id`, 1)                    AS `Affiliate_id`,
+   `CDG`.`Deal_Name`                      AS `Deal`,
+   `CDA`.`Deal_Name`                      AS `Deal_Aff`,
+   `D`.`Hour_Update`                      AS `Hour_Update`,
+   `D`.`Date`                             AS `Date`,
+   `CU`.`Username`                        AS `Username`,
+   `CU`.`id`                         		AS `Username_id`,
+   `D`.`Portal`                           AS `Portal`,
+   `AD`.`Advertiser_Name`                 AS `Brand`,          -- 30.10.2022
+   `AD`.`id`                              AS `Advertiser_id`,
+   `CU`.`Publisher_id`                    AS `Publisher_id`,   -- 21.01.2023
+    IFNULL(`AD`.`Brand_Group`,'')         AS `Brand_Group`,    -- 11.10.2022
+    IF(`AD`.`Brand_Group`>'',IFNULL(`AD`.`Brand_Group_Acum`,0),0) AS `Brand_Group_Acum`,  -- 28.10.2022
+    IFNULL(`M`.`Tracker_ID`,`D`.`Tracker_ID`) AS `Tracker_ID`,     -- 26.10.2022 if ms=null Tracker_id de DbD
+   `D`.`Tracker_ID`                       AS `Tracker_ID_DbD`,
+   `M`.`id`                               AS `MS_id`,
+   `D`.`Tracker_Name`                     AS `Tracker_Name`,
+   `M`.`Code_To_Affiliate`                AS `Code_To_Affiliate`,
+   IFNULL(`D`.`Product`, '')              AS `Product`,
+   IFNULL(`M`.`Product`, '')              AS `Product_Real`,
+   -- `D`.`Qualified_Players` AS `Qualified_Players`,
+
+   @CPA :=(CASE WHEN IFNULL(`D`.`Qualified_Players`,0)=0            -- 18.11.2022
+                 AND IFNULL(D.CPA_Value_Gestor,0)<>0                -- 18.11.2022
+                 AND IFNULL(`CDG`.`CPA_Value`,0)>0                  -- 18.11.2022
+                THEN ROUND(D.CPA_Value_Gestor/`CDG`.`CPA_Value`,0)  -- 18.11.2022
+                ELSE IFNULL(`D`.`Qualified_Players`,0) END)         -- 18.11.2022
+                                          AS `Qualified_Players`,   -- 18.11.2022
+
+   `D`.`Qualified_Players_Adjusted`       AS `Qualified_Players_Adjusted`,
+   `D`.`First_Time_Deposit`               AS `First_Time_Deposit`,
+   `D`.`Views`                            AS `Views`,
+   `D`.`Clicks`                           AS `Clicks`,
+   `D`.`Signups`                          AS `Signups`,
+   `D`.`Impressions`                      AS `Impressions`,
+   `D`.`Sign_Up_Offer`                    AS `Sign_Up_Offer`,
+   `D`.`Type`                             AS `Type`,
+   `D`.`Language`                         AS `Language`,
+   `D`.`Country`,
+   `D`.`Brand_Name`,
+   `D`.`Registration_Date`                AS `Registration_Date`,
+   `D`.`Deposits`                         AS `Deposits`,
+   `D`.`Depositing_Customers`             AS `Depositing_Customers`,
+   `D`.`Active_Customers`                 AS `Active_Customers`,
+   `D`.`New_Depositing_Customers`         AS `New_Depositing_Customers`,
+   `D`.`New_Active_Customers`             AS `New_Active_Customers`,
+   `D`.`First_Time_Active_Customers`      AS `First_Time_Active_Customers`,
+   `D`.`Turnover`                         AS `Turnover`,
+
+   -- `D`.`Net_Revenue` AS `NR_DbD`,CU.RSasNR,`CDG`.`RS_Percentage`,    -- para Debug -- 22.11.2022
+   @NR :=(CASE WHEN CU.RSasNR=1 AND IFNULL(`CDG`.`RS_Percentage`,0)>0                 -- 22.11.2022
+               THEN ROUND(`D`.`Net_Revenue` / `CDG`.`RS_Percentage` * 100,2)          -- 22.11.2022
+          ELSE IFNULL(`D`.`Net_Revenue`, 0) END) as `Net_Revenue`,                    -- 22.11.2022
+
+   `M`.`Shortlink`                        AS `Shortlink`,
+   `M`.`CPA_Limit`                        AS `CPA_Limit`,
+   `lp`.`id`                              AS `Channel_id`,
+   `lp`.`landing_page_name`               AS `Channel`,
+   IFNULL(`A`.`first_level`, ' ') 	      AS `Level_1`,
+   IFNULL(`A`.`second_level`, ' ') 	      AS `Level_2`,
+   IFNULL(`A`.`third_level`, ' ') 	      AS `Level_3`,
+   IFNULL(`A`.`fourth_level`, ' ') 	      AS `Level_4`,
+   ROUND(((@NR * IFNULL(`CDG`.`RS_Percentage`, 0)) / 100), 2) AS `Revenue_Share_Gestor`,
+   ROUND(((@NR * IFNULL(`CDA`.`RS_Percentage`, 0)) / 100), 2) AS `Revenue_Share_Affiliate`,
+   ROUND((@CPA * IFNULL(`CDA`.`CPA_Value`, 0)), 0) AS `CPA_Value_Affiliate`,  -- 18.11.2022
+   ROUND((@CPA * IFNULL(`CDG`.`CPA_Value`, 0)), 0) AS `CPA_Value_Gestor`,     -- 18.11.2022
+   IFNULL(`CDA`.`id`, 0) 				      AS `Deal_Aff_id`,
+   IFNULL(`CDA`.`CPA_Value`, 0) 		      AS `Deal_Aff_CPA`,
+   IFNULL(`CDA`.`Carry_Over`, 0) 	      AS `Deal_Aff_Carry_Over`,
+   IFNULL(`CDA`.`RS_Against_CPA`, 0)      AS `Deal_Aff_RS_Against_CPA`,
+   IFNULL(`CDA`.`RS_Base`, 0) 		      AS `Deal_Aff_RS_Base`,
+   IFNULL(`CDA`.`RS_Percentage`, 0)       AS `Deal_Aff_RS`,
+   IFNULL(`M1`.`Deal_Valid_From`, 0)      AS `Deal_Aff_Valid_From`,           -- 05.11.2022
+   IFNULL(`CDG`.`id`, 0) 				      AS `Deal_Ges_id`,
+   IFNULL(`CDG`.`CPA_Value`, 0) 		      AS `Deal_Ges_CPA`,
+   IFNULL(`CDG`.`Carry_Over`, 0) 	      AS `Deal_Ges_Carry_Over`,
+   IFNULL(`CDG`.`RS_Against_CPA`, 0)      AS `Deal_Ges_RS_Against_CPA`,
+   IFNULL(`CDG`.`RS_Base`, 0) 		      AS `Deal_Ges_RS_Base`,
+   IFNULL(`CDG`.`RS_Percentage`, 0)       AS `Deal_Ges_RS`,
+   IFNULL(`CDP`.`Valid_From`, 0) 	      AS `Deal_Ges_Valid_From`,           -- 05.11.2022
+   CU.Data_Currency,
+   CU.is_indirect,                                                            -- 28.11.2022
+   CU.Advertiser_indirect_id,                                                 -- 28.11.2022
+   left(NOW(),16) as 'TimeGen'
+FROM `forex_day_by_day_2` `D`
+LEFT JOIN `campaign_username` `CU` ON (`CU`.`id` = IF(`D`.`Username`<170,`D`.`Username`+170,`D`.`Username`))
+-- LEFT JOIN `campaign_advertiser` `AD` ON (`AD`.`Advertiser_Name` = `D`.`Brand`)
+LEFT JOIN `campaign_advertiser` `AD` ON (`AD`.`id` = `CU`.`Advertiser_id`)          -- 30.10.2022
+		-- AND (`AD`.`Owner` = `D`.`Owner`)                                           -- 10.08.2022
+-- ----------------------------Seleccion MS----------------------------------------------
+LEFT JOIN LATERAL (                                                                        -- 02.12.2022
+   SELECT                                                                                  -- 02.12.2022
+      CASE  WHEN M.Tracker_ID = D.Tracker_ID and M.Tracker_Name = D.Tracker_Name then 4    -- 02.12.2022
+            WHEN M.Tracker_ID = D.Tracker_ID then 3                                        -- 02.12.2022
+            WHEN M.Tracker_Name = D.Tracker_Name then 2                                    -- 02.12.2022
+            ELSE 1 END AS MatchValue                                                       -- 02.12.2022
+      ,M.* FROM campaign_marketing_source M                                                -- 02.12.2022
+   WHERE M.Username_id = CU.id AND                                                    		 -- 06.12.2022
+		(D.Tracker_ID IN (M.Tracker_ID,M.Tracker_Name)                                       -- 02.12.2022
+	OR  D.Tracker_Name IN (M.Tracker_ID,M.Tracker_Name))                                    -- 02.12.2022
+	ORDER BY MatchValue DESC LIMIT 1                                                        -- 02.12.2022
+	) AS M ON true                                                                          -- 02.12.2022
+-- ----------------------------Seleccion de Affiliate------------------------------------
+LEFT JOIN LATERAL (                                                                            -- 09.11.2022
+	SELECT *,ROW_NUMBER() OVER(PARTITION BY MS_id 
+                                 ORDER BY Deal_Valid_From DESC,id DESC) AS RowNr               -- 15.02.2023
+	FROM `campaign_mkt_source_deal` WHERE `MS_id` = M.id AND `is_active` = 1                    -- 09.11.2022
+                                     AND `Deal_Valid_From` <= `D`.`Date`                       -- 09.11.2022
+	ORDER BY RowNr LIMIT 1                                                                      -- 09.11.2022
+) AS M2 ON TRUE                                                                                -- 09.11.2022
+-- ----------------------------Seleccion Deal por producto/country-----------------------
+LEFT JOIN LATERAL (                                                                            -- 09.11.2022
+	SELECT * FROM (                                                                             -- 09.11.2022
+      SELECT *,ROW_NUMBER() OVER(PARTITION BY Product 
+                                 ORDER BY Deal_Valid_From DESC,id DESC) AS RowNr               -- 15.02.2023
+      FROM `campaign_mkt_source_deal` WHERE `MS_id` = M.id AND Affiliate_id=M2.Affiliate_id    -- 09.11.2022
+                                        AND `is_active` = 1                                    -- 09.11.2022
+                                        AND `Deal_Valid_From` <= `D`.`Date`                    -- 09.11.2022
+	) AS DbP                                                                                    -- 09.11.2022
+	WHERE RowNr=1 AND IFNULL(DbP.`Product`,'') IN (IFNULL(D.Product, ''),'',' ')                -- 09.11.2022
+	ORDER BY DbP.`Product` DESC LIMIT 1	                                                        -- 09.11.2022
+) AS M1 ON TRUE                                                                                -- 09.11.2022
+-- --------------------------------------------------------------------------------------
+
+LEFT JOIN `account_account` `A` ON `A`.`id` = `M2`.`Affiliate_id`
+LEFT JOIN `campaign_deal_affiliate` `CDA` ON `CDA`.`id` = `M1`.`Deal_id`
+
+LEFT JOIN LATERAL (                                                                       -- 09.11.2022
+	SELECT * FROM (                                                                        -- 09.11.2022
+      SELECT *,ROW_NUMBER() OVER(PARTITION BY Product 
+                                 ORDER BY Valid_From DESC,id DESC) AS RowNr               -- 15.02.2023
+      FROM `campaign_deal_gestor_prod_date`                                               -- 09.11.2022
+      WHERE `Username_id` = `CU`.`id` AND `Advertiser_id` = `CU`.`Advertiser_id`     -- 09.11.2022
+        AND `is_active` = 1  AND `Valid_From` <= `D`.`Date`                               -- 09.11.2022
+	) AS DbP                                                                               -- 09.11.2022
+	WHERE RowNr=1 AND IFNULL(DbP.`Product`,'') IN (IFNULL(D.Product, ''),'',' ')           -- 09.11.2022
+	ORDER BY DbP.`Product` DESC LIMIT 1	                                                   -- 09.11.2022
+) AS CDP ON TRUE                                                                          -- 09.11.2022
+
+LEFT JOIN `campaign_deal_gestor` `CDG` ON ((`CDG`.`id` = `CDP`.`Deal_id`))
+LEFT JOIN `campaign_advertiser_status` `CS` ON ((`CS`.`id` = `AD`.`id`))
+LEFT JOIN `account_landing_pages` `lp` ON ((`lp`.`id` = `M2`.`Channel_id`))
+
+WHERE
+      LEFT(`D`.`Date`,7)=@DateFrom
+      OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0')                                  -- 21.12.2022
+      -- AND 
+      -- `D`.`Date` >= '2022-01-01'     -- and Left(DATE,7) AND Brand='Pokerstars'
+           -- AND (ISNULL(`CS`.`id`)
+           -- OR (`CS`.`is_active` = 0)
+           -- OR (`D`.`Date` < `CS`.`Date_apply`)))
+;
+
+END;
+
+//
+DELIMITER ;
+
+/*
+-- -----------------------------------------------------
+CALL FX_Snapshot_day_by_day_fact1_upd_from_dbd('CM');
+CALL FX_Snapshot_day_by_day_fact1_upd_from_dbd('LM');
+CALL FX_Snapshot_day_by_day_fact1_upd_from_dbd('2022-05');
+-- -----------------------------------------------------
+*/

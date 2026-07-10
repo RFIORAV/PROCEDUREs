@@ -1,0 +1,415 @@
+/*
+PROCEDURE_Lite_Info_for_graph_v2.sql - Datos para componentes Dashboard Personalizado
+
+Version history:
+01.03.2026 v2.0 Adaptacion a formatos de salida por componente (Grid/Bar/Donut)
+01.03.2026 v2.1 Fallback automatico de month=CM a LM si no hay datos
+
+Directivas aplicadas:
+- GridComponent: salida tabular (formato amplio)
+- VerticalBarChart / HorizontalBarChart: columnas meta,label,series_name,value
+- DonutChart: columnas label,value
+
+Uso:
+CALL lite_Info_for_graph_v2('month=LM,InfoSource=Comms,InfoBy=Brand,Component=VerticalBarChart');
+CALL lite_Info_for_graph_v2('month=LM,InfoSource=MainData,InfoBy=Publisher,Component=HorizontalBarChart');
+CALL lite_Info_for_graph_v2('month=LM,InfoSource=Comms,InfoBy=Brand,Component=DonutChart,Metric=net_Total_comm');
+CALL lite_Info_for_graph_v2('filters=yes');
+*/
+
+DROP PROCEDURE IF EXISTS lite_Info_for_graph_v2;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `lite_Info_for_graph_v2`(
+    IN InputCommLine VARCHAR(500)
+)
+COMMENT 'LITE - Movimientos para graficos (v2 componentes dashboard)'
+
+proc_main: BEGIN
+    DECLARE v_Version VARCHAR(40);
+    DECLARE v_Month VARCHAR(7);
+    DECLARE v_InfoSource VARCHAR(20);
+    DECLARE v_InfoBy VARCHAR(20);
+    DECLARE v_Component VARCHAR(30);
+    DECLARE v_Metric VARCHAR(40);
+    DECLARE v_Username_id VARCHAR(100);
+    DECLARE v_Advertiser_id VARCHAR(100);
+    DECLARE v_Publisher_id VARCHAR(100);
+    DECLARE v_Filters VARCHAR(3);
+    DECLARE v_Meta VARCHAR(3);
+    DECLARE v_Debug VARCHAR(3);
+    DECLARE v_InputCommLine VARCHAR(520);
+    DECLARE v_e INT;
+    DECLARE v_c INT;
+    DECLARE v_k VARCHAR(120);
+    DECLARE v_v VARCHAR(400);
+    DECLARE v_MonthRequested VARCHAR(7);
+    DECLARE v_RowCount BIGINT DEFAULT 0;
+
+    -- Defaults
+    SET v_Version       = 'v2.1 01.03.2026';
+    SET v_Month         = LEFT(CURDATE(), 7);
+    SET v_InfoSource    = 'COMMS';
+    SET v_InfoBy        = 'BRAND';
+    SET v_Component     = 'GRIDCOMPONENT';
+    SET v_Metric        = '';
+    SET v_Username_id   = 'ALL';
+    SET v_Advertiser_id = 'ALL';
+    SET v_Publisher_id  = 'ALL';
+    SET v_Filters       = 'NO';
+    SET v_Meta          = 'NO';
+    SET v_Debug         = 'NO';
+
+    SET v_InputCommLine = CONCAT(IFNULL(InputCommLine, ''), ',');
+    SET v_InputCommLine = REPLACE(v_InputCommLine, '"', '');
+
+    parse_loop: WHILE v_InputCommLine <> '' DO
+        SET v_e = LOCATE('=', v_InputCommLine);
+        SET v_c = LOCATE(',', v_InputCommLine);
+
+        IF v_e = 0 OR v_c = 0 OR v_c < v_e THEN
+            SET v_InputCommLine = '';
+            ITERATE parse_loop;
+        END IF;
+
+        SET v_k = TRIM(SUBSTRING(v_InputCommLine, 1, v_e - 1));
+        SET v_v = TRIM(SUBSTRING(v_InputCommLine, v_e + 1, v_c - (v_e + 1)));
+        SET v_InputCommLine = SUBSTRING(v_InputCommLine, v_c + 1);
+
+        IF LOWER(v_k) = 'month' THEN SET v_Month = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'infosource' THEN SET v_InfoSource = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'infoby' THEN SET v_InfoBy = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'component' THEN SET v_Component = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'metric' THEN SET v_Metric = UPPER(v_v); END IF;
+
+        IF LOWER(v_k) = 'username_id' THEN SET v_Username_id = v_v; END IF;
+        IF LOWER(v_k) = 'advertiser_id' THEN SET v_Advertiser_id = v_v; END IF;
+        IF LOWER(v_k) = 'publisher_id' THEN SET v_Publisher_id = v_v; END IF;
+
+        IF LOWER(v_k) = 'filters' THEN SET v_Filters = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'meta' THEN SET v_Meta = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'debug' THEN SET v_Debug = UPPER(v_v); END IF;
+    END WHILE;
+
+    SET v_MonthRequested = v_Month;
+
+    IF v_Month = 'CM' THEN SET v_Month = LEFT(CURDATE(), 7); END IF;
+    IF v_Month = 'LM' THEN SET v_Month = LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), 7); END IF;
+
+    -- Fallback: si se solicita CM y no hay datos, usar LM
+    IF v_MonthRequested = 'CM' THEN
+        IF v_InfoSource = 'COMMS' THEN
+            SELECT COUNT(*)
+            INTO v_RowCount
+            FROM monthly_comms_gestor_v5 D
+            WHERE D.Month = v_Month
+              AND (v_Username_id = 'ALL' OR D.Username_id = CAST(v_Username_id AS UNSIGNED))
+              AND (v_Advertiser_id = 'ALL' OR D.Advertiser_id = CAST(v_Advertiser_id AS UNSIGNED))
+              AND (v_Publisher_id = 'ALL' OR D.Publisher_id = CAST(v_Publisher_id AS UNSIGNED));
+        ELSE
+            SELECT COUNT(*)
+            INTO v_RowCount
+            FROM Snapshot_day_by_day_fact1 D
+            WHERE LEFT(D.Date, 7) = v_Month
+              AND (v_Username_id = 'ALL' OR D.Username_id = CAST(v_Username_id AS UNSIGNED))
+              AND (v_Advertiser_id = 'ALL' OR D.Advertiser_id = CAST(v_Advertiser_id AS UNSIGNED))
+              AND (v_Publisher_id = 'ALL' OR D.Publisher_id = CAST(v_Publisher_id AS UNSIGNED));
+        END IF;
+
+        IF v_RowCount = 0 THEN
+            SET v_Month = LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), 7);
+        END IF;
+    END IF;
+
+    IF v_Metric = '' THEN
+        IF v_InfoSource = 'COMMS' THEN
+            SET v_Metric = 'NET_TOTAL_COMM';
+        ELSE
+            SET v_Metric = 'NR';
+        END IF;
+    END IF;
+
+    IF v_Debug = 'YES' THEN
+        SELECT
+            v_Version AS Version,
+            v_Month AS Month,
+            v_InfoSource AS InfoSource,
+            v_InfoBy AS InfoBy,
+            v_Component AS Component,
+            v_Metric AS Metric,
+            v_Username_id AS Username_id,
+            v_Advertiser_id AS Advertiser_id,
+            v_Publisher_id AS Publisher_id,
+            v_Filters AS Filters,
+            v_Meta AS Meta;
+    END IF;
+
+    -- Seccion de filtros para builder de dashboard
+    IF v_Filters = 'YES' THEN
+        WITH RECURSIVE MonthFilter AS (
+            SELECT CURDATE() AS dt
+            UNION ALL
+            SELECT DATE_SUB(dt, INTERVAL 1 MONTH)
+            FROM MonthFilter
+            WHERE DATE_SUB(dt, INTERVAL 1 MONTH) >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
+        )
+        (SELECT '01' AS Korder, 'Month' AS `Key`, LEFT(dt, 7) AS `Value`, 'Month' AS CallKey, LEFT(dt, 7) AS CallValue, '' AS `Rows` FROM MonthFilter)
+        UNION ALL (SELECT '05', 'InfoSource', 'Comms', 'InfoSource', 'Comms', '')
+        UNION ALL (SELECT '05', 'InfoSource', 'MainData', 'InfoSource', 'MainData', '')
+        UNION ALL (SELECT '10', 'InfoBy', 'Brand', 'InfoBy', 'Brand', '')
+        UNION ALL (SELECT '10', 'InfoBy', 'Publisher', 'InfoBy', 'Publisher', '')
+        UNION ALL (SELECT '10', 'InfoBy', 'Username', 'InfoBy', 'Username', '')
+        UNION ALL (SELECT '15', 'Component', 'Grid', 'Component', 'GridComponent', '')
+        UNION ALL (SELECT '15', 'Component', 'Vertical Bar', 'Component', 'VerticalBarChart', '')
+        UNION ALL (SELECT '15', 'Component', 'Horizontal Bar', 'Component', 'HorizontalBarChart', '')
+        UNION ALL (SELECT '15', 'Component', 'Donut', 'Component', 'DonutChart', '')
+        UNION ALL (SELECT '20', 'Metric', 'net_Total_comm', 'Metric', 'net_Total_comm', '')
+        UNION ALL (SELECT '20', 'Metric', 'NR', 'Metric', 'NR', '')
+        UNION ALL (SELECT '20', 'Metric', 'CPA', 'Metric', 'CPA', '')
+        ORDER BY 1, 3;
+
+        LEAVE proc_main;
+    END IF;
+
+    -- DonutChart: salida exacta label,value
+    IF v_Component = 'DONUTCHART' THEN
+        IF v_InfoSource = 'COMMS' THEN
+            WITH BaseData AS (
+                SELECT
+                    CASE
+                        WHEN v_InfoBy = 'PUBLISHER' THEN P.Advertiser_Name
+                        WHEN v_InfoBy = 'USERNAME' THEN U.Username
+                        ELSE A.Advertiser_Name
+                    END AS label,
+                    SUM(D.CPA) AS CPA,
+                    SUM(D.Net_Revenue) AS Net_Revenue,
+                    SUM(D.net_CPA_Val) AS net_CPA_Val,
+                    SUM(D.net_RS_Val) AS net_RS_Val,
+                    SUM(D.net_Total_comm) AS net_Total_comm
+                FROM monthly_comms_gestor_v5 D
+                INNER JOIN campaign_advertiser A ON D.Advertiser_id = A.id
+                INNER JOIN campaign_publisher P ON D.Publisher_id = P.id
+                INNER JOIN campaign_username U ON D.Username_id = U.id
+                WHERE D.Month = v_Month
+                  AND (v_Username_id = 'ALL' OR D.Username_id = CAST(v_Username_id AS UNSIGNED))
+                  AND (v_Advertiser_id = 'ALL' OR D.Advertiser_id = CAST(v_Advertiser_id AS UNSIGNED))
+                  AND (v_Publisher_id = 'ALL' OR D.Publisher_id = CAST(v_Publisher_id AS UNSIGNED))
+                GROUP BY 1
+            )
+            SELECT
+                label,
+                CASE
+                    WHEN v_Metric = 'CPA' THEN CPA
+                    WHEN v_Metric = 'NET_REVENUE' THEN Net_Revenue
+                    WHEN v_Metric = 'NET_CPA_VAL' THEN net_CPA_Val
+                    WHEN v_Metric = 'NET_RS_VAL' THEN net_RS_Val
+                    ELSE net_Total_comm
+                END AS value
+            FROM BaseData
+            ORDER BY value DESC;
+        ELSE
+            WITH BaseData AS (
+                SELECT
+                    CASE
+                        WHEN v_InfoBy = 'PUBLISHER' THEN P.Advertiser_Name
+                        WHEN v_InfoBy = 'USERNAME' THEN U.Username
+                        ELSE A.Advertiser_Name
+                    END AS label,
+                    SUM(D.Qualified_Players) AS CPA,
+                    SUM(D.First_Time_Deposit) AS FTD,
+                    SUM(D.Signups) AS Signups,
+                    SUM(D.Clicks) AS Clicks,
+                    SUM(D.Deposits) AS Deposits,
+                    SUM(D.Net_Revenue) AS NR,
+                    SUM(D.CPA_Value_Gestor) AS CPA_Value,
+                    SUM(D.Revenue_Share_Gestor) AS RS
+                FROM Snapshot_day_by_day_fact1 D
+                INNER JOIN campaign_advertiser A ON D.Advertiser_id = A.id
+                INNER JOIN campaign_publisher P ON D.Publisher_id = P.id
+                INNER JOIN campaign_username U ON D.Username_id = U.id
+                WHERE LEFT(D.Date, 7) = v_Month
+                  AND (v_Username_id = 'ALL' OR D.Username_id = CAST(v_Username_id AS UNSIGNED))
+                  AND (v_Advertiser_id = 'ALL' OR D.Advertiser_id = CAST(v_Advertiser_id AS UNSIGNED))
+                  AND (v_Publisher_id = 'ALL' OR D.Publisher_id = CAST(v_Publisher_id AS UNSIGNED))
+                GROUP BY 1
+            )
+            SELECT
+                label,
+                CASE
+                    WHEN v_Metric = 'CPA' THEN CPA
+                    WHEN v_Metric = 'FTD' THEN FTD
+                    WHEN v_Metric = 'SIGNUPS' THEN Signups
+                    WHEN v_Metric = 'CLICKS' THEN Clicks
+                    WHEN v_Metric = 'DEPOSITS' THEN Deposits
+                    WHEN v_Metric = 'CPA_VALUE' THEN CPA_Value
+                    WHEN v_Metric = 'RS' THEN RS
+                    ELSE NR
+                END AS value
+            FROM BaseData
+            ORDER BY value DESC;
+        END IF;
+
+        LEAVE proc_main;
+    END IF;
+
+    -- VerticalBarChart / HorizontalBarChart: salida exacta meta,label,series_name,value
+    IF v_Component IN ('VERTICALBARCHART', 'HORIZONTALBARCHART') THEN
+        IF v_InfoSource = 'COMMS' THEN
+            WITH BaseData AS (
+                SELECT
+                    CASE
+                        WHEN v_InfoBy = 'PUBLISHER' THEN P.Advertiser_Name
+                        WHEN v_InfoBy = 'USERNAME' THEN U.Username
+                        ELSE A.Advertiser_Name
+                    END AS label,
+                    SUM(D.CPA) AS CPA,
+                    SUM(D.Net_Revenue) AS Net_Revenue,
+                    SUM(D.net_CPA_Val) AS net_CPA_Val,
+                    SUM(D.net_RS_Val) AS net_RS_Val,
+                    SUM(D.net_Total_comm) AS net_Total_comm
+                FROM monthly_comms_gestor_v5 D
+                INNER JOIN campaign_advertiser A ON D.Advertiser_id = A.id
+                INNER JOIN campaign_publisher P ON D.Publisher_id = P.id
+                INNER JOIN campaign_username U ON D.Username_id = U.id
+                WHERE D.Month = v_Month
+                  AND (v_Username_id = 'ALL' OR D.Username_id = CAST(v_Username_id AS UNSIGNED))
+                  AND (v_Advertiser_id = 'ALL' OR D.Advertiser_id = CAST(v_Advertiser_id AS UNSIGNED))
+                  AND (v_Publisher_id = 'ALL' OR D.Publisher_id = CAST(v_Publisher_id AS UNSIGNED))
+                GROUP BY 1
+            )
+            SELECT 'axisName' AS meta,
+                   CASE WHEN v_Component = 'VERTICALBARCHART' THEN v_InfoBy ELSE 'Valor' END AS label,
+                   '' AS series_name,
+                   CASE WHEN v_Component = 'VERTICALBARCHART' THEN 'Valor' ELSE v_InfoBy END AS value
+            UNION ALL
+            SELECT 'data', label, 'CPA', CPA FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'Net_Revenue', Net_Revenue FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'net_CPA_Val', net_CPA_Val FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'net_RS_Val', net_RS_Val FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'net_Total_comm', net_Total_comm FROM BaseData;
+        ELSE
+            WITH BaseData AS (
+                SELECT
+                    CASE
+                        WHEN v_InfoBy = 'PUBLISHER' THEN P.Advertiser_Name
+                        WHEN v_InfoBy = 'USERNAME' THEN U.Username
+                        ELSE A.Advertiser_Name
+                    END AS label,
+                    SUM(D.Qualified_Players) AS CPA,
+                    SUM(D.First_Time_Deposit) AS FTD,
+                    SUM(D.Signups) AS Signups,
+                    SUM(D.Clicks) AS Clicks,
+                    SUM(D.Deposits) AS Deposits,
+                    SUM(D.Net_Revenue) AS NR,
+                    SUM(D.CPA_Value_Gestor) AS CPA_Value,
+                    SUM(D.Revenue_Share_Gestor) AS RS
+                FROM Snapshot_day_by_day_fact1 D
+                INNER JOIN campaign_advertiser A ON D.Advertiser_id = A.id
+                INNER JOIN campaign_publisher P ON D.Publisher_id = P.id
+                INNER JOIN campaign_username U ON D.Username_id = U.id
+                WHERE LEFT(D.Date, 7) = v_Month
+                  AND (v_Username_id = 'ALL' OR D.Username_id = CAST(v_Username_id AS UNSIGNED))
+                  AND (v_Advertiser_id = 'ALL' OR D.Advertiser_id = CAST(v_Advertiser_id AS UNSIGNED))
+                  AND (v_Publisher_id = 'ALL' OR D.Publisher_id = CAST(v_Publisher_id AS UNSIGNED))
+                GROUP BY 1
+            )
+            SELECT 'axisName' AS meta,
+                   CASE WHEN v_Component = 'VERTICALBARCHART' THEN v_InfoBy ELSE 'Valor' END AS label,
+                   '' AS series_name,
+                   CASE WHEN v_Component = 'VERTICALBARCHART' THEN 'Valor' ELSE v_InfoBy END AS value
+            UNION ALL
+            SELECT 'data', label, 'CPA', CPA FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'FTD', FTD FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'Signups', Signups FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'Clicks', Clicks FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'Deposits', Deposits FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'NR', NR FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'CPA_Value', CPA_Value FROM BaseData
+            UNION ALL
+            SELECT 'data', label, 'RS', RS FROM BaseData;
+        END IF;
+
+        LEAVE proc_main;
+    END IF;
+
+    -- GridComponent (default): formato amplio/tabular
+    IF v_InfoSource = 'COMMS' THEN
+        WITH MainDataDetail AS (
+            SELECT
+                D.Month AS `Month`,
+                CASE WHEN v_InfoBy = 'PUBLISHER' THEN D.Publisher_id ELSE NULL END AS `Publisher_id`,
+                CASE WHEN v_InfoBy = 'BRAND' THEN D.Advertiser_id ELSE NULL END AS `Advertiser_id`,
+                CASE WHEN v_InfoBy = 'USERNAME' THEN D.Username_id ELSE NULL END AS `Username_id`,
+                CASE WHEN v_InfoBy = 'PUBLISHER' THEN P.Advertiser_Name ELSE '' END AS `Publisher`,
+                CASE WHEN v_InfoBy = 'BRAND' THEN A.Advertiser_Name ELSE '' END AS `Advertiser`,
+                CASE WHEN v_InfoBy = 'USERNAME' THEN U.Username ELSE '' END AS `Username`,
+                SUM(D.CPA) AS `CPA`,
+                SUM(D.Net_Revenue) AS `Net_Revenue`,
+                SUM(D.net_CPA_Val) AS `net_CPA_Val`,
+                SUM(D.net_RS_Val) AS `net_RS_Val`,
+                SUM(D.net_Total_comm) AS `net_Total_comm`
+            FROM monthly_comms_gestor_v5 D
+            INNER JOIN campaign_advertiser A ON D.Advertiser_id = A.id
+            INNER JOIN campaign_publisher P ON D.Publisher_id = P.id
+            INNER JOIN campaign_username U ON D.Username_id = U.id
+            WHERE D.Month = v_Month
+              AND (v_Username_id = 'ALL' OR D.Username_id = CAST(v_Username_id AS UNSIGNED))
+              AND (v_Advertiser_id = 'ALL' OR D.Advertiser_id = CAST(v_Advertiser_id AS UNSIGNED))
+              AND (v_Publisher_id = 'ALL' OR D.Publisher_id = CAST(v_Publisher_id AS UNSIGNED))
+            GROUP BY 1,2,3,4,5,6,7
+        )
+        SELECT
+            IF(v_Meta = 'YES', 'setting', 'data') AS Meta,
+            `Month`, `Publisher_id`, `Advertiser_id`, `Username_id`,
+            `Publisher`, `Advertiser`, `Username`,
+            `CPA`, `Net_Revenue`, `net_CPA_Val`, `net_RS_Val`, `net_Total_comm`
+        FROM MainDataDetail;
+    ELSE
+        WITH MainDataDetail AS (
+            SELECT
+                LEFT(D.Date, 7) AS `Month`,
+                CASE WHEN v_InfoBy = 'PUBLISHER' THEN D.Publisher_id ELSE NULL END AS `Publisher_id`,
+                CASE WHEN v_InfoBy = 'BRAND' THEN D.Advertiser_id ELSE NULL END AS `Advertiser_id`,
+                CASE WHEN v_InfoBy = 'USERNAME' THEN D.Username_id ELSE NULL END AS `Username_id`,
+                CASE WHEN v_InfoBy = 'PUBLISHER' THEN P.Advertiser_Name ELSE '' END AS `Publisher`,
+                CASE WHEN v_InfoBy = 'BRAND' THEN A.Advertiser_Name ELSE '' END AS `Advertiser`,
+                CASE WHEN v_InfoBy = 'USERNAME' THEN U.Username ELSE '' END AS `Username`,
+                SUM(D.Qualified_Players) AS `CPA`,
+                SUM(D.First_Time_Deposit) AS `FTD`,
+                SUM(D.Signups) AS `Signups`,
+                SUM(D.Clicks) AS `Clicks`,
+                SUM(D.Deposits) AS `Deposits`,
+                SUM(D.Net_Revenue) AS `NR`,
+                SUM(D.CPA_Value_Gestor) AS `CPA_Value`,
+                SUM(D.Revenue_Share_Gestor) AS `RS`
+            FROM Snapshot_day_by_day_fact1 D
+            INNER JOIN campaign_advertiser A ON D.Advertiser_id = A.id
+            INNER JOIN campaign_publisher P ON D.Publisher_id = P.id
+            INNER JOIN campaign_username U ON D.Username_id = U.id
+            WHERE LEFT(D.Date, 7) = v_Month
+              AND (v_Username_id = 'ALL' OR D.Username_id = CAST(v_Username_id AS UNSIGNED))
+              AND (v_Advertiser_id = 'ALL' OR D.Advertiser_id = CAST(v_Advertiser_id AS UNSIGNED))
+              AND (v_Publisher_id = 'ALL' OR D.Publisher_id = CAST(v_Publisher_id AS UNSIGNED))
+            GROUP BY 1,2,3,4,5,6,7
+        )
+        SELECT
+            IF(v_Meta = 'YES', 'setting', 'data') AS Meta,
+            `Month`, `Publisher_id`, `Advertiser_id`, `Username_id`,
+            `Publisher`, `Advertiser`, `Username`,
+            `CPA`, `FTD`, `Signups`, `Clicks`, `Deposits`, `NR`, `CPA_Value`, `RS`
+        FROM MainDataDetail;
+    END IF;
+
+END$$
+DELIMITER ;
+

@@ -1,0 +1,160 @@
+/* PROCEDURE_Util_TableCompareFields_v1.sql
+   25.01.2023 V1 Compara el diseño de dos tablas en la misma db. 
+              Genera ALTER para que la TableName2 quede igual que TableName1 en DBreference
+   06.02.2023 v2     Compara tablas de distinta DB
+   15.02.2023 v2.1   Tratamiento de los defauls
+   Parametros (TableName1, DBreference, TableName2, DBtable2)
+   
+*/
+DROP PROCEDURE IF EXISTS Util_TableCompareFields;
+
+DELIMITER $$
+CREATE PROCEDURE Util_TableCompareFields(IN
+   TableName1   VARCHAR(50),
+   DBtable1     VARCHAR(50),
+   TableName2   VARCHAR(50),
+   DBtable2     VARCHAR(50)
+   )
+   COMMENT 'Compara estructura de tablas. Genera ALTER'
+   LANGUAGE SQL
+    
+BEGIN
+
+-- Defaults
+SET @Version         ='v2.1 28.02.2023 ';
+SET @CurrentDay      =curdate();
+
+
+SET @TableNameRef=TableName1;
+SET @TableNameComp=TableName2;
+SET @DBref=DBtable1;
+SET @DBcomp=DBtable2;
+
+
+/*
+SET @TableNameRef='account_account';
+SET @TableNameComp=CONCAT(@TableNameRef,'_history');
+SET @DBref='euroaffiliati2';
+SET @DBcomp='hubaffiliations';
+SELECT @TableNameRef,@TableNameComp,@DBref;
+*/
+
+WITH 
+SetFieldsTableBase as (
+   SELECT A.TABLE_SCHEMA,A.TABLE_NAME,A.COLUMN_NAME,A.COLUMN_TYPE,A.ORDINAL_POSITION,A.COLUMN_DEFAULT,A.IS_NULLABLE,A.EXTRA
+         ,IFNULL(B.ORDINAL_POSITION,0) as PREV_FLD_POSITION
+         ,IF(B.COLUMN_NAME IS NULL,'FIRST',CONCAT('`',B.COLUMN_NAME,'`')) as PREV_FLD
+         ,CASE WHEN A.IS_NULLABLE="YES" THEN ' NULL'  ELSE '' END AS `Nullable`
+         ,CASE WHEN A.COLUMN_DEFAULT IS NULL THEN ' DEFAULT NULL ' 
+            ELSE CASE WHEN LEFT(A.COLUMN_TYPE,7)="varchar" THEN CONCAT(" DEFAULT '",A.COLUMN_DEFAULT,"' ") 
+                 ELSE CONCAT(" DEFAULT ",A.COLUMN_DEFAULT," ") END
+            END as `ColDefault`
+         ,CASE WHEN A.EXTRA='' THEN '' ELSE CONCAT(REPLACE(A.EXTRA,'DEFAULT_GENERATED',''),' ') END
+               AS `ColDefaultExtra`
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B ON B.TABLE_SCHEMA=@DBref AND B.TABLE_NAME = @TableNameRef 
+         AND B.ORDINAL_POSITION=(A.ORDINAL_POSITION-1)
+   WHERE A.TABLE_SCHEMA=@DBref AND A.TABLE_NAME = @TableNameRef
+   ORDER BY A.ORDINAL_POSITION
+   ),
+SetFieldsTableBaseLastRow as (
+   SELECT A.TABLE_SCHEMA,A.TABLE_NAME,A.COLUMN_NAME,A.COLUMN_TYPE,A.ORDINAL_POSITION
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   WHERE A.TABLE_SCHEMA=@DBref AND A.TABLE_NAME = @TableNameRef
+   ORDER BY A.ORDINAL_POSITION DESC LIMIT 1
+   ),
+SetFieldsTableComp as (
+   SELECT A.TABLE_SCHEMA,A.TABLE_NAME,A.COLUMN_NAME,A.COLUMN_TYPE,A.ORDINAL_POSITION,A.COLUMN_DEFAULT,A.IS_NULLABLE,A.EXTRA
+         ,CASE WHEN A.IS_NULLABLE="YES" THEN ' NULL'  ELSE '' END AS `Nullable`
+         ,CASE WHEN A.COLUMN_DEFAULT IS NULL THEN ' DEFAULT NULL ' 
+            ELSE CASE WHEN LEFT(A.COLUMN_TYPE,7)="varchar" THEN CONCAT(" DEFAULT '",A.COLUMN_DEFAULT,"' ") 
+                 ELSE CONCAT(" DEFAULT ",A.COLUMN_DEFAULT," ") END
+            END as `ColDefault`
+         ,CASE WHEN A.EXTRA='' THEN '' ELSE CONCAT(REPLACE(A.EXTRA,'DEFAULT_GENERATED',''),' ') END
+               AS `ColDefaultExtra`
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   WHERE A.TABLE_SCHEMA=@DBcomp AND A.TABLE_NAME = @TableNameComp -- AND A.COLUMN_NAME NOT LIKE 'Aud_%'
+   ORDER BY A.ORDINAL_POSITION
+   )
+   -- ,
+-- SetFieldsTableAudit as (
+   -- SELECT A.TABLE_SCHEMA,A.TABLE_NAME,A.COLUMN_NAME,A.COLUMN_TYPE,A.ORDINAL_POSITION,A.COLUMN_DEFAULT,A.IS_NULLABLE,A.EXTRA
+   -- FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   -- WHERE A.TABLE_SCHEMA='settings_db' AND A.TABLE_NAME ='audit_base_history'
+   -- ORDER BY A.ORDINAL_POSITION
+   -- )
+
+SELECT ALTERCMD as `-- ALTERCMD` FROM (
+(
+SELECT -- H.COLUMN_NAME,B.COLUMN_NAME,B.COLUMN_TYPE,
+	B.ORDINAL_POSITION,B.COLUMN_NAME,
+	CONCAT('ALTER TABLE ',@DBcomp,'.',@TableNameComp,' ADD COLUMN `',B.COLUMN_NAME,'` ',B.COLUMN_TYPE -- ,' NULL DEFAULT NULL '
+   ,B.`Nullable`,B.`ColDefault`,B.`ColDefaultExtra` 
+	,IF(B.PREV_FLD_POSITION=0,'','AFTER '),B.PREV_FLD,';')  AS 'ALTERCMD'
+FROM SetFieldsTableBase B
+LEFT JOIN SetFieldsTableComp H ON B.COLUMN_NAME=H.COLUMN_NAME
+WHERE H.COLUMN_NAME IS NULL 
+)       
+UNION ALL -- Primera pasada
+(
+SELECT -- H.COLUMN_NAME,B.COLUMN_NAME,B.COLUMN_TYPE,
+	B.ORDINAL_POSITION+800,B.COLUMN_NAME,
+	CONCAT('ALTER TABLE ',@DBcomp,'.',@TableNameComp,' CHANGE COLUMN `',H.COLUMN_NAME,'` `',H.COLUMN_NAME,'` '
+	,B.COLUMN_TYPE -- ,' NULL DEFAULT NULL ',
+   ,B.`Nullable`,B.`ColDefault`,B.`ColDefaultExtra`    
+	,IF(B.PREV_FLD_POSITION=0,'','AFTER '),B.PREV_FLD,';')  AS ''
+FROM SetFieldsTableComp H
+INNER JOIN SetFieldsTableBase B ON B.COLUMN_NAME=H.COLUMN_NAME AND (B.COLUMN_TYPE != H.COLUMN_TYPE OR B.ORDINAL_POSITION != H.ORDINAL_POSITION)
+WHERE H.COLUMN_NAME NOT LIKE 'Aud_%'
+ORDER BY B.ORDINAL_POSITION
+)
+/*
+UNION ALL -- Campos de Auditoria
+(
+SELECT -- H.COLUMN_NAME,B.COLUMN_NAME,B.COLUMN_TYPE,
+	B.ORDINAL_POSITION+900,B.COLUMN_NAME,
+	CONCAT('ALTER TABLE ',@DBcomp,'.',@TableNameComp,' CHANGE COLUMN `',H.COLUMN_NAME,'` `',H.COLUMN_NAME,'` '
+	,B.COLUMN_TYPE,' NULL DEFAULT ',IFNULL(B.COLUMN_DEFAULT,'NULL'),' ',REPLACE(B.EXTRA,'DEFAULT_GENERATED',''),' AFTER `',L.COLUMN_NAME,'`;')  AS ''
+FROM SetFieldsTableComp H
+INNER JOIN SetFieldsTableAudit B ON B.COLUMN_NAME=H.COLUMN_NAME AND B.COLUMN_TYPE != H.COLUMN_TYPE
+LEFT JOIN SetFieldsTableBaseLastRow L ON TRUE
+WHERE H.COLUMN_NAME LIKE 'Aud_%'
+ORDER BY B.ORDINAL_POSITION
+)
+*/
+UNION ALL -- Campos quitados de la Tabla Base
+(
+SELECT 
+   999 AS '',H.COLUMN_NAME,
+	CONCAT('ALTER TABLE ',@DBcomp,'.',@TableNameComp,' DROP COLUMN `',H.COLUMN_NAME,'`'
+   -- ,' `',H.COLUMN_NAME,'` '
+	-- ,H.COLUMN_TYPE,' NULL DEFAULT NULL AFTER `',L.COLUMN_NAME,'`'
+	,';')  AS ''
+FROM SetFieldsTableComp H
+LEFT JOIN SetFieldsTableBase B ON B.COLUMN_NAME=H.COLUMN_NAME
+LEFT JOIN SetFieldsTableBaseLastRow L ON TRUE
+WHERE B.COLUMN_NAME IS NULL AND H.COLUMN_NAME NOT LIKE 'Aud_%'
+)
+) AS X ORDER BY ORDINAL_POSITION,COLUMN_NAME		 
+;
+
+END$$
+DELIMITER ;
+
+/*
+-- TEST --------------
+call Util_TableCompareFields('campaign_advertiser'       ,'euroaffiliati2','forex_advertiser'        ,'hubaffiliations');
+call Util_TableCompareFields('campaign_username'         ,'euroaffiliati2','forex_advertiser_account','hubaffiliations');
+call Util_TableCompareFields('campaign_campaign'         ,'euroaffiliati2','forex_campaign'          ,'hubaffiliations');
+call Util_TableCompareFields('campaign_deal_affiliate'   ,'euroaffiliati2','forex_deal_affiliate'    ,'hubaffiliations');
+call Util_TableCompareFields('campaign_deal_marketplace' ,'euroaffiliati2','forex_deal_marketplace'  ,'hubaffiliations');
+call Util_TableCompareFields('campaign_marketing_source' ,'euroaffiliati2','forex_marketing_source'  ,'affiliaterevolution');
+call Util_TableCompareFields('campaign_marketing_source' ,'euroaffiliati2','campaign_marketing_source'  ,'affiliaterevolution');
+
+ALTER TABLE account_account_files_history 
+	CHANGE COLUMN `Aud_Date` `Aud_Date` datetime(6) NULL DEFAULT
+	CURRENT_TIMESTAMP(6) on update CURRENT_TIMESTAMP(6) AFTER Last_Update;
+ALTER TABLE `account_account`
+	CHANGE COLUMN `Last_Update` `Last_Update1` DATETIME(6) NULL DEFAULT 
+	CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) AFTER `Creation_Date`;
+*/

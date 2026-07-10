@@ -1,0 +1,350 @@
+/*
+PROCEDURE_Sync_Fact2_from_Fact1() - Sync one/all MS for a given month and/of affiliate_id
+   REEMPLAZA A: Sync_MS_Fact1_Fact2_lm
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Mode            =[View | Run]. OPCIONAL. Default=View
+Month           =[AAAA-MM | CM | LM]. OPCIONAL. Default=CM=Current Month (Curr Month implica MS_id=ALL)
+DB              =[ database name ]. Default=Current DB. OBLIGATORIO para MS_id=AllAll
+Affiliate_id    =[ALL | id del Affiliate]. OPCIONAL. Default='all'
+MS_id           =[ALL | id de la MS]. OBLIGATORIO.
+						MS_id=ALL: SOLO VALIDO PARA MES CORRIENTE
+						MS_id=ALLALL: VALIDO PARA CUALQUIER OTRO MES (OBLIGATORIO informar DB)
+Debug           =[No | Yes | Other value ]. OPCIONAL. Default=No
+                  [No]  EJECUTA QUERY y devuelve resultado.
+                  [Yes] NO EJECUTA QUERY y devuelve el código del Query.
+                  [Other value] EJECUTA QUERY y devuelve el código del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Sync_Fact2_from_Fact1('');  -- Sync all curr month
+call Sync_Fact2_from_Fact1('MS_id=1581,debug=yes');  -- asume curr month
+call Sync_Fact2_from_Fact1('month=2022-10,Affiliate_id=39,MS_id=allall,debug=YE');  -- error: falta db
+call Sync_Fact2_from_Fact1('month=2022-10,Affiliate_id=39,MS_id=all,db=euroaffiliati2,debug=YES');  -- MS_id debe ser AllAll
+call Sync_Fact2_from_Fact1('month=2022-10,Affiliate_id=39,MS_id=allall,db=euroaffiliati2,debug=YES');
+call Sync_Fact2_from_Fact1('month=2022-10,MS_id=1581,debug=yes');
+call Sync_Fact2_from_Fact1('month=2022-12,Affiliate_id=all,debug=YE');
+call Sync_Fact2_from_Fact1('month=2022-10,MS_id=all,debug=YES'); 		-- error MS_id=ALL Only for Curr Month
+call Sync_Fact2_from_Fact1('month=2022-10,MS_id=allall,debug=YEs');  	-- error: falta db
+call Sync_Fact2_from_Fact1('month=2022-10,MS_id=allall,db=euroaffiliati_test,debug=YES');
+
+07.12.2022 V1.1   Complementa y reemplaza a PROCEDURE_Sync_Fact2_from_Fact1_lm_v1.1.sql
+14.12.2022 v1.2   Incluye totales
+31.01.2023 v1.3   `Area`
+07.08.2023 v1.4   Toma campo Qualified_Players_Adjusted como CPA
+21.11.2023 v1.4.1 Agregado más campos a mostrar en debug
+06.01.2024        ES INVOCADA DESDE Sync_MS_Fact1_Fact2_lm para que los procesos de 
+                  sincronizacion f1 y f2 queden unificados en este proc
+12.04.2024 v1.5   Agregada opción Month=ALLALL para permitir reproceso total db demo
+20.05.2024        PATCH DURANTE 05.2024 - Quitar toda la producción ("2024-04","2024-05") AND Affiliate_id NOT IN (481,482,521,826,829)
+
+*/
+
+DROP PROCEDURE IF EXISTS Sync_Fact2_from_Fact1;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Sync_Fact2_from_Fact1`(IN
+   InputCommLine    VARCHAR(250)
+   )
+   COMMENT 'Sync one/all MS for a given month and/of affiliate_id PATCH DURANTE 05.2024'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.5 12.04.2024 PATCH DURANTE 05.2024';
+SET @CurrentDay      =CURDATE();
+SET @CurrentMonth    =LEFT(CURDATE(),7);
+SET @LastMonth       =LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+
+SET @Mode            ='view';
+SET @Month           =LEFT(CURDATE(),7);
+SET @MS_id           ='ALL';
+SET @DB              ='';
+SET @Affiliate_id    ='ALL';
+SET @Debug           ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+-- SET @InputCommLine=replace(@InputCommLine,"'","");  -- Elimina apóstrofos
+-- SET @InputCommLine=replace(@InputCommLine,'`','');  -- Elimina ticks
+-- SET @InputCommLine=replace(@InputCommLine,'(','');  -- Elimina parentesis
+-- SET @InputCommLine=replace(@InputCommLine,')','');  -- Elimina parentesis
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='mode'         THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='month'        THEN SET @Month         =UPPER(@v); END IF;
+   IF lower(@k)='ms_id'        THEN SET @MS_id         =UPPER(@v); END IF;
+   IF lower(@k)='affiliate_id' THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='db'           THEN SET @DB            =LOWER(@v); END IF;
+   IF lower(@k)='debug'        THEN SET @Debug         =LOWER(@v); END IF;
+END WHILE;
+
+IF UPPER(@Month)='CM'      THEN SET @Month=@CurrentMonth; END IF;
+IF UPPER(@Month)='LM'      THEN SET @Month=@LastMonth;    END IF;
+IF UPPER(@Month)='ALLALL'  THEN SET @Month='2020-12';     END IF;
+
+-- Validaciones ----------------------------------------------------
+IF @DB!='' THEN
+   SET @exists=(SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME=@DB);
+   IF  @exists IS NULL THEN SET @DB=''; END IF;
+END IF;
+
+IF @MS_id='ALL' AND @Month!=@CurrentMonth AND @Mode="RUN"           -- Solo Current Month excepto en Modo=view
+THEN  SELECT CONCAT('Wrong parameter: [Month=',@Month,',MS_id=',@MS_id,'] - MS_id=ALL Only for Curr Month - MS_id=AllAll for Other than curr Month') from dual;
+      LEAVE proc_label;
+END IF;
+
+IF @MS_id='ALLALL' AND @Affiliate_id='ALL' AND @DB='' AND @Mode="RUN"  -- Solo informando Db excepto en Modo=view
+THEN  SELECT CONCAT('Missing or Wrong parameter DB: [Month=',@Month,',DB=???,MS_id=',@MS_id,']') from dual;
+      LEAVE proc_label;
+END IF;
+-- --------------------------------- -------------------------------
+
+-- Default implicados ----------------------------------------------
+IF @Month=@CurrentMonth AND @MS_id=''
+                        THEN SET @MS_id='ALL';   END IF;
+IF @DB=''               THEN SET @DB=DATABASE(); END IF;
+-- --------------------------------- -------------------------------
+
+IF @Debug!="NO" THEN SELECT InputCommLine; END IF;
+
+SET @Where_Clause=CONCAT('LEFT(DATE,7)="',@Month,'" ');
+
+IF @Month='2020-12'  -- caso especial de proceso de TODA la db
+THEN SET @Where_Clause=CONCAT('LEFT(DATE,7)>="',@Month,'" ');
+END IF;
+
+IF @MS_id!='ALL' AND @MS_id!='ALLALL'
+THEN SET @Where_Clause=CONCAT(@Where_Clause,' AND MS_id=',@MS_id);
+END IF;
+
+IF @Affiliate_id!='ALL'
+THEN SET @Where_Clause=CONCAT(@Where_Clause,' AND Affiliate_id="',@Affiliate_id,'"');
+END IF;
+
+-- IF @MS_id='ALL' OR @MS_id='ALLALL'
+-- THEN SET @Where_Clause=CONCAT('LEFT(DATE,7)="',@Month,'"');
+-- ELSE SET @Where_Clause=CONCAT('LEFT(DATE,7)="',@Month,'" AND MS_id=',@MS_id);
+-- END IF;
+
+IF @Month='2020-12'  -- caso especial de proceso de TODA la db
+THEN SET @SQLdelete=CONCAT('TRUNCATE ',@DB,'.Snapshot_day_by_day_fact2;');
+ELSE SET @SQLdelete=CONCAT('DELETE FROM ',@DB,'.Snapshot_day_by_day_fact2 WHERE ',@Where_Clause,';');
+END IF;
+
+ -- PARCHE TEMPORAL 05/2024 ----------- QUITAR UNA VEZ QUE SE HAYAN GENERADO LOS MOV MANUALES
+SET @Where_Clause=CONCAT(@Where_Clause,' 
+   AND (
+         DATABASE()!="euroaffiliati2"
+      OR (LEFT(DATE,7) IN ("2024-04","2024-05") AND Affiliate_id NOT IN (481,482,521,826,829))
+      )
+');   
+
+IF @Debug!="NO" THEN SELECT @Mode,@Month,@MS_id,@Affiliate_id,@DB,@Where_Clause,@SQLdelete; END IF;
+
+SET @SQLinsert=CONCAT('
+INSERT IGNORE INTO ',@DB,'.Snapshot_day_by_day_fact2 (
+   `id`,`Area`,`Owner`,`Affiliate`,`Affiliate_id`,`Deal_Aff`,`Date`,`Username`,`Username_id`,`Brand`
+   ,`Advertiser_id`,`Tracker_ID`,`MS_id`,`Tracker_Name`,`Code_To_Affiliate`,`Product`,`Product_Real`
+   ,`Qualified_Players`,`Qualified_Players_Adjusted`
+	,`First_Time_Deposit`,`Views`,`Clicks`,`Signups`
+   ,`Impressions`,`Sign_Up_Offer`,`Type`,`Language`,`Deposits`,`Depositing_Customers`,`Active_Customers`
+   ,`New_Depositing_Customers`,`New_Active_Customers`,`First_Time_Active_Customers`,`Turnover`,`Net_Revenue`
+   ,`CPA_Limit`,`Channel_id`,`Channel`,`Revenue_Share_Affiliate`,`CPA_Value_Affiliate`,`Deal_Aff_id`
+   ,`Deal_Aff_CPA`,`Deal_Aff_Carry_Over`,`Deal_Aff_RS_Against_CPA`,`Deal_Aff_RS_Base`,`Deal_Aff_RS`
+   ,`Deal_Aff_Valid_From`,`Data_Currency`,`TimeGen`
+)');
+SET @SQLselect=CONCAT('
+SELECT
+   id,`Area`,Owner,Affiliate,Affiliate_id,Deal_Aff,Date,Username,Username_id,Brand
+   ,Advertiser_id,Tracker_ID,MS_id,Tracker_Name,Code_To_Affiliate,Product,Product_Real
+   ,sum(Qualified_Players_Adjusted) AS Qualified_Players,sum(Qualified_Players) AS Qualified_Players_Adjusted
+	,sum(First_Time_Deposit) AS First_Time_Deposit,sum(Views) AS Views,sum(Clicks) AS Clicks,sum(Signups) AS Signups
+   ,sum(Impressions) AS Impressions,Sign_Up_Offer,Type,Language,sum(Deposits) AS Deposits,sum(Depositing_Customers) AS Depositing_Customers,sum(Active_Customers) AS Active_Customers
+   ,sum(New_Depositing_Customers) AS New_Depositing_Customers,sum(New_Active_Customers) AS New_Active_Customers,sum(First_Time_Active_Customers) AS First_Time_Active_Customers,sum(Turnover) AS Turnover,sum(Net_Revenue) AS Net_Revenue
+   ,CPA_Limit,Channel_id,Channel,sum(Revenue_Share_Affiliate) AS Revenue_Share_Affiliate,sum(CPA_Value_Affiliate) AS CPA_Value_Affiliate,Deal_Aff_id
+   ,Deal_Aff_CPA,Deal_Aff_Carry_Over,Deal_Aff_RS_Against_CPA,Deal_Aff_RS_Base,Deal_Aff_RS
+   ,Deal_Aff_Valid_From,Data_Currency,NOW() as TimeGen
+FROM ',@DB,'.Snapshot_day_by_day_fact1
+WHERE ',@Where_Clause,' AND MS_id IS NOT NULL AND Affiliate!="_Unassigned"
+GROUP BY Owner,Date,Affiliate_id,ifnull(MS_id,0),Tracker_ID,Tracker_Name,Product,Deal_Aff_CPA,Deal_Aff_RS
+;');
+-- SELECT @SQLselect;
+
+SET @SQLpreview=CONCAT('
+WITH fact1 AS (
+SELECT
+    Owner,`Area`,Date,Brand,Username,Affiliate,MS_id,Tracker_ID,Product,Affiliate_id,Username_id
+    ,sum(Qualified_Players_Adjusted) AS CPA,sum(Net_Revenue) AS NR,sum(Revenue_Share_Affiliate) AS RS_Aff
+    ,sum(CPA_Value_Affiliate) AS CPA_Val_Aff
+FROM ',@DB,'.Snapshot_day_by_day_fact1 F1
+WHERE ',@Where_Clause,' AND Affiliate!="_Unassigned"
+GROUP BY Owner,Brand,Affiliate_id,Username_id,ifnull(MS_id,0) -- ,Tracker_ID,Product
+), fact2 AS (
+SELECT
+   Owner,`Area`,Date,Brand,Username,Affiliate,MS_id,Tracker_ID,Product,Affiliate_id,Username_id
+   ,sum(Qualified_Players) AS CPA,sum(Net_Revenue) AS NR,sum(Revenue_Share_Affiliate) AS RS_Aff
+   ,sum(CPA_Value_Affiliate) AS CPA_Val_Aff
+FROM ',@DB,'.Snapshot_day_by_day_fact2 F2
+WHERE ',@Where_Clause,' AND Affiliate!="_Unassigned"
+GROUP BY Owner,Brand,Username_id,Affiliate_id,ifnull(MS_id,0) -- ,Tracker_ID,Product
+)
+SELECT
+    F1.Owner,F1.`Area`
+   ,LEFT(F1.DATE,7) as Date
+   ,F1.Brand
+   ,F1.Username   -- ,F1.Username_id  ,F2.Username   ,F2.Username_id
+   ,F1.Affiliate  -- ,F1.Affiliate_id ,F2.Affiliate  ,F2.Affiliate_id
+   ,F1.MS_id
+   ,F1.Tracker_ID
+   -- ,F1.Product
+   ,IFNULL(F1.CPA,0)          AS `CPA`
+   ,IFNULL(F2.CPA,0)          AS `f2 CPA`
+   ,IFNULL(F1.NR,0)           AS `NR`
+   ,IFNULL(F2.NR,0)           AS `f2 NR`
+   ,IFNULL(F1.RS_Aff,0)       AS `RS`
+   ,IFNULL(F2.RS_Aff,0)       AS `f2 RS`
+   ,IFNULL(F1.CPA_Val_Aff,0)  AS `CPA Val`
+   ,IFNULL(F2.CPA_Val_Aff,0)  AS `f2 CPA Val`
+FROM fact1 F1
+LEFT JOIN fact2 F2 ON F1.MS_id=F2.MS_id AND F1.Affiliate_id=F2.Affiliate_id -- AND F1.Product=F2.Product
+WHERE F1.CPA!=IFNULL(F2.CPA,0) -- OR F1.NR!=IFNULL(F2.NR,0)
+   OR F1.RS_Aff!=IFNULL(F2.RS_Aff,0)
+   OR F1.CPA_Val_Aff!=IFNULL(F2.CPA_Val_Aff,0)
+UNION ALL
+SELECT
+    F2.Owner,F2.`Area`
+   ,LEFT(F2.DATE,7) as Date
+   ,F2.Brand
+   ,F2.Username
+   ,F2.Affiliate
+   ,F2.MS_id
+   ,F2.Tracker_ID
+   -- ,F2.Product
+   ,IFNULL(F1.CPA,0)         AS `CPA`
+   ,IFNULL(F2.CPA,0)         AS `f2 CPA`
+   ,IFNULL(F1.NR,0)          AS `NR`
+   ,IFNULL(F2.NR,0)          AS `f2 NR`
+   ,IFNULL(F1.RS_Aff,0)      AS `RS`
+   ,IFNULL(F2.RS_Aff,0)      AS `f2 RS`
+   ,IFNULL(F1.CPA_Val_Aff,0) AS `CPA Val`
+   ,IFNULL(F2.CPA_Val_Aff,0) AS `f2 CPA Val`
+FROM fact2 F2
+LEFT JOIN fact1 F1 ON F1.MS_id=F2.MS_id AND F1.Affiliate_id=F2.Affiliate_id -- AND F1.Product=F2.Product
+WHERE F2.MS_id IS NOT NULL AND F1.MS_id IS NULL
+UNION ALL
+SELECT
+    F1.Owner
+   ," ~~~~~"
+   ," ~~~~~"
+   ,"~~Total~~"
+   ,"~~ f1 vs f2 ~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   -- ,"~~~~~"
+   ,SUM(IFNULL(F1.CPA,0)        )  AS `CPA`
+   ,SUM(IFNULL(F2.CPA,0)        )  AS `f2 CPA`
+   ,SUM(IFNULL(F1.NR,0)         )  AS `NR`
+   ,SUM(IFNULL(F2.NR,0)         )  AS `f2 NR`
+   ,SUM(IFNULL(F1.RS_Aff,0)     )  AS `RS`
+   ,SUM(IFNULL(F2.RS_Aff,0)     )  AS `f2 RS`
+   ,SUM(IFNULL(F1.CPA_Val_Aff,0))  AS `CPA Val`
+   ,SUM(IFNULL(F2.CPA_Val_Aff,0))  AS `f2 CPA Val`
+FROM fact1 F1
+LEFT JOIN fact2 F2 ON F1.MS_id=F2.MS_id AND F1.Affiliate_id=F2.Affiliate_id -- AND F1.Product=F2.Product
+WHERE F1.CPA!=IFNULL(F2.CPA,0) -- OR F1.NR!=IFNULL(F2.NR,0)
+   OR F1.RS_Aff!=IFNULL(F2.RS_Aff,0)
+   OR F1.CPA_Val_Aff!=IFNULL(F2.CPA_Val_Aff,0)
+GROUP BY F1.Owner
+UNION ALL
+SELECT
+    F2.Owner
+   ," ~~~~~"
+   ," ~~~~~"
+   ,"~~Total~~"
+   ,"~~ Not anymore in f1 ~~"
+   ,"~~~~~"             -- F2.Affiliate
+   ,"~~~~~"             -- F2.MS_id
+   ,"~~~~~"             -- F2.Tracker_ID
+   -- ,"~~~~~"
+   ,SUM(IFNULL(F1.CPA,0)        )  AS `CPA`
+   ,SUM(IFNULL(F2.CPA,0)        )  AS `f2 CPA`
+   ,SUM(IFNULL(F1.NR,0)         )  AS `NR`
+   ,SUM(IFNULL(F2.NR,0)         )  AS `f2 NR`
+   ,SUM(IFNULL(F1.RS_Aff,0)     )  AS `RS`
+   ,SUM(IFNULL(F2.RS_Aff,0)     )  AS `f2 RS`
+   ,SUM(IFNULL(F1.CPA_Val_Aff,0))  AS `CPA Val`
+   ,SUM(IFNULL(F2.CPA_Val_Aff,0))  AS `f2 CPA Val`
+FROM fact2 F2
+LEFT JOIN fact1 F1 ON F1.MS_id=F2.MS_id AND F1.Affiliate_id=F2.Affiliate_id -- AND F1.Product=F2.Product
+WHERE F2.MS_id IS NOT NULL AND F1.MS_id IS NULL
+GROUP BY F2.Owner -- ,F2.Affiliate_id
+
+ORDER BY Owner,Brand,Username,Affiliate,MS_id
+;');
+
+IF @Mode="RUN"
+THEN SET @SQLrun=CONCAT(@SQLinsert,@SQLselect);
+ELSE SET @SQLrun=@SQLpreview;
+END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLdelete; END IF;
+IF @Debug!="NO" THEN SELECT @SQLinsert; END IF;
+IF @Debug!="NO" THEN SELECT @SQLselect; END IF;
+IF @Debug!="NO" THEN SELECT @SQLrun; 	 END IF;
+
+IF @Debug!="YES" THEN
+	IF @Mode="RUN" THEN
+      PREPARE stmt1 FROM @SQLdelete;
+      EXECUTE stmt1;
+      DEALLOCATE PREPARE stmt1;
+   END IF;
+   PREPARE stmt1 FROM @SQLrun;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Sync_Fact2_from_Fact1('');  -- Sync all curr month
+call Sync_Fact2_from_Fact1('MS_id=1581,debug=ye');  -- asume curr month
+call Sync_Fact2_from_Fact1('Affiliate_id=all,mode=run,debug=yes');  -- asume curr month
+call Sync_Fact2_from_Fact1('month=2022-10,Affiliate_id=39,MS_id=allall,debug=YE');
+call Sync_Fact2_from_Fact1('month=2022-10,Affiliate_id=39,MS_id=all,db=euroaffiliati2,debug=YES');  -- MS_id debe ser AllAll
+call Sync_Fact2_from_Fact1('mode=view,month=2022-10,Affiliate_id=39,MS_id=allall,db=euroaffiliati2,debug=YES');
+call Sync_Fact2_from_Fact1('mode=view,month=2022-10,MS_id=1581,debug=yes');
+call Sync_Fact2_from_Fact1('mode=run,month=2022-12,Affiliate_id=all,debug=YE');
+call Sync_Fact2_from_Fact1('mode=run,month=2022-10,MS_id=all,debug=YES'); 		-- error MS_id=ALL Only for Curr Month
+call Sync_Fact2_from_Fact1('mode=view,month=2022-10,MS_id=allall,debug=YEs');  	-- error: falta db
+call Sync_Fact2_from_Fact1('mode=run,month=2022-09,MS_id=allall,db=gamingaffiliation,debug=yes');
+call Sync_Fact2_from_Fact1('mode=run,month=CM,MS_id=allall,db=euroaffiliati2,debug=ye');
+call Sync_Fact2_from_Fact1('mode=run,month=2022-09,MS_id=allall,db=gamingaffiliation,debug=no');
+
+call Sync_Fact2_from_Fact1('mode=run,month=allall,MS_id=allall,affiliate_id=all,debug=yes,db=affiliateaccess');
+*/

@@ -1,0 +1,359 @@
+/*
+PROCEDURE_Report_MarketingSources_v1.7.sql - Reporte multimodo de MS de segun filtros
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL. tiene prioridad sobre el resto de parámetros, excepto la fecha
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Account_id      =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+Product         =[ALL | Product]. OPCIONAL. Default=ALL. Si tiene más de una palabra, separar con "!" en lugar de espacio
+DealbyProduct   =[No | Yes]. Devuelve último deal activo por cada Product. OPCIONAL. Default=no.
+Status          =[ALL | no9 | Status]. OPCIONAL. Default=ALL. Opción no9 es para omitir Status=OLD en views de afiliados
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Search          =[(dato a buscar]. OPCIONAL. Busca string en Tracker_ID/Tracker_Name/Code_To_Affiliate/MS_id
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Keys no utilizadas:
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month.
+GroupByMS       =[Yes | No]. Agrupa Product by MS. OPCIONAL. Default=No
+ByAccount       =[No | Yes]. Info acumulada por Account/Advertiser. OPCIONAL. Default=No
+ByDay           =[No | Yes]. Info acumulada por Dia/Mes. OPCIONAL. Default=No
+View            =[viewAFF | viewGES]. Info de Fact2 (viewAFF) o de Fact1 (viewGES). OPCIONAL. Default=viewAFF
+OrderBy         =[CPA | CPAvalue | Profit | Advertiser]. OPCIONAL. Default=CPA
+Order           =[Desc | Asc]. OPCIONAL. Default=Desc
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_MarketingSources(''); -- Devuelve todas las MS
+call Report_MarketingSources('debug=yes,MS_ID=859,filters=no'); 
+call Report_MarketingSources('debug=no,search=859,filters=no'); 
+call Report_MarketingSources('debug=no,search=cwu,filters=yes'); 
+call Report_MarketingSources('debug=no,status=all,filters=no'); 
+call Report_MarketingSources('debug=no,status=all,filters=no'); 
+call Report_MarketingSources('Affiliate_id="39",status=active,meta=yes,debug=no');
+call Report_MarketingSources('Affiliate_id=39,debug=YE');
+
+20.10.2022 V1     Primera versión operativa. Reemplaza el query de django
+22.10.2022 V1.1   Devuelve la tabla con los datos de Affiliate,Deal_id,Deal_Valid_From más actualizados
+22.10.2022 V1.2   Parte de la tabla campaign_mkt_source_deal en lugar de campaign_marketing_source
+26.10.2022 V1.3   Agrega parámetro MS_id
+26.10.2022 V1.4   Agrega parámetro Search
+07.11.2022 V1.5   Agrega parámetro DealbyProduct=[No | Yes]. Devuelve último deal activo por cada Product. OPCIONAL. Default=no.
+08.11.2022        Agrega Opción "no9" al Parámetro Status
+08.11.2022        Agrega CDA.CPA_Value,CDA.RS_Percentage,CDA.Baseline
+09.11.2022        Recodificación de selecc de Affiliate_id y Deal by Product usando OVER PARTITION
+
+*/
+
+DROP PROCEDURE IF EXISTS Report_MarketingSources;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_MarketingSources`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report_MarketingSources'
+BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.7 10.11.2022 ';
+SET @CurrentDay      =curdate();
+SET @Affiliate_id    ='ALL';
+SET @Month           =left(curdate(),7);
+SET @MS_id           ='ALL';
+SET @Owner           ='ALL';
+SET @Advertiser_id   ='ALL';
+SET @Account_id      ='ALL';
+SET @Channel_id      ='ALL';
+SET @Product         ='ALL';
+SET @DealbyProduct   ='NO';
+SET @STATUS          ='ALL';
+SET @Platform        ='ALL';
+SET @Brand_Group     ='ALL';
+SET @Currency        ='EUR';
+SET @Total           ='YES';
+SET @Filters         ='NO';
+SET @TotLine         ='FIRST';
+SET @Meta            ='NO';
+SET @Debug           ='NO';
+SET @View            ='VIEWGES';
+SET @GroupByMS       ='NO';
+SET @OnlyOverCap     ='NO';
+SET @Search          ='';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   IF lower(@k)='month'           THEN SET @Month         =UPPER(@v); END IF;
+   IF lower(@k)='ms_id'           THEN SET @MS_id         =UPPER(@v); END IF;
+   IF lower(@k)='owner'           THEN SET @Owner         =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id'   THEN SET @Advertiser_id =UPPER(@v); END IF;
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='account_id'      THEN SET @Account_id    =UPPER(@v); END IF;
+   IF lower(@k)='channel_id'      THEN SET @Channel_id    =UPPER(@v); END IF;
+   IF lower(@k)='currency'        THEN SET @Currency      =UPPER(@v); END IF;
+   IF lower(@k)='total'           THEN SET @Total         =UPPER(@v); END IF;
+   IF lower(@k)='totline'         THEN SET @TotLine       =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='view'            THEN SET @View          =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='groupbyms'       THEN SET @GroupByMS     =UPPER(@v); END IF;
+   IF lower(@k)='product'         THEN SET @Product       =      @v;  END IF;
+   IF lower(@k)='platform'        THEN SET @Platform      =      @v;  END IF;
+   IF lower(@k)='status'          THEN SET @Status        =      @v;  END IF;
+   IF lower(@k)='onlyovercap'     THEN SET @OnlyOverCap   =UPPER(@v); END IF;
+   IF lower(@k)='dealbyproduct'   THEN SET @DealbyProduct =UPPER(@v); END IF;
+   IF lower(@k)='search'          THEN SET @Search        =     (@v); END IF;   
+
+END WHILE;
+
+-- Recupera espacios reemplazados en front end por caracter "\"
+SET @Product      =replace(@Product,"!"," ");
+-- SET @Platform     =replace(@Platform,"!"," ");
+-- SET @Brand_Group  =replace(@Brand_Group,"!"," ");
+
+-- IF @Debug!="NO" THEN SELECT @Product,@Platform,@Brand_Group; END IF;
+--
+IF @Debug!="NO" THEN SELECT @Month,@View,@Filters,@OWNER,@OnlyOverCap,@Brand_Group,@Advertiser_id,@Affiliate_id,@Account_id
+,@Channel_id,@Product,@DealbyProduct,@Platform,@Currency,@Total,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereMS_id='';
+SET @WhereOwner='';         
+SET @WhereAdvertiser_id ='';
+SET @WhereAffiliate_id  ='';
+SET @WhereAdv_Account_id='';
+SET @WhereChannel_id    ='';
+SET @WhereProduct       ='';
+SET @WhereStatus        ='';
+SET @WhereSearch        ='';
+
+SET @SearchClause=replace('and (M.Tracker_ID like "%XXX%" or M.Tracker_Name like "%XXX%"                                             
+     or M.Code_To_Affiliate like "%XXX%" or M.id like "%XXX%")','XXX',@Search);                                           
+
+IF @MS_id            !="ALL" THEN SET @WhereMS_id=CONCAT(" AND M.id=",@MS_id);     
+ELSE                  
+   IF @Owner         !="ALL" THEN SET @WhereOwner         =CONCAT(" AND M.Owner=",@Owner);                    END IF;
+   IF @Advertiser_id !="ALL" THEN SET @WhereAdvertiser_id =CONCAT(" AND M.Advertiser_id  =",@Advertiser_id ); END IF;
+   IF @Affiliate_id  !="ALL" THEN SET @WhereAffiliate_id  =CONCAT(" AND M2.Affiliate_id  =",@Affiliate_id  ); END IF;
+   IF @Account_id    !="ALL" THEN SET @WhereAdv_Account_id=CONCAT(" AND M.Username_id    =",@Account_id);     END IF;
+   IF @Channel_id    !="ALL" THEN SET @WhereChannel_id    =CONCAT(" AND M.Channel_id	  =",@Channel_id);     END IF;
+   IF @Product       !="ALL" THEN SET @DealbyProduct="YES"; END IF;
+   IF @Product       !="ALL" THEN SET @WhereProduct       =CONCAT(" AND M1.`Product`     ='",@Product,"'");   END IF;
+   IF @Status        !="ALL" THEN SET @WhereStatus        =CONCAT(" AND M.`Status`       ='",@STATUS,"'");    END IF;
+   IF @Status         ="no9" THEN SET @WhereStatus        =CONCAT(" AND M.`Status_id`<>9 ");    END IF;
+   IF @Search        !=""    THEN SET @WhereSearch        =@SearchClause; END IF;   
+END IF;
+
+-- IF @Product       ="default" THEN SET @WhereProduct=' AND IFNULL(MD.`Product`,"")="" '; END IF;
+-- IF @Platform      ="ALL" THEN SET @WherePlatform      =' '; ELSE SET @WherePlatform      =CONCAT(" AND Portal     	='",@Platform,"'"); 	  END IF;
+-- IF @Brand_Group   ="ALL" THEN SET @WhereBrand_Group   =' '; ELSE SET @WhereBrand_Group   =CONCAT(" AND Brand_Group 	='",@Brand_Group,"'"); END IF;
+
+IF @Debug!="NO" THEN SELECT @WhereOwner,@WhereAdvertiser_id,@WhereAffiliate_id,@WhereAdv_Account_id,@WhereChannel_id,@WhereProduct,@WhereStatus,@WhereMS_id,@WhereSearch; END IF;
+
+-- IF @OnlyOverCap  !="YES"
+-- THEN SET @WhereOnlyOverCap   =' ';
+     -- SET @GroupByMS="YES";                                -- fuerza agrupación por ms para ver OverCap
+-- ELSE SET @WhereOnlyOverCap   =CONCAT(" AND (CPA_Limit>0 AND CPA/CPA_Limit>0.8)"); END IF;
+
+-- IF @GroupByMS="YES" AND @Product="ALL"
+-- THEN SET @GroupBySeleccBase='GROUP BY LEFT(Date,7),ifnull(MS_id,0)';
+-- ELSE SET @GroupBySeleccBase='GROUP BY LEFT(Date,7),MS_id,ifnull(Product,"")';  END IF;
+
+SET @DealByMS_id='
+LEFT JOIN LATERAL (
+	SELECT * FROM (
+      SELECT *,ROW_NUMBER() OVER(PARTITION BY Product ORDER BY Deal_Valid_From DESC) AS RowNr
+      FROM `campaign_mkt_source_deal` WHERE `MS_id` = M.id AND Affiliate_id=M2.Affiliate_id AND `is_active` = 1
+	) AS DbP WHERE RowNr=1
+	ORDER BY Deal_Valid_From DESC,Product DESC LIMIT 1
+) AS M1 ON TRUE
+LEFT JOIN LATERAL (
+	SELECT SUM(Qualified_players) as CPA_F2 FROM Snapshot_day_by_day_fact2 D
+   WHERE LEFT(D.DATE,7)=LEFT(CURDATE(),7) AND D.MS_id=M.id
+   GROUP by D.MS_id
+) AS D1 ON TRUE';
+
+SET @DealByMS_idProduct='
+LEFT JOIN LATERAL (
+	SELECT * FROM (
+      SELECT *,ROW_NUMBER() OVER(PARTITION BY Product ORDER BY Deal_Valid_From DESC) AS RowNr
+      FROM `campaign_mkt_source_deal` WHERE `MS_id` = M.id AND Affiliate_id=M2.Affiliate_id AND `is_active` = 1
+	) AS DbP WHERE RowNr=1
+) AS M1 ON TRUE
+LEFT JOIN LATERAL (
+	SELECT SUM(Qualified_players) as CPA_F2 FROM Snapshot_day_by_day_fact2 D
+   WHERE LEFT(D.DATE,7)=LEFT(CURDATE(),7) AND D.MS_id=M.id
+   GROUP by D.MS_id,M1.Product
+) AS D1 ON TRUE';
+
+IF @DealbyProduct='YES' THEN SET @LeftJoinM1=@DealByMS_idProduct;
+ELSE                         SET @LeftJoinM1=@DealByMS_id;
+END IF;
+
+/**************************************************************************************************************/
+SET @SQLmeta=concat(
+' UNION ALL (
+SELECT
+   "setting" as Meta
+   ,"width=80px,center=true" as MS_id
+   ,if(@Owner!="ALL","omit=true","width=100px") as Owner_id
+   ,if(@Advertiser_id="ALL","width=120px","omit=true") as Brand
+   ,if(@Account_id="ALL","width=160px","omit=true") as Account
+   ,"width=120px" as Tracker_ID
+   ,"minWidth:100px,maxWidth=400px,width=170px" Tracker_name
+   ,if(@Affiliate_id="ALL","width=160px","omit=true") as Affiliate
+   ,if(@Product!="ALL","omit=true","minWidth:100px,maxWidth=400px,width=150px") Product
+   ,if(@Channel_id!="ALL","omit=true","minWidth:100px,maxWidth=400px,width=170px") Channel
+   ,"width=90px,center=true" `Deal_id`,"width=90px,center=true" `Deal_Valid_From`
+   ,"width=90px" `Deal_Name`,"width=90px" `Deal_CPA`,"width=90px" `Deal_RS`,"width=90px" `Deal_BS`
+   ,"width=90px,center=true" Code_To_Affiliate
+   ,"width=120px" `Tracklink`
+   ,"width=90px,center=true" CPA_Limit
+   ,"width=90px,center=true","width=90px,center=true","width=90px,center=true","width=90px,center=true","width=90px,center=true","width=90px,center=true" `Status`
+   ,"width=120px" as Shortlink,"width=100px" as Shortlink_id
+   ,"width=100px" as Description
+   ,"width=100px" as Creation_Date,"width=100px" as LastUpd,"width=100px" as Operator
+   ,"width=80px" Affiliate_id,"width=80px" Channel_id,"width=80px" Username_id,"width=80px" Advertiser_id
+	FROM DUAL WHERE @Meta="YES")'
+);
+-- IF @Debug!="NO" THEN SELECT @SQLmeta; END IF;
+/**************************************************************************************************************/
+
+SET SESSION group_concat_max_len = 100000;
+/*
+SELECT `id`,`Owner`,`Code`,`Tracklink`,`Tracker_ID`,`Tracker_Name`,`Code_To_Affiliate`,`Product`
+,`Source`,`CPA_Limit`,`Status`,`Status_id`,`Status_Adv_id`,`Status_Acct_id`,`Status_Aff_id`
+,`Status_Channel_id`,`Valid_From`,`Valid_Until`,`Description`,`Affiliate_id`,`Advertiser_id`
+,`Campaign_id`,`Username_id`,`Channel_id`,`Deal_id`,`Deal_Valid_From`,`Shortlink`,`Shortlink_id`
+,`Manual_Adjustment_CPA`,`Manual_Adjustment_Euro`,`Priority`,`Creation_Date`,`Last_Update`,`Operator`
+FROM campaign_marketing_source
+
+*/
+SET @CTE=concat('
+WITH campaign_marketing_source_updated AS (
+SELECT '
+   ,IF(@Meta="YES","'data' as `Meta`,",""),'
+   M.`id` AS MS_id
+  ,M.Owner,AD.Advertiser_Name as Advertiser,CU.Username as Account
+  ,M.`Tracker_ID`,M.`Tracker_Name`
+  ,A.username as Affiliate
+  ,IF(M1.`Product`>"",M1.`Product`,"all") AS Product
+  ,ifnull(CH.landing_page_name,"") as `Channel`
+  ,M1.`Deal_id`,M1.`Deal_Valid_From`
+  ,CDA.Deal_Name,CDA.CPA_Value,CDA.RS_Percentage,CDA.Baseline
+  ,ifnull(D1.CPA_F2,0) as CPA_F2
+  ,M.`Code_To_Affiliate`
+  ,M.`Tracklink`
+  ,M.`CPA_Limit`
+  ,M.`Status`,M.`Status_id`,M.`Status_Adv_id`,M.`Status_Acct_id`,M.`Status_Aff_id`,M.`Status_Channel_id`
+  ,M.`Shortlink`,M.`Shortlink_id`
+  ,M.`Description`
+  ,M.`Creation_Date`,M.`Last_Update`,M.`Operator`
+  ,`M2`.`Affiliate_id`,`M1`.`Channel_id`,`M`.`Username_id`,`M`.`Advertiser_id`
+  -- ,M.`Valid_From`,M.`Valid_Until`,M.`Manual_Adjustment_CPA`,M.`Manual_Adjustment_Euro`
+  -- ,M.`Priority`,M.`Code`,M.`Source`
+FROM `campaign_marketing_source` `M`
+-- --------------------------------------------------------------------------------------
+LEFT JOIN LATERAL (
+	SELECT *,ROW_NUMBER() OVER(PARTITION BY MS_id ORDER BY Deal_Valid_From DESC) AS RowNr
+	FROM `campaign_mkt_source_deal` WHERE `MS_id` = M.id AND `is_active` = 1
+	ORDER BY RowNr LIMIT 1
+) AS M2 ON TRUE
+-- --------------------------------------------------------------------------------------',
+@LeftJoinM1,'
+-- --------------------------------------------------------------------------------------
+LEFT JOIN `account_account` `A` ON `A`.`id` = `M2`.`Affiliate_id`
+LEFT JOIN `campaign_deal_affiliate` `CDA` ON `CDA`.`id` = `M1`.`Deal_id`
+LEFT JOIN `account_landing_pages` `CH` ON `CH`.`id` = `M1`.`Channel_id`
+LEFT JOIN `campaign_username` `CU` ON `CU`.`id` = `M`.`Username_id`
+LEFT JOIN `campaign_advertiser` `AD` ON `AD`.`id` = `M`.`Advertiser_id`
+WHERE 1=1 '
+   ,@WhereMS_id
+   ,@WhereOwner
+   ,@WhereAdvertiser_id
+   ,@WhereAffiliate_id
+   ,@WhereAdv_Account_id
+   ,@WhereChannel_id
+   ,@WhereProduct
+   ,@WhereStatus
+   ,@WhereSearch
+,')');
+
+SET @CloseQuery=';';
+
+SET @SQL=concat(
+@CTE,'
+SELECT * FROM campaign_marketing_source_updated M '
+,IF(@Meta="YES",@SQLmeta,""),'
+ORDER BY Advertiser,Account,Affiliate,MS_id',@CloseQuery)
+;
+
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "1" as "Korder","Owner" AS "Key",`Owner` AS "Value","Owner" AS `CallKey`,`Owner` AS "CallValue",COUNT(*) AS "Rows"
+                                                                                       FROM campaign_marketing_source_updated GROUP BY `Owner`       ) UNION ALL
+(SELECT "3","Status"     ,`Status`     ,"Status"       ,`Status`        ,COUNT(*) AS K FROM campaign_marketing_source_updated WHERE IFNULL(`Status`     ,"")>"" GROUP BY IFNULL(`Status`     ,"")) UNION ALL
+--  ECT "4","Platform"   ,`Platform`   ,"Platform"     ,`Platform`      ,COUNT(*) AS K FROM campaign_marketing_source_updated WHERE IFNULL(`Platform`   ,"")>"" GROUP BY IFNULL(`Platform`   ,"")) UNION ALL
+(SELECT "5","Advertiser" ,`Advertiser` ,"Advertiser_id",`Advertiser_id` ,COUNT(*) AS K FROM campaign_marketing_source_updated WHERE IFNULL(`Advertiser` ,"")>"" GROUP BY IFNULL(`Advertiser` ,"")) UNION ALL
+(SELECT "6","Account"    ,`Account`    ,"Username_id"  ,`Username_id`   ,COUNT(*) AS K FROM campaign_marketing_source_updated WHERE IFNULL(`Account`    ,"")>"" GROUP BY IFNULL(`Account`    ,"")) UNION ALL
+(SELECT "7","Affiliate"  ,`Affiliate`  ,"Affiliate_id" ,`Affiliate_id`  ,COUNT(*) AS K FROM campaign_marketing_source_updated WHERE IFNULL(`Affiliate`  ,"")>"" GROUP BY IFNULL(`Affiliate`  ,"")) UNION ALL
+(SELECT "8","Channel"    ,`Channel`    ,"Channel_id"   ,`Channel_id`    ,COUNT(*) AS K FROM campaign_marketing_source_updated WHERE IFNULL(`Channel`    ,"")>"" GROUP BY IFNULL(`Channel`    ,"")) UNION ALL
+(SELECT "9","Product"    ,`Product`    ,"Product"      ,`Product`       ,COUNT(*) AS K FROM campaign_marketing_source_updated WHERE IFNULL(`Product`    ,"")>" " GROUP BY IFNULL(`Product`    ,""))
+ORDER BY 1,3
+;');
+
+IF @Filters!="NO" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Report_MarketingSources(''); -- Devuelve todas las MS
+call Report_MarketingSources('debug=yes,MS_ID=859,filters=no'); 
+call Report_MarketingSources('debug=no,search=859,filters=no'); 
+call Report_MarketingSources('debug=no,search=cwu,filters=yes'); 
+call Report_MarketingSources('debug=no,status=all,filters=no'); 
+call Report_MarketingSources('debug=no,status=all,filters=no'); 
+call Report_MarketingSources('Affiliate_id="39",status=active,meta=yes,debug=no');
+call Report_MarketingSources('Affiliate_id=39,status=active,DealbyProduct=yes,debug=no');
+call Report_MarketingSources('Affiliate_id=419,status=active,DealbyProduct=yes,debug=YE');
+call Report_MarketingSources('Affiliate_id=39,debug=YE');
+
+call Report_MarketingSources('Affiliate_id=130,DealbyProduct=no,status=no9,debug=non');
+call Report_MarketingSources('Affiliate_id=130,product=casino,status=no9,debug=no');
+*/

@@ -1,0 +1,383 @@
+/*
+PROCEDURE_Publisher_balance_to_Proforma_v1.sql - Inserta los resultados x Publisher de InvoiceToPubliser
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Month           =[ALL | AAAA-MM ]. OPCIONAL. Default=ALL
+Owner_id        =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Export          =[Yes | No]. INSERT en campaign_publisher_invoice. OPCIONAL. Default=no.
+
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+ 
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Publisher_balance_to_Proforma('month=LM,debug=ye'); -- Devuelve todas las MS
+call Publisher_balance_to_Proforma('month=2025-05,Export=yes,debug=no');
+call Publisher_balance_to_Proforma('debug=ye,filters=yes');
+call Publisher_balance_to_Proforma('debug=ye,filters=no');
+call Publisher_balance_to_Proforma('EXPORT=YES,debug=ye');
+
+05.03.2025 V1     Primera versión operativa
+14.04.2025        Facturación por Account cuando campo `InvoiceByAccnt`=1 en la tabla campaign_publisher
+
+*/
+
+DROP PROCEDURE IF EXISTS Publisher_balance_to_Proforma;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Publisher_balance_to_Proforma`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Publisher balance to Proforma'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 05.03.2025';
+SET @CurrentDay      =curdate();
+SET @Month           ="LM";
+SET @Owner_id        ='ALL';
+SET @Publisher_id    ='ALL';
+SET @Invoiced_Month  ='ALL';
+SET @Status_id       ='ALL';
+SET @Export          ='NO';
+
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='owner_id'        THEN SET @Owner_id      =UPPER(@v); END IF;
+   IF lower(@k)='publisher_id'    THEN SET @Publisher_id  =UPPER(@v); END IF;
+   IF lower(@k)='month'           THEN SET @Month         =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='Export'          THEN SET @Export        =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+
+END WHILE;
+
+IF  @Month = "CM" THEN SET @Month=LEFT(CURDATE(),7); END IF;
+IF  @Month = "LM" THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+IF @Debug!="NO" THEN SELECT @Month,@Export,@Filters,@Owner_id,@Publisher_id,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereOwner='';
+SET @WherePublisher='';
+SET @WhereMonth='';
+
+IF @Owner_id      !="ALL" THEN SET @WhereOwner         =CONCAT(" AND G.Owner       =",@Owner_id);      END IF;
+IF @Publisher_id  !="ALL" THEN SET @WherePublisher     =CONCAT(" AND G.Publisher_id=",@Publisher_id ); END IF;
+IF @Month         !="ALL" THEN SET @WhereInvoiced_Month=CONCAT(" AND G.`Month`     ='",@Month,"'" );   END IF;
+
+IF @Debug!="NO" THEN SELECT @WhereOwner,@WherePublisher,@WhereMonth; END IF;
+
+/*
+DROP TABLE IF EXISTS `campaign_publisher_invoice_V2`;
+
+CREATE TABLE IF NOT EXISTS `campaign_publisher_invoice` (
+    `id`               INT             NOT NULL AUTO_INCREMENT
+   ,`Category`         VARCHAR(80)     NULL DEFAULT "Invoice"
+   ,`Status`           VARCHAR(80)     NULL DEFAULT "Active"
+   ,`Status_id`        TINYINT         NULL DEFAULT '1'
+   ,`Owner`            VARCHAR(80)     NULL DEFAULT NULL
+   ,`Owner_id`         INT             NULL DEFAULT NULL
+   ,`Publisher`        VARCHAR(80)     NULL DEFAULT NULL
+   ,`Publisher_id`     INT             NULL DEFAULT NULL
+   ,`Brand`            VARCHAR(80)     NULL DEFAULT NULL
+   ,`Invoiced_Month`   VARCHAR(50)     NULL DEFAULT NULL
+   ,`Invoice_Number`   VARCHAR(30)     NULL DEFAULT NULL
+   ,`Date`             DATE            NULL DEFAULT NULL COMMENT 'Issued date'
+   ,`Due_Date`         DATE            NULL DEFAULT NULL COMMENT 'Due date'
+   ,`Paymt_Date`       DATE            NULL DEFAULT NULL COMMENT 'Payment date'
+   ,`Ammount`          DECIMAL(10,2)   NULL DEFAULT '0.00'
+   ,`Currency`         VARCHAR(3)      NULL DEFAULT 'EUR'
+   ,`Invoice_address`  TINYTEXT        NULL DEFAULT NULL
+   ,`CPA`              INT             NULL DEFAULT 0
+   ,`CPA_Value`        DECIMAL(10,2)   NULL DEFAULT '0.00'
+   ,`Net_Revenue`      DECIMAL(10,2)   NULL DEFAULT '0.00'
+   ,`net_RS_Val`       DECIMAL(10,2)   NULL DEFAULT '0.00'
+   ,`Total_Commission` DECIMAL(10,2)   NULL DEFAULT '0.00'
+   ,`Gen_invoice`      TINYINT         NULL DEFAULT 0
+   ,`Generated`        TINYINT         NULL DEFAULT 0
+   ,`Remarks`          TEXT            NULL DEFAULT NULL
+   ,`Invoice_File`     TEXT            NULL DEFAULT NULL COMMENT 'Generated pdf file'
+   ,`Creation_Date`    DATETIME        NULL DEFAULT (CURRENT_TIMESTAMP)
+   ,`Last_Update`      DATETIME        NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP
+   ,`Operator`         VARCHAR(30)     NULL DEFAULT "SysOp"
+   ,PRIMARY KEY (`id`) USING BTREE
+)
+ENGINE=InnoDB
+;
+*/
+/**************************************************************************************************************/
+
+SET @CTE=CONCAT('
+WITH
+SetUnConverted as (
+   SELECT
+       G.Month          AS Date
+      ,AC.username      as `Owner`
+      ,G.Owner          as Owner_id
+      ,G.Area
+      ,G.Publisher
+      ,G.Publisher_id
+      ,G.Brand          as `Brand`
+      ,G.Advertiser_id
+      ,G.`Username`     as Account
+      ,G.Username_id    as Account_id
+      ,G.Data_Currency as `Data_Currency`
+      ,sum(G.CPA)                              as `CPA`
+      ,round(sum(net_CPA_Val     ),2)          as `CPA_Value`
+      ,round(sum(Net_Revenue     ),2)          as `Net_Revenue`
+      ,round(sum(net_RS_Val      ),2)          as `net_RS_Val`
+      ,round(sum(net_Total_comm  ),2)          as `Total_Commission`
+--       ,G.`Comm_type`
+--       ,case when G.CarryOver="1" then "Yes"   ELSE "" END AS `CarryOver`
+--       ,case when G.CarryOver="1" then RS_Base ELSE "" END AS `RS_Base`
+--       ,case when G.CarryOver="1" then Product ELSE "" END AS `Product`
+--       ,case when G.CarryOver="1" then round(sum(RS_CarryOver_Pend)/xx.Coef,2) ELSE "" END as `Pending CO`
+--       ,case when G.CarryOver="1" then round(sum(gross_RS_Val)/xx.Coef,2)      ELSE "" END as `RS before CO`
+--       ,xx.Coef as `RateExch`
+      ,P.Commercial_History as `Invoice_address`
+      ,IFNULL(P.InvoiceByAccnt,0) as `InvoiceByAccnt`
+      FROM monthly_comms_gestor_v5 G
+--          LEFT JOIN LATERAL
+--             (SELECT
+--                (SELECT Rate FROM exchange_rate x WHERE x.Currency=G.Data_Currency) /
+--                (SELECT Rate FROM exchange_rate x WHERE x.Currency=G.Data_Currency) as Coef
+--             ) AS xx ON TRUE
+      LEFT JOIN account_account     AC    ON AC.id=G.Owner
+      LEFT JOIN campaign_publisher  P     ON P.id=Publisher_id
+      WHERE IFNULL(G.Owner,0)>0'
+         ,@WhereOwner
+         ,@WherePublisher
+         ,@WhereInvoiced_Month
+      ,'
+      GROUP BY G.Owner,G.Data_Currency,Publisher_id,Brand,Username_id -- ,CarryOver,RS_Base,Product,`Comm_type`
+         having `Total_Commission`<>0  -- or `Pending CO`<>0
+),
+Main_Table_Data as (
+   SELECT
+       Date
+      ,`Owner`
+      ,Owner_id
+      ,Publisher
+      ,Publisher_id
+      ,Brand
+      ,CASE WHEN `InvoiceByAccnt`=1 THEN `Account` ELSE "all" END as `Account`
+      ,CASE WHEN `InvoiceByAccnt`=1 THEN `Account_id` ELSE 0 END  as `Account_id`
+      ,`Data_Currency` AS `Currency`
+      ,sum(CPA)                         as `CPA`
+      ,round(sum(`CPA_Value`),2)        as `CPA_Value`
+      ,round(sum(`Net_Revenue`),2)      as `Net_Revenue`
+      ,round(sum(`net_RS_Val`),2)       as `net_RS_Val`
+      ,round(sum(`Total_Commission`),2) as `Total_Commission`
+      ,`Invoice_address`
+      ,`InvoiceByAccnt`
+      FROM SetUnConverted G
+      GROUP BY G.Owner,G.Data_Currency,Publisher_id,Brand
+         ,CASE WHEN `InvoiceByAccnt`=1 THEN `Account` ELSE "all" END
+         -- ,Username_id,CarryOver,RS_Base,Product,`Comm_type`
+         -- having `Total_Commission`<>0 or `Pending CO`<>0
+)'
+);
+
+SET @SQL_Result=CONCAT('
+(
+SELECT 
+       "data" as `Meta`,
+       "Proforma" as `Category`
+      ,`Owner`
+      ,`Owner_id`
+      ,`Publisher`
+      ,`Publisher_id`
+      ,`Brand`
+      ,`Account`
+      -- ,`Account_id`
+      ,`Date`
+      ,`Currency`
+      ,`CPA`
+      ,`CPA_Value`
+      ,`Net_Revenue`
+      ,`net_RS_Val`
+      ,`Total_Commission`
+      ,`Total_Commission` as `Amount`
+      ,`Invoice_address`
+FROM Main_Table_Data
+)
+ORDER BY Owner,Publisher,Brand,`Account` 
+'
+);
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+       "setting" as Meta
+      ,"width=100px"             as `Category`
+      ,"width=100px"             as `Owner`
+      ,"width=080px"             as `Owner id`
+      ,"width=150px"             as `Publisher`
+      ,"width=080px"             as `Publ id`
+      ,"width=120px"             as `Brand`
+      ,"width=120px"             as `Account`
+      ,"width=100px"             as `Invoiced Month`
+      ,"width=080px"             as `Currcy`
+      ,"width=060px,right=yes"   as `CPA`
+      ,"width=100px,right=yes"   as `CPA Value`
+      ,"width=100px,right=yes"   as `Net Revenue`
+      ,"width=100px,right=yes"   as `net RS_Val`
+      ,"width=100px,right=yes"   as `Total Commiss`
+      ,"width=100px,right=yes"   as `Amount Due`
+      ,"width=200px,tooltip=yes" as `Invoice address`
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+ 
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+@SQL_Result,
+';'
+);
+
+/********************************************************************/
+-- -------------------------------------------------------------------
+-- PROCESO DE EXPORTACION DE PROFORMAS A `campaign_publisher_invoice`;
+
+SET @EXP_WhereOwner="",@EXP_WherePublisher="",@EXP_WhereInvoiced_Month="";
+
+IF @Owner_id      !="ALL" THEN SET @EXP_WhereOwner         =CONCAT(" AND Owner_id        =",@Owner_id);  END IF;
+IF @Publisher_id  !="ALL" THEN SET @EXP_WherePublisher     =CONCAT(" AND Publisher_id=",@Publisher_id ); END IF;
+IF @Month         !="ALL" THEN SET @EXP_WhereInvoiced_Month=CONCAT(" AND Invoiced_Month='",@Month,"'" ); END IF;
+
+SET @SQL_Result_export=REPLACE(@SQL_Result,'"data" as `Meta`,','');
+
+IF @Debug!="NO" AND @Export="YES" THEN SELECT @EXP_WhereOwner,@EXP_WherePublisher,@EXP_WhereInvoiced_Month; END IF;
+
+SET @SQL_DELETE=CONCAT(
+'DELETE FROM `campaign_publisher_invoice` 
+ WHERE Category="Proforma"
+ ',@EXP_WhereOwner         
+  ,@EXP_WherePublisher     
+  ,@EXP_WhereInvoiced_Month
+ ,';'
+);
+
+SET @SQL_EXPORT=CONCAT(
+'
+INSERT INTO campaign_publisher_invoice 
+   (`Category`,`Owner`,`Owner_id`,`Publisher`,`Publisher_id`,`Brand`,`Account`
+    ,`Invoiced_Month`,`Currency`
+    ,`CPA`,`CPA_Value`,`Net_Revenue`,`net_RS_Val`,`Total_Commission`
+    ,`Ammount`,`Invoice_address`)
+',
+@CTE,
+@SQL_Result_export,
+';'
+);
+
+IF @Export="YES" 
+THEN
+   IF @Debug!="NO" THEN SELECT @SQL_DELETE; END IF;
+   IF @Debug!="NO" THEN SELECT @SQL_EXPORT; END IF;
+   
+   IF @Debug != "YES" THEN
+      PREPARE stmt1 FROM @SQL_DELETE;
+      EXECUTE stmt1;
+      DEALLOCATE PREPARE stmt1;
+   END IF;
+   IF @Debug != "YES" THEN
+      PREPARE stmt1 FROM @SQL_EXPORT;
+      EXECUTE stmt1;
+      DEALLOCATE PREPARE stmt1;
+   END IF;   
+END IF;
+-- -------------------------------------------------------------------
+/********************************************************************/
+
+
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "01" as "Korder","Owner" AS "Key",`Owner` AS "Value","Owner_id" AS `CallKey`,`Owner_id` AS "CallValue","" AS "Rows","no" AS "TypeAction","" AS "MsgAction" 
+                                                                        FROM Main_Table_Data GROUP BY `Owner_id`) UNION ALL
+(SELECT "03" as "Korder","Invoiced Month" AS "Key",`Date` AS "Value","Month" AS `CallKey`,`Date` AS "CallValue","" AS "Rows","no" AS "TypeAction","" AS "MsgAction"  
+                                                                        FROM Main_Table_Data GROUP BY `Date`) UNION ALL
+(SELECT "05" as "Korder","Export to invoices\' file" AS "Key","EXPORT" AS "Value","EXPORT" AS `CallKey`,"yes" AS "CallValue","" AS "Rows" 
+                                                                        ,"yes" AS "TypeAction","Exported OK" AS "MsgAction"
+                                                                        FROM DUAL) UNION ALL                                                                        
+(SELECT "07" as "Korder","Publisher" AS "Key",`Publisher` AS "Value","Publisher_id" AS `CallKey`,`Publisher_id` AS "CallValue","" AS "Rows","no" AS "TypeAction","" AS "MsgAction"  
+                                                                        FROM Main_Table_Data GROUP BY `Publisher_id`) 
+ORDER BY 1,3
+;');
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+
+/*
+update campaign_publisher_invoice i
+LEFT JOIN campaign_publisher  p     ON p.id=i.Publisher_id 
+LEFT JOIN account_account     a     ON a.id=i.Owner
+set i.Publisher=p.Advertiser_name
+   ,i.Owner_id=i.Owner
+   ,i.Owner=a.Username
+   ,i.Invoice_address=p.Commercial_History
+   ,i.Status_id=i.Status
+   ,i.Status=case when i.Status_id=1 then "Active" else "Inactive" end
+where i.Category="Invoice"
+;
+
+SELECT  
+    "01" AS "Korder",  
+    "Owner" AS "Key",  
+    `Owner` AS "Value",  
+    "Owner_id" AS `CallKey`,  
+    `Owner_id` AS "CallValue",  
+    "" AS "Rows",  
+    "yes" AS "TypeAction",  
+    "Operación exitosa" AS "MsgAction"  
+FROM DUAL;
+ 
+*/

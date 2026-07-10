@@ -1,0 +1,171 @@
+/* PROCEDURE_Report_Notification_Types_v1.sql - Reporte de Tipos de Notificación
+
+Características principales:
+1. Reporte de tipos de notificación
+   Muestra todos los tipos de notificación disponibles en el sistema
+   Incluye información de prioridad, estado y fechas de creación/actualización
+   Permite filtrar por prioridad y estado
+2. Parámetros de filtrado
+   Priority: Filtra por prioridad específica (all = todas)
+   Status_id: Filtra por estado (all = todos, 1 = Active, otros = Inactive)
+3. Funcionalidad de metadatos
+   Cuando @Meta='YES':
+      - Incluye fila de configuración con metadatos de columnas
+      - Define ancho, tooltips y acciones para cada columna
+4. Funcionalidad de filtros
+   Cuando @Filters='YES':
+      - Devuelve lista de filtros disponibles
+      - Agrupa por Status y Priority
+      - Incluye conteo de registros por cada filtro
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Priority          =[all | low | medium | high]. Filtra por prioridad. OPCIONAL. Default=all.
+Status_id         =[all | 1 | 0]. Filtra por estado (1=Active, 0=Inactive). OPCIONAL. Default=all.
+Filters           =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta              =[No | Yes]. [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Debug             =[No | Yes]. OPCIONAL. Default=No
+                   [Yes] NO EJECUTA QUERY y devuelve el código del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+CALL Report_Notification_Types('Priority=all,Status_id=all');
+CALL Report_Notification_Types('Priority=high,Status_id=1,Debug=YES');
+CALL Report_Notification_Types('Priority=medium,Status_id=all,Filters=yes');
+CALL Report_Notification_Types('Priority=all,Status_id=1,Meta=yes');
+CALL Report_Notification_Types('Priority=low,Status_id=0,Debug=no');
+
+Modificaciones:
+
+08.07.2025 V1.0   Karen. Creación inicial del procedimiento para reporte de tipos de notificación
+   
+*/
+DROP PROCEDURE IF EXISTS Report_Notification_Types;
+
+DELIMITER $$
+CREATE PROCEDURE Report_Notification_Types(IN
+   InputCommLine    VARCHAR(250)
+   )  
+   COMMENT 'Reporte de Tipos de Notificación'
+   LANGUAGE SQL
+
+proc_label:BEGIN
+
+SET @Version         ='v1.0 08.07.2025';
+SET @Priority        ='all';
+SET @Status_id       ='all';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      
+
+SET @InputCommLine=replace(@InputCommLine,'"','');  
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+
+WHILE @InputCommLine>' ' DO
+
+   SET @e=INSTR(@InputCommLine,'=');    				   
+   SET @c=INSTR(@InputCommLine,','); 					   
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='Priority'        THEN SET @Priority      =      @v;  END IF;
+   IF lower(@k)='Status_id'       THEN SET @Status_id     =      @v;  END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Mode,@View,@Filters,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WherePriority    ='';
+SET @WhereStatus_id   ='';
+
+IF @Priority   !="ALL" THEN SET @WherePriority  =CONCAT(" AND Priority  ='",@Priority,"'");  END IF;
+IF @Status_id  !="ALL" THEN SET @WhereStatus_id =CONCAT(" AND Status_id ='",@Status_id,"'"); END IF;
+
+IF @Debug!="NO" THEN SELECT @WherePriority,@WhereStatus_id; END IF;
+
+-- SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT 
+    `id`
+	,`Title`
+   ,`Description`
+   ,`Priority`
+   ,IF(`Status_id` = 1, "Active", "Inactive") as `Status`
+   ,left(`Creation_Date`,19) `Creation_Date`
+   ,left(`Last_Update`,19) `Last_Update`
+	,`Status_id`
+FROM notification_type
+WHERE 1=1 '
+   ,@WherePriority
+   ,@WhereStatus_id       
+,')
+');
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as "Meta"
+	,"width=80px,action=2"     as "Action"
+   ,"omit=yes"                as "id" 
+	,"width=300px,tooltip=yes" as "Title"
+	,"width=300px,tooltip=yes" as "Description"
+   ,"width=100px"             as "Priority"
+   ,"width=100px"             as "Status"
+   ,"omit=yes"                as "Creation Date"
+   ,"width=150px,tooltip=yes" as "Last Update"
+	,"omit=yes"                as "Status_id"
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as Meta
+	,"..." as Action
+	,MT.* 
+FROM Main_Table_Data MT
+;');
+
+
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "01" as "Korder","Status" AS "Key",`Status` AS "Value","Status_id" AS `CallKey`,`Status_id` AS "CallValue",COUNT(*) AS "Rows" FROM Main_Table_Data GROUP BY `Status`)                 UNION ALL
+(SELECT "02","Priority"    ,`Priority`    ,"Priority",`Priority`,COUNT(*) AS K FROM Main_Table_Data WHERE IFNULL(`Priority`,"")>"" GROUP BY IFNULL(`Priority`,""))
+;');
+
+IF @Filters="yes" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+
+DELIMITER ;

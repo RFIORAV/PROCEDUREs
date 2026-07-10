@@ -1,0 +1,220 @@
+/*
+PROCEDURE_Dash_info_Aff_v1.0.sql
+
+Descripcion:
+  Procedimiento Dash_info_Aff.
+  Variante affiliate de Dash_info: currentValue y trendValue por metrica mensual.
+
+Observaciones:
+  No utiliza columna Meta.
+  Metricas CPA, CPA_Value, RS_Val y Tot_Comm desde monthly_comms_affiliate_v5.
+  Metricas SignUp y FTD desde Snapshot_day_by_day_fact2.
+  Cada Key debe estar seguida de = y el valor deseado SIN comillas.
+  Cada par Key=Value debe ir seguido de una COMA.
+  El conjunto de pares debe ir entre '' (comillas simples) como unico parametro string.
+
+Keys:
+ Affiliate_id = [id affiliate]. OBLIGATORIO. No admite ALL ni vacio.
+ Month        = [YYYY-MM | CM | LM]. OPCIONAL. Default=mes actual.
+                CM = mes corriente, LM = mes anterior.
+ Metric       = [CPA | CPA_Value | RS_Val | Tot_Comm | SignUp | FTD]. OPCIONAL. Default=CPA.
+ Debug        = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parametros ('[Key=Value[,...]]')
+
+Ejemplos:
+ call Dash_info_Aff('Affiliate_id=450,Metric=CPA');
+ call Dash_info_Aff('Affiliate_id=450,Metric=SignUp,debug=yes');
+ call Dash_info_Aff('Affiliate_id=450,Month=LM,Metric=Tot_Comm,debug=yes');
+ call Dash_info_Aff('Affiliate_id=450,Month=2026-03,Metric=FTD,debug=yes');
+ call Dash_info_Aff('Affiliate_id=450,Month=CM,Metric=CPA_Value,debug=yes');
+
+18.06.2026 v1.0 Primera version operativa basada en Dash_info v1.7
+*/
+
+DROP PROCEDURE IF EXISTS Dash_info_Aff;
+DROP PROCEDURE IF EXISTS Dash_info_Aff_dev;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_info_Aff`(IN InputCommLine VARCHAR(250))
+COMMENT 'v1.0 18.06.2026 - Obtiene currentValue y trendValue por metrica affiliate'
+SQL SECURITY DEFINER
+
+proc_label:BEGIN
+    DECLARE v_Version VARCHAR(32) DEFAULT 'v1.0 18.06.2026';
+    DECLARE v_InputCommLine VARCHAR(500);
+    DECLARE v_Month VARCHAR(7);
+    DECLARE v_PrevMonth VARCHAR(7);
+    DECLARE v_CurrentMonth VARCHAR(7);
+    DECLARE v_Metric VARCHAR(30);
+    DECLARE v_Affiliate_id VARCHAR(150);
+    DECLARE v_Affiliate_id_num INT DEFAULT 0;
+    DECLARE v_Debug VARCHAR(20);
+    DECLARE v_PrevCompareDate DATE;
+    DECLARE v_CurrentValue DECIMAL(16,2) DEFAULT 0;
+    DECLARE v_PrevValue DECIMAL(16,2) DEFAULT 0;
+    DECLARE v_e INT;
+    DECLARE v_c INT;
+    DECLARE v_k VARCHAR(100);
+    DECLARE v_v VARCHAR(250);
+
+    SET v_Month = LEFT(CURDATE(), 7);
+    SET v_Metric = 'CPA';
+    SET v_Affiliate_id = '';
+    SET v_Debug = 'NO';
+
+    SET v_InputCommLine = CONCAT(IFNULL(InputCommLine, ''), ',');
+    SET v_InputCommLine = REPLACE(v_InputCommLine, '"', '');
+
+    WHILE v_InputCommLine > ' ' DO
+        SET v_e = INSTR(v_InputCommLine, '=');
+        SET v_c = INSTR(v_InputCommLine, ',');
+
+        IF v_e = 0 OR v_c = 0 OR v_e > v_c THEN
+            LEAVE proc_label;
+        END IF;
+
+        SET v_k = TRIM(SUBSTRING(v_InputCommLine, 1, v_e - 1));
+        SET v_v = TRIM(SUBSTRING(v_InputCommLine, v_e + 1, v_c - (v_e + 1)));
+        SET v_InputCommLine = SUBSTRING(v_InputCommLine, v_c + 1);
+
+        IF LOWER(v_k) = 'month'        THEN SET v_Month        = v_v;        END IF;
+        IF LOWER(v_k) = 'metric'       THEN SET v_Metric       = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'affiliate_id' THEN SET v_Affiliate_id = v_v;        END IF;
+        IF LOWER(v_k) = 'debug'        THEN SET v_Debug        = UPPER(v_v); END IF;
+    END WHILE;
+
+    IF v_Affiliate_id = '' OR UPPER(v_Affiliate_id) = 'ALL' THEN
+        SELECT 'ERROR: Affiliate_id obligatorio. No admite ALL ni vacio.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    SELECT IFNULL(MAX(A.id), 0) INTO v_Affiliate_id_num
+    FROM account_account A
+    WHERE CAST(A.id AS CHAR) = v_Affiliate_id;
+
+    IF v_Affiliate_id_num = 0 THEN
+        SELECT CONCAT('ERROR: Affiliate_id no encontrado en account_account [', v_Affiliate_id, '].') AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    IF UPPER(v_Month) = 'CM' THEN
+        SET v_Month = LEFT(CURDATE(), 7);
+    ELSEIF UPPER(v_Month) = 'LM' THEN
+        SET v_Month = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m');
+    END IF;
+
+    IF CHAR_LENGTH(v_Month) <> 7
+       OR SUBSTRING(v_Month, 5, 1) <> '-'
+       OR STR_TO_DATE(CONCAT(v_Month, '-01'), '%Y-%m-%d') IS NULL THEN
+        SELECT 'ERROR: Month invalido. Formato esperado YYYY-MM (o alias CM / LM).' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    IF v_Metric NOT IN ('CPA', 'CPA_VALUE', 'RS_VAL', 'TOT_COMM', 'SIGNUP', 'FTD') THEN
+        SELECT 'ERROR: Metric invalido. Valores permitidos: CPA, CPA_Value, RS_Val, Tot_Comm, SignUp, FTD.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    SET v_CurrentMonth = LEFT(CURDATE(), 7);
+
+    SET v_PrevMonth = DATE_FORMAT(
+        DATE_SUB(STR_TO_DATE(CONCAT(v_Month, '-01'), '%Y-%m-%d'), INTERVAL 1 MONTH),
+        '%Y-%m'
+    );
+
+    IF v_Month = v_CurrentMonth THEN
+        SET v_PrevCompareDate = DATE_SUB(CURDATE(), INTERVAL 1 MONTH);
+    ELSE
+        SET v_PrevCompareDate = LAST_DAY(STR_TO_DATE(CONCAT(v_PrevMonth, '-01'), '%Y-%m-%d'));
+    END IF;
+
+    IF v_Metric IN ('SIGNUP', 'FTD') THEN
+        SELECT IFNULL(SUM(
+            CASE v_Metric
+                WHEN 'SIGNUP' THEN IFNULL(F.`Signups`, 0)
+                WHEN 'FTD'     THEN IFNULL(F.`First_Time_Deposit`, 0)
+                ELSE 0
+            END
+        ), 0) INTO v_CurrentValue
+        FROM Snapshot_day_by_day_fact2 F
+        WHERE F.`Affiliate_id` = v_Affiliate_id_num
+          AND LEFT(F.`Date`, 7) = v_Month
+          AND (v_Month <> v_CurrentMonth OR LEFT(F.`Date`, 10) <= DATE_FORMAT(CURDATE(), '%Y-%m-%d'));
+
+        SELECT IFNULL(SUM(
+            CASE v_Metric
+                WHEN 'SIGNUP' THEN IFNULL(F.`Signups`, 0)
+                WHEN 'FTD'     THEN IFNULL(F.`First_Time_Deposit`, 0)
+                ELSE 0
+            END
+        ), 0) INTO v_PrevValue
+        FROM Snapshot_day_by_day_fact2 F
+        WHERE F.`Affiliate_id` = v_Affiliate_id_num
+          AND LEFT(F.`Date`, 7) = v_PrevMonth
+          AND LEFT(F.`Date`, 10) <= DATE_FORMAT(v_PrevCompareDate, '%Y-%m-%d');
+    ELSE
+        SELECT IFNULL(SUM(
+            CASE v_Metric
+                WHEN 'CPA'       THEN IFNULL(T.`CPA`, 0)
+                WHEN 'CPA_VALUE' THEN IFNULL(T.`net_CPA_Val`, 0)
+                WHEN 'RS_VAL'    THEN IFNULL(T.`net_RS_Val`, 0)
+                WHEN 'TOT_COMM'  THEN IFNULL(T.`net_Total_comm`, 0)
+                ELSE 0
+            END
+        ), 0) INTO v_CurrentValue
+        FROM monthly_comms_affiliate_v5 T
+        WHERE T.`Affiliate_id` = v_Affiliate_id_num
+          AND T.`Month` = v_Month;
+
+        SELECT IFNULL(SUM(
+            CASE v_Metric
+                WHEN 'CPA'       THEN IFNULL(T.`CPA`, 0)
+                WHEN 'CPA_VALUE' THEN IFNULL(T.`net_CPA_Val`, 0)
+                WHEN 'RS_VAL'    THEN IFNULL(T.`net_RS_Val`, 0)
+                WHEN 'TOT_COMM'  THEN IFNULL(T.`net_Total_comm`, 0)
+                ELSE 0
+            END
+        ), 0) INTO v_PrevValue
+        FROM monthly_comms_affiliate_v5 T
+        WHERE T.`Affiliate_id` = v_Affiliate_id_num
+          AND T.`Month` = v_PrevMonth;
+    END IF;
+
+    SELECT
+        CASE
+            WHEN v_Metric IN ('CPA', 'SIGNUP', 'FTD') THEN FORMAT(v_CurrentValue, 0)
+            ELSE FORMAT(v_CurrentValue, 2)
+        END AS currentValue,
+        CASE
+            WHEN v_PrevValue = 0 THEN 0
+            ELSE ROUND(((v_CurrentValue - v_PrevValue) / v_PrevValue) * 100, 1)
+        END AS trendValue;
+
+    IF v_Debug = 'YES' THEN
+        SELECT
+            v_Version                                    AS version,
+            v_Month                                      AS month,
+            v_PrevMonth                                  AS prev_month,
+            DATE_FORMAT(v_PrevCompareDate, '%Y-%m-%d')   AS prev_compare_date,
+            v_Metric                                     AS metric,
+            v_Affiliate_id                               AS affiliate_id,
+            v_Affiliate_id_num                           AS affiliate_id_num,
+            v_CurrentValue                               AS current_value,
+            v_PrevValue                                  AS prev_value;
+    END IF;
+
+    IF v_Debug = 'KEYVALUES' THEN
+        SELECT
+            v_Version                                    AS version,
+            v_Month                                      AS month,
+            v_PrevMonth                                  AS prev_month,
+            DATE_FORMAT(v_PrevCompareDate, '%Y-%m-%d')   AS prev_compare_date,
+            v_Metric                                     AS metric,
+            v_Affiliate_id                               AS affiliate_id,
+            v_Affiliate_id_num                           AS affiliate_id_num,
+            v_CurrentValue                               AS current_value,
+            v_PrevValue                                  AS prev_value;
+    END IF;
+END$$
+DELIMITER ;

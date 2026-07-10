@@ -1,0 +1,70 @@
+/* 
+PROCEDURE_ShowNotif_Affiliate.sql - Notificaciones al Afiliado MS Status Change
+
+Observaciones: 
+   Parámetro 1=Affiliate_id (para lectura de notificaciones, resto de parámetros en CERO). ALL=todas
+   Parámetro 2=id de la Notificación a marcar como leída (parámetro 3 debe ser SET_READ=1)
+   Parámetro 3=SET_READ=1 marca leída la notificación correspondiente a Notif_id
+   Sólo se muestran notificaciones NO LEIDAS, ordenadas por más recientes  
+
+Parámetros ( [AffiliateID | ALL ] , [Notif_id | 0 ] , [SET_READ | 0 ] )
+
+Ejemplos:
+   call ShowNotif_Affiliate(Affiliate_id,0,0);
+   call ShowNotif_Affiliate('ALL',0,0);
+   call ShowNotif_Affiliate('id notificación a marcar como leída',0,1);    
+
+   09.09.2022 V1
+*/
+DROP PROCEDURE IF EXISTS ShowNotif_Affiliate;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `ShowNotif_Affiliate`(IN
+   AffiliateID VARCHAR(50),
+   Notif_id int,
+   SET_READ int
+   )
+    COMMENT 'Notificaciones al Afiliado MS Status Change'
+BEGIN
+   
+	IF LOWER(AffiliateID)='all' THEN
+   	SET @AffiliateID_from='0';
+      SET @AffiliateID_until='9999999999999';
+   ELSE
+   	SET @AffiliateID_from=CAST(AffiliateID AS UNSIGNED INTEGER);
+      SET @AffiliateID_until=CAST(AffiliateID AS UNSIGNED INTEGER);
+	END IF;
+
+	IF SET_READ=1 and Notif_id>0 THEN
+      update account_notifications set Read_Status=1 where id=Notif_id and Affiliate_id=AffiliateID;
+   else
+      SELECT N.id,M.Affiliate_id,AC.username,N.Last_Update
+      ,CONCAT('Status ',upper(M.`Status`),' for Tracker ',M.Code_To_Affiliate,' ',A.Advertiser_Name
+      ,' ',M.Product,' assigned to your channel ',L.landing_page_name) AS 'Notification'
+      ,M.Code_To_Affiliate,A.Advertiser_Name,M.Product,L.landing_page_name,M.`Status`
+      FROM account_notifications N
+      INNER JOIN campaign_marketing_source M ON M.id=N.Extra_id_1
+      INNER JOIN account_account AC ON AC.id=M.Affiliate_id
+      INNER JOIN campaign_advertiser A ON A.id=M.Advertiser_id_OK
+      INNER JOIN account_landing_pages L ON L.id=M.Channel_id
+      WHERE N.`Type` = 'MS Status Change'  AND N.Read_Status!=1
+      and M.Affiliate_id BETWEEN @AffiliateID_from AND @AffiliateID_until;
+	END IF;
+   
+   -- ----------------------------------------------------
+
+SELECT @SQL;
+   PREPARE stmt1 FROM @SQL;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+
+END$$
+DELIMITER ;
+
+/*
+   call ShowNotif_Affiliate('378',0,0);
+   call ShowNotif_Affiliate('ALL',0,0);
+   call ShowNotif_Affiliate('378',5392,1); -- Set Read notif 5392
+   call ShowNotif_Affiliate('378',0,0);      
+
+*/

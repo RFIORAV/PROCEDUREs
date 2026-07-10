@@ -1,0 +1,85 @@
+Escribir un script que contenga:
+Un procedure mysql8 de nombre PROCEDURE_Update_auto_from_dbd_manual
+tomando como base el estilo de D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_MS_Switch_Affiliate_batch_v1.sql
+para que cuando `is_proccessed`=0 de la tabla `Snapshot_day_by_day_manual` se ejecute lo siguiente:
+
+Cargar meses distintos (YYYY-MM) de registros con is_proccessed=0 en tabla temporal tmp_manual_months.
+
+Por cada mes distinto (YYYY-MM) en la tabla temporal:
+  CALL Snapshot_day_by_day_fact1_upd_from_dbd_manual('YYYY-MM');
+  CALL Sync_Fact2_from_Fact1('mode=run,month=YYYY-MM');
+
+Al finalizar el ciclo anterior:
+  CALL total_monthy_comm_ges_upd('');
+  CALL total_monthy_comm_aff_upd('');
+
+Donde YYYY-MM es LEFT(`Date`,7) de los registros pendientes.
+
+El marcado is_proccessed=1 se realiza en Snapshot_day_by_day_fact1_upd_from_dbd_manual.
+
+Condicionar los select informativos a que el procedure sea invocado con el parámetro Debug='YES'.
+
+Incluir en el file también un trigger before update para la tabla Snapshot_day_by_day_manual que pone `is_proccessed`=0
+el nombre del trigger será Snapshot_day_by_day_manual_before_update_proccessed
+si se cambia cualquier dato de la tabla
+
+
+CREATE TABLE `Snapshot_day_by_day_manual` (
+   `id`                                  INT NOT           NULL AUTO_INCREMENT,
+   `is_active`                           TINYINT           NULL DEFAULT '0',
+   `is_proccessed`                       TINYINT           NULL DEFAULT '0',
+   `deal_to_apply`                       TINYINT           NULL DEFAULT '0',
+   `MS_id`                               INT               NULL DEFAULT '0',
+   `Area`                                VARCHAR(20)       NULL DEFAULT '',
+   `Owner`                               VARCHAR(55)       NULL DEFAULT NULL,
+   `Affiliate`                           VARCHAR(55)       NULL DEFAULT '',
+   `Campaign`                            VARCHAR(150)      NULL DEFAULT '',
+   `Deal`                                VARCHAR(150)      NULL DEFAULT '',
+   `Deal_Aff`                            VARCHAR(150)      NULL DEFAULT '',
+   `Hour_Update`                         DATETIME          NULL DEFAULT (CURRENT_TIMESTAMP),
+   `Date`                                DATE              NULL DEFAULT  NULL,
+   `Username`                            VARCHAR(55)       NULL DEFAULT ' ',
+   `Portal`                              VARCHAR(55)       NULL DEFAULT '',
+   `Brand`                               VARCHAR(55) NOT   NULL DEFAULT '',
+   `Tracker_ID`                          VARCHAR(55)       NULL DEFAULT '',
+   `Tracker_Name`                        VARCHAR(500)      NULL DEFAULT '',
+   `Code_To_Affiliate`                   VARCHAR(50)       NULL DEFAULT  NULL,
+   `Product`                             VARCHAR(55)       NULL DEFAULT '',
+   `Product_Real`                        VARCHAR(55)       NULL DEFAULT '',
+   `Qualified_Players`                   INT               NULL DEFAULT '0',
+   `Qualified_Players_Adjusted`          INT               NULL DEFAULT '0',
+   `Criteria_Type`                       VARCHAR(50)       NULL DEFAULT  NULL,
+   `Level_Reached`                       VARCHAR(50)       NULL DEFAULT  NULL,
+   `First_Time_Deposit`                  INT               NULL DEFAULT '0',
+   `Views`                               INT               NULL DEFAULT '0',
+   `Clicks`                              INT               NULL DEFAULT '0',
+   `Signups`                             INT               NULL DEFAULT '0',
+   `Impressions`                         INT               NULL DEFAULT '0',
+   `Sign_Up_Offer`                       VARCHAR(55)       NULL DEFAULT '',
+   `Type`                                VARCHAR(55)       NULL DEFAULT '',
+   `Language`                            VARCHAR(55)       NULL DEFAULT '',
+   `Country`                             VARCHAR(50)       NULL DEFAULT '',
+   `Brand_Name`                          VARCHAR(50)       NULL DEFAULT '',
+   `Registration_Date`                   DATE              NULL DEFAULT  NULL,
+   `Deposits`                            DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `Depositing_Customers`                INT               NULL DEFAULT '0',
+   `Active_Customers`                    INT               NULL DEFAULT '0',
+   `New_Depositing_Customers`            INT               NULL DEFAULT '0',
+   `New_Active_Customers`                INT               NULL DEFAULT '0',
+   `First_Time_Active_Customers`         INT               NULL DEFAULT '0',
+   `Turnover`                            DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `Net_Revenue`                         DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `Revenue_Share_Gestor`                DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `Revenue_Share_Affiliate`             DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `CPA_Value_Affiliate`                 DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `CPA_Value_Gestor`                    DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `TypeInfo`                            VARCHAR(20)       NULL DEFAULT '',
+   `Aff_Credit_1`                        DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `Aff_Credit_2`                        DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `Aff_Credit_3`                        DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `Ges_Credit_1`                        DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `Ges_Credit_2`                        DECIMAL(12,2)     NULL DEFAULT '0.00',
+   `Ges_Credit_3`                        DECIMAL(12,2)     NULL DEFAULT '0.00',
+   PRIMARY KEY (`id`) USING BTREE
+)
+;

@@ -1,0 +1,420 @@
+/*
+PROCEDURE_Report_Affiliates.sql - Report Affiliates (account_account)
+
+Descripción:
+  Procedimiento Report_Affiliates.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Mode            =[Affiliate | Gestor | MAF]. OPCIONAL. Default=affiliate
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO para MODE=MAF
+LoginInit       =[Caracteres]. OPCIONAL. Default=ALL. Primeras letras del login
+Type_Aff        =[ALL | MAF | REF | REFD]. Reporta sólo un tipo de Afiliado o todos. OPCIONAL. Default=ALL.
+Status          =[ALL | 1 | 0]. OPCIONAL. Default=ALL. 1=Active 0=Inactive
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [Yes]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_Affiliates(''); -- Devuelve todos los datos
+call Report_Affiliates('debug=ye,filters=yes');
+call Report_Affiliates('debug=ye,filters=YEs,TAG=9');
+call Report_Affiliates('debug=ye,filters=no,Type_Aff=REF');
+call Report_Affiliates('debug=ye,filters=no,Type_Aff=REFD');
+
+19.01.2023 V1     Primera versión operativa
+22.05.2023        Karen Username x Login
+15.05.2024 v1.1   Opción master afiliado (MODE = MAF)
+20.09.2024 v1.2   Type_Aff=[ALL | MAF | REF]. Reporta sólo un tipo de Afiliado o todos. OPCIONAL. Default=ALL.
+19.11.2024 v1.3   Agregada columna Referrer y filtro tipo afiliado REFD (sólo referidos)
+10.03.2025 v1.4   Incluye referral en base al campo referral_id de account_account
+13.03.2025 v1.5   Tambien Incluye referral en base master_affiliate_deals_per_affiliate
+24.03.2025 v1.5.1 Agregado Last login
+03.06.2025 v1.6   Agregado Tags
+28.11.2025 v1.6.1 Agregado contador de filas por Tag
+01.12.2025        Karen: acepta Decription en blanco
+*/
+
+DROP PROCEDURE IF EXISTS Report_Affiliates_dev;
+DROP PROCEDURE IF EXISTS Report_Affiliates;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Affiliates`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Affiliates'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.6.1 01.12.2025';
+SET @Month           =left(curdate(),7);
+SET @CurrentDay      =curdate();
+SET @LoginInit       ='';
+SET @Mode            ='affiliate';
+SET @Affiliate_id    ='ALL';
+SET @Tag             ='ALL';
+
+SET @Account_id      ='ALL';
+SET @Advertiser_id   ='ALL';
+SET @Type_Aff        ='ALL';
+SET @Channel_id      ='ALL';
+SET @Currency        ='EUR';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @MS_id           ='ALL';
+SET @Meta            ='YES';
+SET @Owner           ='ALL';
+SET @Platform        ='ALL';
+SET @Product         ='ALL';
+SET @STATUS          ='ALL';
+SET @Search          ='';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='logininit'       THEN SET @LoginInit     =      @v;  END IF;
+   IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='type_aff'        THEN SET @Type_Aff      =UPPER(@v); END IF;
+   IF lower(@k)='status'          THEN SET @Status        =      @v;  END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='tag'             THEN SET @Tag           =      @v;  END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Mode,@Filters,@Affiliate_id,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereAffiliate_id  ='';
+SET @WhereLogin         ='';
+SET @WhereMAF           ='';
+SET @WhereSearch        ='';
+SET @WhereStatus        ='';
+SET @WhereType_Aff      ='';
+SET @WhereTag           ='';
+
+SET @SearchClause=replace('and (M.id like "%XXX%" or Description like "%XXX%"
+     or M.Deal_Name like "%XXX%") like "%XXX%")','XXX',@Search);
+
+IF @LoginInit     >""     THEN SET @WhereLogin         =CONCAT(" AND A.`username` LIKE '",@LoginInit,"%'");   END IF;
+IF @Mode           ="MAF" THEN SET @WhereMAF           =CONCAT(" AND A.`second_level`='",@Affiliate_id,"'");  END IF;
+IF @Status        !="ALL" THEN SET @WhereStatus        =CONCAT(" AND A.`Status`       ='",@Status,"'");       END IF;
+IF @Tag           !="ALL" THEN SET @WhereTag           =CONCAT(" AND EXISTS (SELECT 1 FROM account_account_tags T 
+                                                               WHERE T.Affiliate_id = A.id 
+                                                               AND T.Status = 1 
+                                                               AND T.Tag_id = ",@Tag,")"); END IF;
+
+-- Affiliate_id OBLIGATORIO cuando MODE=MAF
+IF  @Affiliate_id IN ("","ALL") AND @Mode="MAF" THEN
+    Select 'data' as Meta,'Affiliate_id mandatory when MODE=MAF' as '' from dual;
+    LEAVE proc_label;
+END IF;
+
+IF @Type_Aff IN ("REF","MAF","REFD")
+THEN
+     IF @Type_Aff="REF"
+     -- THEN SET @WhereType_Aff=' AND COALESCE(REF.Referrer,REF1.Referrer,REFD.Referrer)>"" ';
+     -- THEN SET @WhereType_Aff=' AND EXISTS (SELECT Master_Affiliate_id FROM master_affiliate_deals_per_affiliate MS WHERE MS.Master_Affiliate_id=A.id) ';
+     THEN SET @WhereType_Aff=CONCAT(
+                             ' AND (EXISTS (SELECT r.id FROM `account_account` r WHERE A.referral_id=ifnull(r.referral_id_origin,"")) '
+                            ,'  OR  EXISTS (SELECT r.Master_Affiliate_id FROM `master_affiliate_deals_per_affiliate` r
+                                           WHERE A.id=r.Master_Affiliate_id)) ');
+     END IF;
+     IF @Type_Aff="REFD"
+     THEN SET @WhereType_Aff=' AND COALESCE(REF.Referrer,REF1.Referrer,REFD.Referrer)<>"" ';
+     -- THEN SET @WhereType_Aff=' AND A1.`username` is not null ';
+     -- THEN SET @WhereType_Aff=' AND (IFNULL(A.`referral_id_origin`,"")>""
+                                -- OR  EXISTS (SELECT r.Sub_Affiliate_id FROM `master_affiliate_deals_per_affiliate` r
+                                           -- WHERE A.id=r.Sub_Affiliate_id)) ';
+     END IF;
+     IF @Type_Aff="MAF"
+     -- THEN SET @WhereType_Aff=" INNER JOIN account_account_groups AG ON AG.group_id=4 AND AG.account_id=A.id ";
+     THEN SET @WhereType_Aff=' AND EXISTS (SELECT AG.account_id FROM account_account_groups AG WHERE AG.group_id=4 AND AG.account_id=A.id) ';
+     END IF;
+END IF;
+
+SET @Count_maf=0;
+SET @Count_maf=(SELECT count(AG.account_id) FROM account_account_groups AG WHERE AG.group_id=4);
+SET @Count_ref=0;
+-- SET @Count_ref=(SELECT count(Master_Affiliate_id) FROM master_affiliate_deals_per_affiliate);
+SET @Count_ref=(SELECT count(id) FROM `account_account` r WHERE referral_id_origin IS NOT NULL);
+
+IF @Debug!="NO" THEN SELECT @Count_maf,@Count_ref,@WhereType_Aff,@WhereLogin,@WhereTag,@WhereMAF,@WhereAffiliate_id,@WhereStatus,@WhereSearch; END IF;
+
+
+/**************************************************************************************************************/
+CREATE TABLE IF NOT EXISTS `account_account_tags` 
+(
+   `id`               INT            NOT NULL AUTO_INCREMENT,
+	`Affiliate_id`     INT            NOT NULL DEFAULT 0,
+	`Status`           TINYINT        NOT NULL DEFAULT 1, --  COMMENT 'Status=Disabled',
+	`Tag`              VARCHAR(120)   NOT NULL DEFAULT '',
+	`Tag_id`           INT            NOT NULL DEFAULT 0,
+   `Creation_Date`    DATETIME           NULL DEFAULT (CURRENT_TIMESTAMP),
+   `Last_Update`      DATETIME           NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP,
+   `User`             VARCHAR(30)        NULL DEFAULT '',
+	PRIMARY KEY (`id`)                              USING BTREE,
+	UNIQUE INDEX `Tag` (`Tag`, `Affiliate_id`)      USING BTREE,
+	INDEX `Affiliate_id` (`Affiliate_id`)           USING BTREE,
+	INDEX `Affiliate_id_Tag` (`Affiliate_id`,`Tag`) USING BTREE
+)
+;
+CREATE TABLE IF NOT EXISTS `account_account_tags_list` 
+(
+   `id`               INT            NOT NULL AUTO_INCREMENT,
+	`Status`           TINYINT        NOT NULL DEFAULT 1 COMMENT 'Status=0 Disabled',
+	`Tag`              VARCHAR(120)   NOT NULL DEFAULT '',
+	`Description`      VARCHAR(120)       NULL DEFAULT '',
+   `Creation_Date`    DATETIME           NULL DEFAULT (CURRENT_TIMESTAMP),
+   `Last_Update`      DATETIME           NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP,
+   `User`             VARCHAR(30)        NULL DEFAULT '',
+	PRIMARY KEY (`id`)                              USING BTREE,
+	UNIQUE INDEX `Tag` (`Tag`)                      USING BTREE
+)
+;
+/**************************************************************************************************************/
+
+-- SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT
+    A.`id`
+	,A.`username`
+	,A.`password`
+	,A.`first_name`
+	,A.`last_name`
+   ,CASE WHEN REF.Referrer  IS NOT NULL THEN REF.Referrer
+         WHEN REF1.Referrer IS NOT NULL THEN REF1.Referrer
+         WHEN REFD.Referrer IS NOT NULL THEN REFD.Referrer
+         ELSE ""
+         END                     AS `Referrer`
+   ,GROUP_CONCAT(
+      DISTINCT 
+      CONCAT(TL.Tag, IF(TL.Description IS NOT NULL AND TL.Description != "", CONCAT(": ", TL.Description),""))   -- K 01.12.2025
+      ORDER BY TL.Tag
+      SEPARATOR "; "
+   ) as tag_info
+	,A.`Status_id`
+	,A.`Status`
+	,left(ifnull(A.`date_joined`,""),10) `date_joined`
+	,left(ifnull(A.`Last_Update`,""),16) `last_login`
+	,A.`is_admin`
+	,A.`is_active`
+	,A.`is_staff`
+	,A.`is_superuser`
+	,A.`phone`
+	,A.`language`
+	,A.`address`
+	,A.`skype`
+	,A.`fiscal_code`
+	,A.`iva`
+	,A.`company_fiscal_name`
+	,A.`company_address`
+	,A.`nation`
+	,A.`city`
+	,left(ifnull(A.`birthday`,""),10) `birthday`
+	,A.`first_level`
+	,A.`second_level`
+	,A.`third_level`
+	,A.`fourth_level`
+	,A.`url`
+	,A.`terms`
+	,A.`budget`
+	,A.`profile_pic`
+	,A.`referral`
+	,A.`email_report`
+	,A.`telegram_report`
+	,A.`referral_id`
+	,A.`referral_id_origin`
+	,A.`CPA_Limit`
+	,A.`document_id_back`
+	,A.`document_id_front`
+	,A.`id_alias`
+	,A.`username_alias`
+	,A.`id_default`
+	,A.`username_default`
+	,A.`period_default`
+	,A.`is_forex`
+	,A.`is_gambling`
+	,A.`email`
+   ,left(ifnull(A.`Last_Update`,""),19) `Last_Update`
+	,A.`Operator` as `User`
+FROM account_account A
+LEFT JOIN account_account_tags T ON T.Affiliate_id = A.id AND T.Status = 1
+LEFT JOIN account_account_tags_list TL ON TL.id = T.Tag_id AND TL.Status = 1
+LEFT JOIN LATERAL (SELECT A1.username as `Referrer` FROM account_account A1
+                   WHERE IFNULL(A.`referral_id_origin`,"")>"" AND A1.`referral_id`=A.`referral_id_origin`
+                   LIMIT 1
+                  ) AS REF ON TRUE -- Nombre Referrer según A.`referral_id_origin`
+
+LEFT JOIN LATERAL (SELECT A1.username as `Referrer` FROM master_affiliate_deals_per_affiliate MA
+                   INNER JOIN account_account A1 ON A1.id=MA.Master_Affiliate_id
+                   WHERE A.`id`=MA.`Master_Affiliate_id` LIMIT 1
+                  ) AS REF1 ON TRUE -- Nombre Referrer segun MA.Master_Affiliate_id
+
+LEFT JOIN LATERAL (SELECT A1.username as `Referrer` FROM master_affiliate_deals_per_affiliate MA
+                   INNER JOIN account_account A1 ON A1.id=MA.Master_Affiliate_id
+                   WHERE A.`id`=MA.`Sub_Affiliate_id` LIMIT 1
+                  ) AS REFD ON TRUE -- Referrer segun MA.Sub_Affiliate_id
+WHERE 1=1 '
+   ,@WhereLogin
+   ,@WhereMAF
+   ,@WhereStatus
+   ,@WhereType_Aff
+   ,@WhereTag
+,'
+GROUP BY A.id)
+');
+
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta,"width=80px,action=2" as `Action`
+   ,"width=50px"    as `id`
+   ,"width=150px"   as `username`         -- Karen 22.05.2023
+   ,"omit=true"     as `password`
+   ,"width=130px"   as `first name`
+   ,"width=130px"   as `last name`
+   ,IF(@Type_Aff="REF","omit=true","width=130px") as `Referrer`
+   ,"width=250px,tooltip=yes" as `tag_info`
+   ,"omit=true"     as `Status id`
+   ,"width=100px,colorBg=[Active:green;Other:red;Paused:orange;Inactive:red]" as `Status`
+   ,"width=100px"   as `date joined`
+   ,"width=130px"   as `last login`
+   ,"omit=true"     as `is admin`
+   ,"width=060px"   as `is active`
+   ,"width=060px"   as `is staff`
+   ,"omit=true"     as `is superuser`
+   ,"omit=true"     as `phone`
+   ,"omit=true"     as `language`
+   ,"omit=true"     as `address`
+   ,"omit=true"     as `skype`
+   ,"omit=true"     as `fiscal code`
+   ,"omit=true"     as `iva`
+   ,"omit=true"     as `company fiscal name`
+   ,"omit=true"     as `company address`
+   ,"omit=true"     as `Country`
+   ,"omit=true"     as `city`
+   ,"omit=true"     as `birthday`
+   ,"omit=true"     as `first level`
+   ,"omit=true"     as `second level`
+   ,"omit=true"     as `third level`
+   ,"omit=true"     as `fourth level`
+   ,"omit=true"     as `url`
+   ,"omit=true"     as `terms`
+   ,"omit=true"     as `budget`
+   ,"omit=true"     as `profile pic`
+   ,"omit=true"     as `referral`
+   ,"omit=true"     as `email report`
+   ,"omit=true"     as `telegram report`
+   ,"omit=true"     as `referral id`
+   ,"omit=true"     as `referral id origin`
+   ,"omit=true"     as `CPA Limit`
+   ,"omit=true"     as `document id back`
+   ,"omit=true"     as `document id front`
+   ,"omit=true"     as `id alias`
+   ,"omit=true"     as `username alias`
+   ,"omit=true"     as `id default`
+   ,"omit=true"     as `username default`
+   ,"omit=true"     as `period default`
+   ,"width=080px"   as `is forex`
+   ,"width=080px"   as `is gambling`
+   ,"width=250px"   as `email`
+   ,"width=150px"   as `Last Update`
+   ,"width=100px"   as `User`
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`,"..." as `Action`,
+   MT.*
+FROM Main_Table_Data MT
+ORDER BY username
+;
+');
+
+-- ------------------------------------------------------------
+SET @SQLfilters=CONCAT(
+@CTE,
+',
+FilterByTag as (
+SELECT T.Tag_id,TL.Tag,COUNT(*) AS "Rows"
+FROM account_account_tags T
+LEFT JOIN account_account_tags_list TL ON TL.id = T.Tag_id 
+WHERE EXISTS (SELECT id FROM Main_Table_Data MT WHERE MT.id=T.Affiliate_id)
+GROUP BY T.Tag_id
+)
+
+(SELECT "1" as "Korder","Status" AS "Key",`Status` AS "Value","Status" AS `CallKey`,`Status` AS "CallValue",COUNT(*) AS "Rows"
+                                                                                       FROM Main_Table_Data GROUP BY `Status`    ) UNION ALL
+(SELECT "3","Affiliate Type","Only Master"  ,"Type_Aff","MAF"     ,""  AS K FROM DUAL WHERE @Count_maf>0) UNION ALL
+(SELECT "3","Affiliate Type","Only Referrer","Type_Aff","REF"     ,""  AS K FROM DUAL WHERE @Count_ref>0) UNION ALL
+(SELECT "3","Affiliate Type","Only Referred","Type_Aff","REFD"    ,"" AS K FROM DUAL WHERE @Count_ref>0) UNION ALL
+(SELECT "4","Tag"           ,`Tag`          ,"Tag"     ,`Tag_id`  ,`Rows` as K FROM FilterByTag) UNION ALL
+(SELECT "5","Login 1" 	,left(upper(`username`),1),"LoginInit",left(`username`,1),COUNT(*) AS K FROM Main_Table_Data GROUP BY left(`username`,1)) UNION ALL
+(SELECT "7","Login 2" 	,left(`username`,2),"LoginInit",left(`username`,2),COUNT(*) AS K FROM Main_Table_Data GROUP BY left(`username`,2))
+ORDER BY 1,3
+;');
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+
+call Report_Affiliates('debug=yes'); -- Devuelve todas las MS
+call Report_Affiliates('debug=ye,filters=yes');
+call Report_Affiliates('debug=ye,filters=no,status=active');
+call Report_Affiliates('debug=ye,filters=no,LoginInit=a');
+
+call Report_Affiliates('mode=maf,debug=ye,filters=no,Affiliate_id=440');
+call Report_Affiliates('mode=maf,debug=ye,filters=no'); -- error: Affiliate_id obligatorio cuando mode=maf
+
+call Report_Affiliates('debug=yeS,Type_Aff=MAF,filters=ye');
+call Report_Affiliates('debug=ye,filters=no,Type_Aff=REF');
+call Report_Affiliates('debug=ye,filters=no,Type_Aff=REFD');
+*/

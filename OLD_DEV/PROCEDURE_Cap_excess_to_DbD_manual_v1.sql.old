@@ -1,0 +1,155 @@
+/* PROCEDURE_Cap_excess_to_DbD_manual.sql
+
+      Cálculo y generación de movimientos en DbD_manual para compensar exceso de Cap
+      Excepciones en tabla campaign_mkt_source_cap_real
+
+
+Parámetro (Month])
+
+Month=[AAAA-MM | CM | LM]. OPCIONAL. Default=CM=Current Month
+
+Ejemplos:
+
+call Cap_excess_to_DbD_manual('');                 -- current month
+call Cap_excess_to_DbD_manual('cm');               -- current month
+call Cap_excess_to_DbD_manual('LM');               -- LAST month
+call Cap_excess_to_DbD_manual(left(curdate(),7));  -- current month
+call Cap_excess_to_DbD_manual("2024-05");          -- 05/2024
+
+09.06.2024 v1     Primera versión
+*/
+
+DROP PROCEDURE IF EXISTS Cap_excess_to_DbD_manual;
+SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Cap_excess_to_DbD_manual`(IN Curr_Last_Month varchar(7)) 
+
+COMMENT 'Cálculo y generación de movimientos en DbD_manual para compensar exceso de Cap'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version      ='v1 09.06.2024';
+
+IF UPPER(Curr_Last_Month)='CM'      THEN SET @Month=LEFT(CURDATE(),7); END IF;
+IF UPPER(Curr_Last_Month)='LM'      THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+IF    UPPER(Curr_Last_Month) NOT IN ('CM','LM') 
+THEN  IF  LEFT(Curr_Last_Month,3)="202" AND MID(Curr_Last_Month,6,2) in ("01","02","03","04","05","06","07","08","09","10","11","12")
+      THEN SET @Month=Curr_Last_Month;
+      ELSE SET @Month=LEFT(CURDATE(),7);
+      END IF;
+END IF;
+
+-- SELECT @MONTH;
+
+CREATE TABLE IF NOT EXISTS `campaign_mkt_source_cap_real` (
+   `id`                 INT(10)     NOT NULL AUTO_INCREMENT,
+   `is_active`          TINYINT(3)  NULL DEFAULT '1',
+   `Affiliate_id`       INT(10)     NOT NULL,
+   `Brand`              VARCHAR(50) NULL DEFAULT '',
+   `Code_To_Affiliate`  VARCHAR(50) NULL DEFAULT '',
+   `Cap_Real`           INT(10)     NULL DEFAULT '9999',
+   `Month_Valid_From`   VARCHAR(7)  NOT NULL,
+   `Month_Valid_To`     VARCHAR(7)  NULL DEFAULT NULL,
+   `Creation_Date`      DATETIME    NULL DEFAULT CURRENT_TIMESTAMP,
+   `Last_Update`        DATETIME    NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   `Operator`           VARCHAR(30) NULL DEFAULT 'SysOp',
+   PRIMARY KEY (`id`) USING BTREE,
+   INDEX `Affiliate_id` (`Affiliate_id`,`Month_Valid_From`) USING BTREE
+)
+;
+
+REPLACE INTO Snapshot_day_by_day_manual (
+       id,is_active,deal_to_apply
+      ,MS_id,Username,AREA,Brand,Affiliate
+      ,Date,Tracker_ID,Tracker_Name,Code_To_Affiliate
+      ,Product,Product_Real
+      ,Qualified_Players
+      ,`First_Time_Deposit`,`Views`,`Clicks`,`Signups`
+)
+
+WITH fact1 AS (
+SELECT max(Date) as Date,F.Brand,F.Username_id
+      ,F.Affiliate,F.Affiliate_id,F.Area
+      ,F.MS_id,F.Tracker_ID,F.Tracker_Name,F.Code_To_Affiliate
+      ,F.Product,F.Product_Real
+      ,SUM(Qualified_players)          AS Qualified_players
+      ,max(IFNULL(M.CPA_Limit,1000))   AS CPA_Limit
+FROM Snapshot_day_by_day_fact1 F
+INNER JOIN `campaign_marketing_source`    M ON M.Code_To_Affiliate=F.Code_To_Affiliate AND M.ID=F.MS_id
+WHERE LEFT(Date,7)=@MONTH 
+GROUP BY LEFT(DATE,7),F.Affiliate_id,F.Code_To_Affiliate -- HAVING (CPA>CPALimit)
+),
+-- ---------------------------------------------------------------------------
+fact1_cap AS (
+SELECT max(Date) as Date,F.Brand,F.Username_id
+      ,F.Affiliate,F.Affiliate_id,F.Area
+      ,F.MS_id,F.Tracker_ID,F.Tracker_Name,F.Code_To_Affiliate
+      ,F.Product,F.Product_Real
+      ,SUM(Qualified_players)                AS "CPA"
+      ,case when `Cap_Real` IS NOT NULL then `Cap_Real`
+            ELSE CPA_Limit
+            END                              AS "CPALimit"
+FROM fact1 F
+LEFT  JOIN `campaign_mkt_source_cap_real` C  ON  C.Affiliate_id=F.Affiliate_id
+                                             AND LEFT(Date,7) BETWEEN `Month_Valid_From` AND IFNULL(`Month_Valid_To`,"2050-12")
+                                             AND (C.Code_To_Affiliate=F.Code_To_Affiliate OR C.Code_To_Affiliate='')
+                                             AND C.is_active=1
+WHERE LEFT(Date,7)=@MONTH 
+GROUP BY LEFT(DATE,7),Affiliate,Code_To_Affiliate HAVING (CPA>CPALimit)
+),
+-- ---------------------------------------------------------------------------
+fact_man AS (
+SELECT 
+       FM.id,FM.is_active,FM.deal_to_apply,FM.MS_id
+      ,max(FM.Date) as Date
+      ,f1.Brand,f1.Username_id
+      ,f1.Affiliate,f1.Affiliate_id,f1.Area
+      ,f1.Tracker_ID,f1.Tracker_Name,f1.Code_To_Affiliate
+      ,f1.Product,f1.Product_Real
+      ,SUM(FM.`First_Time_Deposit`  ) AS `First_Time_Deposit`
+      ,SUM(FM.`Views`               ) AS `Views`             
+      ,SUM(FM.`Clicks`              ) AS `Clicks`            
+      ,SUM(FM.`Signups`             ) AS `Signups`           
+      ,SUM(FM.Qualified_Players     ) AS  CPA_manual
+FROM Snapshot_day_by_day_manual FM
+left join LATERAL (
+      SELECT Brand,Username_id
+      ,Affiliate,Affiliate_id,Area
+      ,MS_id,Tracker_ID,Tracker_Name,Code_To_Affiliate
+      ,Product,Product_Real
+      FROM fact1 F
+      WHERE FM.MS_id=F.MS_id AND FM.Date<=F.Date
+      LIMIT 1
+      ) as f1 ON true
+WHERE LEFT(FM.DATE,7)=@MONTH AND FM.deal_to_apply=1
+GROUP BY LEFT(FM.DATE,7),f1.Affiliate_id,f1.Code_To_Affiliate
+)
+-- SELECT * from fact1;
+-- SELECT * from fact1_cap;
+-- SELECT * from fact_man;
+SELECT 
+       m.id,IFNULL(m.is_active,1) as `is_active`,IFNULL(m.deal_to_apply,1) AS `deal_to_apply`
+      ,f.MS_id,f.Username_id,f.Area,f.Brand,f.Affiliate
+      ,f.Date,f.Tracker_ID,f.Tracker_Name,f.Code_To_Affiliate
+      ,f.Product,f.Product_Real
+      ,(f.CPALimit-f.CPA) as `Qualified_Players`
+      ,IFNULL(m.`First_Time_Deposit`,0),IFNULL(m.`Views`,0),IFNULL(m.`Clicks`,0),IFNULL(m.`Signups`,0) 
+FROM fact1_cap f
+LEFT JOIN fact_man m ON m.Code_To_Affiliate=f.Code_To_Affiliate
+WHERE (f.CPALimit - f.CPA - ifnull(m.CPA_manual,0)) <> 0
+GROUP BY LEFT(f.DATE,7),f.Affiliate,f.Code_To_Affiliate -- HAVING (CPA>CPALimit)
+;
+
+END$$
+DELIMITER ;
+
+/*
+call Cap_excess_to_DbD_manual('');                 -- current month
+call Cap_excess_to_DbD_manual('cm');               -- current month
+call Cap_excess_to_DbD_manual('LM');               -- LAST month
+call Cap_excess_to_DbD_manual(left(curdate(),7));  -- current month
+call Cap_excess_to_DbD_manual("2024-05");          -- 05/2024
+*/

@@ -1,0 +1,156 @@
+/*
+PROCEDURE_Aff_LandingPage.sql - ReportChannels (account_landing_pages)
+
+Descripción:
+  Procedimiento Aff_LandingPage.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id    =[ALL | Affiliate_id ]. OPCIONAL. Default=ALL
+Status_id       =[ALL | Status_id ]. OPCIONAL. Default=ALL
+Stat_final      =[ALL | Stat* ]. OPCIONAL. Default=ALL. Stat* es el que se indica con *
+Product         =[ALL | Product ]. OPCIONAL. Default=ALL
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Aff_LandingPage('affiliate_id=540,channel_id=341,debug=non');
+
+Actualizaciones:
+
+26.06.2023 V1     Karen
+13.03.2024 v1.1   Karen. Cambio GROUP BY Code_To_Affiliate por GROUP BY m.Advertiser_id,Code_To_Affiliate 
+13.03.2024 v1.2   RF. Solo muestra MS activas
+
+*/
+
+DROP PROCEDURE IF EXISTS Aff_LandingPage;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Aff_LandingPage`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'AFFILIATES - Report Aff_LandingPage'
+    
+proc_label:BEGIN
+
+SET @Version         ='v1.2 13.03.2024';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @Affiliate_id    ='';
+SET @Channel_id      = 0;
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      
+SET @InputCommLine=replace(@InputCommLine,'"','');  
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+   SET @e=INSTR(@InputCommLine,'=');    				   
+   SET @c=INSTR(@InputCommLine,','); 					   
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =      @v;  END IF;
+   IF lower(@k)='channel_id'      THEN SET @Channel_id    =      @v;  END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Affiliate_id,@Channel_id,@Debug,@Meta,InputCommLine; END IF;							 
+
+IF   @Affiliate_id IN ("","ALL")
+THEN
+    Select 'data' as Meta,'Affiliate_id mandatory' as '' from dual;
+    LEAVE proc_label;
+END IF; 
+
+-- Parámetros de selección 
+SET @WhereAffiliate_id=CONCAT(" AND Affiliate_id  =",@Affiliate_id);
+SET @WhereChannel_id  =CONCAT(" AND Channel_id  =",@Channel_id);
+SET @WhereStatus      =' AND m.Stat_aggreg="1" ';    -- 13.03.2024 Solo muestra MS activas
+
+IF @Debug!="NO" THEN SELECT @WhereAffiliate_id,@WhereChannel_id; END IF;
+
+-- -------------------------------------------------------------------------------------
+SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT 
+		 m.id
+		,a.Advertiser_Name
+		,Code_To_Affiliate
+		,ifnull(Country,"") AS `Country`
+		,m.Status
+		,m.Status_id
+		,if (m.Priority IS NULL OR m.Priority = "",99,m.Priority) as Priority
+	FROM campaign_marketing_source m
+	LEFT JOIN account_landing_pages c ON m.Channel_ID = c.id
+	LEFT JOIN campaign_advertiser a ON m.Advertiser_id = a.id
+	WHERE 1=1 '
+   ,@WhereAffiliate_id 
+	,@WhereChannel_id
+	,@WhereStatus
+   ,' GROUP BY m.Advertiser_id,Code_To_Affiliate     -- 13.03.2024
+	ORDER BY m.Priority)
+');
+/*
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"omit=yes"                as `id` 
+	 ,"omit=yes"                as `Advertiser`
+	 ,"width=250px" as `Code_To_Affiliate`
+	 ,"width=250px" as `Code_To_Affiliate`
+   ,"width=100px"             as `Status`                     
+   ,"width=400px,action=1,center=no"    as `Channel`  
+   ,"width=100px,action=1"    as `Landing`        
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);*/
+
+SET @SQL=CONCAT(
+@CTE,
+-- @SQLmeta,
+'
+SELECT
+	MT.* 
+FROM Main_Table_Data MT
+;');
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Aff_LandingPage('affiliate_id=540,channel_id=341,debug=non');
+
+*/

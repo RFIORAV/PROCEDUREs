@@ -1,0 +1,63 @@
+/*
+***************************************************************
+** TRIGGER_forex_deal_affiliate_before_insert
+**
+** 12.11.2022 copiado de forex_deal_gestor_before_insert
+***************************************************************
+*/
+-- ---------------------------------------------------------------------
+DROP TRIGGER IF EXISTS forex_deal_affiliate_before_insert;
+DELIMITER $$
+--
+CREATE TRIGGER forex_deal_affiliate_before_insert
+BEFORE INSERT
+ON forex_deal_affiliate FOR EACH ROW
+
+BEGIN
+
+SET @Version='v1 20.11.2022'; 
+
+	SET NEW.`Deal_Name`=
+	CONCAT('CPA: ',round(NEW.CPA_value,0),IF(NEW.Baseline>0,CONCAT(' BL: ',NEW.Baseline),''),
+	CASE WHEN NEW.RS_Percentage>0  
+        THEN CONCAT(' + RS: ',round(NEW.RS_Percentage,0),'%',' (By: ',NEW.RS_Base,' /CPA-RS: '
+      		 ,IF(NEW.RS_Against_CPA>0,'Yes','No'),'/COv:',IF(NEW.Carry_Over>0,'Yes','No'),')')
+        ELSE '' END); 
+
+END$$
+
+	-- CONCAT_WS(' '
+	-- ,'CPA:',NEW.round(CPA_value,0)
+	-- ,IF(NEW.Baseline>0,CONCAT('BL:',NEW.Baseline,''),' ')
+	-- ,IF(NEW.RS_Percentage>0,CONCAT('+ RS: ',NEW.round(RS_Percentage,0),'% '),' ')
+	-- ,IF(NEW.RS_Percentage>0,CONCAT('(RS acum by:',NEW.RS_Base,'/CPAminusRS:'
+   -- ,IF(NEW.RS_Against_CPA>0,'Yes','No'),'/COver:',IF(NEW.Carry_Over>0,'Yes','No'),')'),' ')
+	-- );
+--
+DELIMITER ;
+
+/*
+-- Test and update OLD----------------------------
+SELECT
+-- UPDATE forex_deal_affiliate_copy
+-- (betmedia) SET CPA_value=round(CPA_value*0.75,0),RS_Percentage=round(RS_Percentage*0.75,0),
+-- SET `Deal_Name`=
+		CONCAT('CPA: ',round(CPA_value,0),IF(Baseline>0,CONCAT(' BL: ',Baseline),'')
+		,CASE WHEN RS_Percentage>0 THEN 
+				CONCAT(' + RS: ',round(RS_Percentage,0),'%',' (RS acum by:',RS_Base,'/CPAminusRS:'
+      		,IF(RS_Against_CPA>0,'Yes','No'),'/COver:',IF(Carry_Over>0,'Yes','No'),')')
+      		ELSE '' END)
+FROM forex_deal_affiliate
+;
+-- Test and update NEW----------------------------
+-- SELECT
+UPDATE forex_deal_affiliate
+SET `Deal_Name`=
+	CONCAT('CPA: ',round(CPA_value,0),IF(Baseline>0,CONCAT(' BL: ',Baseline),''),
+	CASE WHEN RS_Percentage>0  
+        THEN CONCAT(' + RS: ',round(RS_Percentage,0),'%',' (By: ',RS_Base,' /CPA-RS: '
+      		 ,IF(RS_Against_CPA>0,'Yes','No'),'/COv:',IF(Carry_Over>0,'Yes','No'),')')
+        ELSE '' END)
+-- FROM forex_deal_affiliate
+;
+*/

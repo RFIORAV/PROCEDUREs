@@ -1,0 +1,93 @@
+/***************************************************************************************/
+-- TRIGGER forex_marketing_source_after_update_deal
+-- 20.04.2022
+-- 12.07.2022 Agregado NEW.`Status_Acct_id`
+-- 09.09.2022 Agregada notificación cambio status MS
+-- 19.09.2022 Paulo modifica datos del trigger de MS Status
+-- 04.11.2022 Campo Product_Deal en lugar de Product
+-- 09.11.2022 Notificación por Cambio Status: Descripc ahora muestra Advertiser_Name
+-- 16.11.2022 Incluye user del Afiliado
+-- 16.12.2022 cambiado a after update / Update de Status en trigger before update
+--            CAMBIO comparación para evitar OLD values NULL         
+/***************************************************************************************/
+--
+DROP TRIGGER IF EXISTS forex_marketing_source_after_update_status_deal;
+DROP TRIGGER IF EXISTS forex_marketing_source_after_update_deal;
+DELIMITER $$
+--
+CREATE TRIGGER forex_marketing_source_after_update_deal
+AFTER UPDATE
+ON forex_marketing_source FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='16.12.2022';
+
+/*
+*************************************************************
+** TRIGGER forex_marketing_source_after_update
+** Va al final del Trigger standard para crear info en
+** forex_marketing_source_deal_date cuando cambia Deal_Valid_From,Affiliate_id,Channel_id
+**
+** 02.06.2022 Agregado Product
+** 30.07.2022 Quitado Channel_id
+** 16.08.2022 Agregado a trigger composicion status
+** 02.11.2022 No crea registro si datos básicos (Deal_Valid_From,Deal_id/Affiliate_id) no vienen informados
+** 04.11.2022 Nuevo campo Product_Deal exclusivo para los deals
+** 14.11.2022 No crea registro si Deal_id=nll excepto por cambio de Affiliate_id
+-- 16.12.2022 CAMBIO comparación para evitar OLD values NULL  
+*************************************************************
+*/
+
+/************************************
+-- TRATAMIENTO DEL CAMBIO DE DEAL
+*************************************/
+IF
+       NEW.`Deal_Valid_From` IS NOT NULL
+   AND NEW.`Affiliate_id`    IS NOT NULL
+   AND (NEW.`Deal_id`        IS NOT NULL OR IFNULL(OLD.`Affiliate_id`,0)!=NEW.`Affiliate_id`) -- No acepta Deal_id=null excepto en cambio de afiliado
+   AND 
+	(
+      IFNULL(OLD.`Deal_id`        ,0)            !=NEW.`Deal_id`
+   OR IFNULL(OLD.`Product_Deal`   ,'')           !=IFNULL(NEW.`Product_Deal`,'') 
+   OR IFNULL(OLD.`Deal_Valid_From`,'2020-01-01') !=NEW.`Deal_Valid_From`
+   OR IFNULL(OLD.`Affiliate_id`   ,0)            !=NEW.`Affiliate_id`
+   )  
+--
+THEN
+INSERT INTO forex_marketing_source_deal_date (
+    `MS_id`
+   ,`Deal_Valid_From`
+   ,`Product`
+   ,`Affiliate_id`
+   ,`Channel_id`
+   ,`Deal_id`
+   ,`Code`
+   ,`Creation_Date`
+   ,`Last_Update`
+   ,`Operator`
+)
+VALUES (
+    NEW.`id`
+   ,NEW.`Deal_Valid_From`
+   ,ifnull(NEW.`Product_Deal`,'')
+   ,NEW.`Affiliate_id`
+   ,NEW.`Channel_id`
+   ,NEW.`Deal_id`
+   ,NEW.`Code`
+   ,NEW.`Creation_Date`
+   ,NEW.`Last_Update`
+   ,NEW.`Operator`
+);
+END IF;
+END$$
+--
+DELIMITER ;
+
+/** RECONSTRUCCION DE STATUS DE TODA LA TABLA **/
+
+-- UPDATE forex_marketing_source
+-- SET `Status`=(CASE WHEN `Status_id`='1' AND `Status_Adv_id`='1' AND `Status_Aff_id`='1' AND `Status_Channel_id`='1'
+--					THEN 'Active' ELSE 'Paused' END)
+-- ;
+

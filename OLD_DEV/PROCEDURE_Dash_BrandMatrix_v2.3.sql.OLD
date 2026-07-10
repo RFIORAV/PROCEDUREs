@@ -1,0 +1,590 @@
+/*
+PROCEDURE_Dash_BrandMatrix.sql() - CPA/Signup/FTD/Click - Matriz por Brand
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+View            =[viewAFF | viewGES | viewMAF]. Datos de Fact2/Fact1/Fact3 respectivamente. OBLIGATORIO.
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month día>=6. Last Month día<6
+MatrixBy        =[CPA | Signup | FTD | Click | NR ]. OPCIONAL. Default=CPA
+MasterAff_id    =[ MasterAff_id ]. SOLO PARA MODO viewMAF. Default=''
+Affiliate_id    =[ALL | id del Affiliate_id | ALLdetail]. ALLdetail=All en secuencia continua
+                  OPCIONAL para View=viewGES (Default=ALL).
+                  OBLIGATORIO para View=viewAFF
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+ByDay           =[No | Yes]. Info acumulada por Dia/Mes. OPCIONAL. Default=No
+LastMonths      =[No | Yes]. Info acumulada LastMonths. OPCIONAL. Default=No
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Total           =[Yes | No]. Incluye línea/s de Totales x OWNER/Currency. OPCIONAL. Default=Yes
+TotLine         =[First | Last]. Posición de la línea de Totales. OPCIONAL. Default=First
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Keys no utilizadas:
+Currency        =[EUR | Original]. Moneda a la que se convierten los resultados. Original=No hacer conversiones. El Profit NO SE CALCULARÁ cuando sean monedas distintas. OPCIONAL. Default=EUR.
+ByAccount       =[No | Yes]. Info acumulada por Account/Advertiser. OPCIONAL. Default=No
+OrderBy         =[CPA | CPAvalue | Profit | Advertiser]. OPCIONAL. Default=Affiliate
+Order           =[Desc | Asc]. OPCIONAL. Default=Desc
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Dash_BrandMatrix(' '); -- No devolverá nada porque asume ViewAFF y Affiliate_id=9999999
+call Dash_BrandMatrix('View=VIEWGES');
+call Dash_BrandMatrix('View=VIEWGES,OrderBy=CPA,meta=yes,debug=no');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=39,Month=2022-08,debug=yes');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=ALL,Month=2022-08,ByDay=yes');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=ALL,ByDay=yes,Month=2022-08,meta=yes');
+call Dash_BrandMatrix('View=ViewAFF,Affiliate_id=ALL,ByDay=yes'); --  ERROR Para View=viewAFF Default Affiliate_id=9999999
+
+call Dash_BrandMatrix('View=ViewAFF,Affiliate_id=39,ByDay=yes,debug=no');
+call Dash_BrandMatrix('View=ViewGES,Owner=2,Month=2022-08');
+
+04.09.2022 V1 Total_FACT1_AFFILIATE_CPAbyDay_BrandMatrix
+08.09.2022 V2 FACT1/2 Como parámetro + Currency. Unifica acumulaciones de CPA
+26.09.2022 V2.2 Optimización
+26.09.2022 V3 Recodificacion de PROCEDURE_Dash_BrandMatrix.
+              Parámetros con Key=Value en un solo campo de entrada como CommandLine
+07.10.2022 v3.2 Columna METAdatos
+25.10.2022 v3.3 Nombres Columnas Brand Matrix Separados en las mayúsculas con Regex
+02.11.2022      Retorna con mensaje cuando no hay CPAs en la selección
+16.11.2022 v3.4 Agregado parámetro MatrixBy=[CPA | Signup | FTD | Click ]. OPCIONAL. Default=CPA
+03.01.2023 v1.1 Filters
+12.05.2023 v1.2 @Month='CM'/'LM'
+12.05.2023 v1.3 Agregado NR
+31.05.2023 v1.4 Karen - filtro por Advertiser_id
+09.08.2023 v1.5 Agregado Total Comission a la matriz. Fixes en columna total
+04.09.2023 v1.6 Karen. Se agregó variable setting cuando no existe resultados
+16.01.2024 v1.7 Habilitada selección por Afiliado
+27.05.2024 v1.8 Tratamiento de Subafiliados
+                Tratamiento de Master Affiliate
+29.05.2024 v1.9 Opción LastMonths
+06.08.2024 v2   Multi-currency
+11.08.2024 v2.1 fix Multi-currency
+13.09.2024 v2.2 No agrupa por Owner
+26.11.2024 V2.3 Reporte por dia todos los afiliados. Parametro ALLdetail
+
+*/
+
+DROP PROCEDURE IF EXISTS Dash_BrandMatrix_test;
+DROP PROCEDURE IF EXISTS Dash_BrandMatrix;
+
+SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_BrandMatrix`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'CPA/Reg/FTD/Global/NR - Matriz por Brand'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version      ='v2.3 26.11.2024';
+SET @View         ='VIEWAFF';
+SET @Owner        ='ALL';
+SET @Month        =IF(DAY(CURDATE())<=5,LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7),LEFT(CURDATE(),7));
+-- SET @Month        =LEFT(CURDATE(),7);
+SET @MatrixBy     ='CPA';
+SET @Affiliate_id ='ALL';
+SET @MasterAff_id ='';
+SET @LastMonths   ='NO';
+SET @Currency     ='EUR';
+SET @OrderBy      ='CPA';
+SET @Order        ='DESC';
+SET @Total        ='YES';
+SET @TotLine      ='FIRST';
+SET @Debug        ='NO';
+SET @Meta         ='YES';
+SET @ByDay        ='no';
+SET @Advertiser_id='ALL';
+SET @ByAccount    ='NO';
+SET @Filters      ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@LastMonths,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit
+-- @InputCommLine: ----5----0----5----0----5----0----5----0--
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='owner'         THEN SET @Owner        =UPPER(@v); END IF;
+   IF lower(@k)='month'         THEN SET @Month        =UPPER(@v); END IF;
+   IF lower(@k)='matrixby'      THEN SET @MatrixBy     =UPPER(@v); END IF;
+   IF lower(@k)='masteraff_id'  THEN SET @MasterAff_id =UPPER(@v); END IF;
+   IF lower(@k)='lastmonths'    THEN SET @LastMonths   =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id' THEN SET @Advertiser_id=UPPER(@v); END IF;
+   IF lower(@k)='currency'      THEN SET @Currency     =UPPER(@v); END IF;
+   IF lower(@k)='byaccount'     THEN SET @ByAccount    =UPPER(@v); END IF;
+   IF lower(@k)='orderby'       THEN SET @OrderBy      =UPPER(@v); END IF;
+   IF lower(@k)='order'         THEN SET @Order        =UPPER(@v); END IF;
+   IF lower(@k)='total'         THEN SET @Total        =UPPER(@v); END IF;
+   IF lower(@k)='totline'       THEN SET @TotLine      =UPPER(@v); END IF;
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+   IF lower(@k)='view'          THEN SET @View         =UPPER(@v); END IF;
+   IF lower(@k)='affiliate_id'  THEN SET @Affiliate_id =UPPER(@v); END IF;
+   IF lower(@k)='byday'         THEN SET @ByDay        =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+   IF lower(@k)='filters'       THEN SET @Filters      =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Owner,@Month,@LastMonths,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine
+                           ,@OrderBy,@Order,@View, @MatrixBy ,@Affiliate_id,@ByDay,InputCommLine; END IF;
+
+-- IF @Affiliate_id="ALL" THEN SET @WhereAffiliate_id=' ';
+-- ELSE SET @Affiliate_id=CONCAT(" AND Affiliate_id='",@Affiliate_id,"'"); END IF;
+
+IF @Owner="ALL" THEN SET @WhereOwner=' ';
+ELSE SET @WhereOwner=CONCAT(" AND Owner='",@Owner,"'"); END IF;
+
+IF @Month='CM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 0 MONTH),7); END IF;
+IF @Month='LM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+-- Obtiene @MultiCurrency y @Currency desde tabla util_settings
+SET @MultiCurrency=(SELECT IFNULL(`Value_01`,'NO')  FROM `util_settings` WHERE Setting='MultiCurrency');
+SET @Currency=     (SELECT IFNULL(`Value_01`,'EUR') FROM `util_settings` WHERE Setting='GridCurrency');
+
+-- ----------------------------------------------------
+-- TRATAMIENTO DE PERIODO DE REPORTE ------------------
+-- ----------------------------------------------------
+SET @PastMonths=LEFT(DATE_SUB(CURDATE(), INTERVAL 6 MONTH),7);
+
+IF   @LastMonths='YES'
+THEN SET @Month_Report=@PastMonths;
+     SET @Compare=">=";
+ELSE SET @Month_Report=@Month;
+     SET @Compare="=";
+END IF;
+-- WHERE LEFT(DATE,7)="',@Month_Report,
+-- WHERE LEFT(DATE,7)',@Compare,'"',@Month_Report,
+-- ----------------------------------------------------
+
+IF lower(@Currency)='original' THEN SET @Currency_result='ALL'; ELSE SET @Currency_result=UPPER(@Currency); END IF;
+
+-- ----------------------------------------------------
+-- TRATAMIENTO DE TOTALES Y ORDER----------------------
+-- ----------------------------------------------------
+-- SET @OrderByClause='';          -- Variable a aplicar
+-- SET @OrderByClauseEnd=' ORDER BY DATE,Affiliate ';
+
+/**************************************************************************************************************/
+
+-- --------------------------------------------------------------------------------------------
+-- Validación
+IF   @Affiliate_id IN ("","ALL","ALLdetail") AND @View='VIEWAFF'
+THEN
+    Select 'data' as Meta,'Affiliate_id mandatory' as '' from dual;
+    LEAVE proc_label;
+END IF;
+
+-- 31.05.2023 Karen
+IF @Advertiser_id="ALL" THEN
+     SET @WhereAdvertiser_id=' ';
+ELSE SET @WhereAdvertiser_id=CONCAT(' AND Advertiser_id=',@Advertiser_id);
+END IF;
+
+-- ----------------------------------------------------
+-- ----------------------------------------------------
+SET @Order_by=' ORDER BY Date ';
+SET @Group_by=' GROUP BY xDate ';
+-- ----------------------------------------------------
+IF @View='VIEWGES' THEN
+   IF @Affiliate_id="ALLdetail"
+   THEN SET @Group_by=' GROUP BY xAffiliate,xDate ';
+        SET @ByDay='YES';
+        SET @Order_by=' ORDER BY Affiliate,Date ';
+   END IF;
+   IF @Affiliate_id="ALL"
+   THEN SET @Group_by=' GROUP BY LEFT(Date,7),xAffiliate ';
+        SET @Order_by=' ORDER BY Affiliate,Date ';
+   END IF;
+END IF;
+
+-- ----------------------------------------------------
+SET @FlagAll=if(@Affiliate_id="ALL","1","0");
+-- ----------------------------------------------------
+
+/************ TRATAMIENTO DE SUBAFILIADOS ******************************************/
+SET @AffiliateGroup=(SELECT group_id FROM account_account_groups
+                     WHERE account_id=@Affiliate_id AND group_id=6);
+IF  @AffiliateGroup IS NULL THEN SET @AffiliateGroup=0; END IF;
+/************ TRATAMIENTO DE MASTER AFFILIATE **************************************/
+SET @MasterAffGroup=(SELECT group_id FROM account_account_groups
+                     WHERE account_id=@MasterAff_id AND group_id=4);
+IF  @MasterAffGroup IS NULL THEN SET @MasterAffGroup=0; END IF;
+
+SET  @Affiliate_list="";
+IF   @MasterAffGroup = 4
+THEN CALL Master_Sub_Affiliate(@MasterAff_id, @Affiliate_list);
+ELSE SET @Affiliate_list=CONCAT("(",@Affiliate_id,")");
+END IF;
+
+/*---------------------------------------------------------------------------------*/
+
+IF @Debug!="NO" THEN SELECT @Affiliate_id,@AffiliateGroup,@MasterAff_id,@MasterAffGroup,@Affiliate_list; END IF;
+
+IF   @View="VIEWMAF" AND @MasterAffGroup!=4
+THEN
+    Select 'data' as Meta,'MasterAff_id must be MAF' as '' from dual;
+    LEAVE proc_label;
+END IF;
+
+SET  @WhereAffiliate_id=CONCAT(' AND Affiliate_id=',@Affiliate_id);
+
+IF   @View='VIEWGES'
+THEN IF @Affiliate_id in ("ALL","ALLdetail") THEN SET @WhereAffiliate_id=""; END IF;
+END IF;
+
+IF   @View='VIEWMAF'
+THEN IF  @Affiliate_id="ALL"
+     THEN SET @WhereAffiliate_id=CONCAT(' AND Affiliate_id IN ',@Affiliate_list);
+     END IF;
+END IF;
+
+SET @DataTable=" ";
+IF   @View='VIEWGES' THEN SET @DataTable="Snapshot_day_by_day_fact1 ";     END IF;
+IF   @View='VIEWAFF' THEN SET @DataTable="Snapshot_day_by_day_fact2 ";     END IF;
+IF   @View='VIEWAFF' AND @AffiliateGroup
+                     THEN SET @DataTable="sub_Snapshot_day_by_day_fact3 "; END IF;
+IF   @View='VIEWMAF' THEN SET @DataTable="sub_Snapshot_day_by_day_fact3 "; END IF;
+
+/*******************************************************************************/
+-- IF @Debug!="NO" THEN LEAVE proc_label; END IF;
+/*******************************************************************************/
+SET SESSION group_concat_max_len = 200000;
+
+SET @SQLbrands=CONCAT('
+    SET @Check_Brands=(SELECT COUNT(DISTINCT Brand) FROM ',@DataTable,'
+    WHERE LEFT(DATE,7)',@Compare,'"',@Month_Report,'" ',@WhereAffiliate_id,'
+    AND (Qualified_Players<>0 OR Signups<>0 OR First_Time_Deposit<>0 OR Net_Revenue<>0));'
+);
+
+IF @Debug!="YES" THEN
+   PREPARE stmt1 FROM @SQLbrands;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+IF ifnull(@Check_Brands,0)=0 THEN
+    Select 'Not enough data to show' from dual;
+    LEAVE proc_label;
+END IF;
+
+-- ----------------------------------------------------------------------------------------------------------
+
+SET @SQLmat=CONCAT('
+    SET @SQLwrkMatrix=(
+    SELECT GROUP_CONCAT(CONCAT("\r\nSUM(CASE WHEN Brand=\'", Brand,"\' THEN `Qualified_Players` ELSE 0 END) AS \'"
+   ,REGEXP_REPLACE(Brand,"([A-Z]+)"," $1",4,0,"c"),"\'") ORDER BY Brand)
+    FROM (
+       SELECT DISTINCT `Brand` FROM ',@DataTable,'
+       WHERE LEFT(DATE,7)',@Compare,'"',@Month_Report,'" ',@WhereAffiliate_id,'
+       AND (Qualified_Players<>0 OR Signups<>0 OR First_Time_Deposit<>0 OR Net_Revenue<>0)
+    ) AS xx);'
+);
+
+IF @Debug!="YES" THEN
+   PREPARE stmt1 FROM @SQLmat;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+-- ----------------------------------------------------------------------------------------------------------
+
+SET @SQLmet=CONCAT('
+    SET @SQLwrkMatrixMeta=
+    (SELECT GROUP_CONCAT("\'width=100px,right=true\'")
+    FROM (
+       SELECT DISTINCT Brand FROM ',@DataTable,'
+       WHERE LEFT(DATE,7)',@Compare,'"',@Month_Report,'" ',@WhereAffiliate_id,'
+       AND (Qualified_Players<>0 OR Signups<>0 OR First_Time_Deposit<>0 OR Net_Revenue<>0)
+    ) AS xx);'
+);
+
+IF @Debug!="YES" THEN
+   PREPARE stmt1 FROM @SQLmet;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+-- ----------------------------------------------------------------------------------------------------------
+
+IF @Debug!="NO" THEN SELECT @View,@AffiliateGroup,@DataTable
+                           ,@MasterAff_id,@MasterAffGroup
+                           ,@Affiliate_list,@WhereAffiliate_id
+                           ,@Check_Brands,@SQLbrands,@SQLmat,@SQLmet
+                           ,@SQLwrkMatrix,@SQLwrkMatrixMeta; END IF;
+
+
+-- ----------------------------------------------------------------------------------------------------------
+
+SET @SQLmeta=concat(
+'(
+SELECT
+   "setting" as `Meta`
+   ,"omit=true"                                          as `Owner`
+   ,"width=100px"                                        as `Date`
+   ,IF(@View="VIEWGES","width=150px","omit=true")        as `Affiliate`
+   ,IF(@MultiCurrency="YES","width=080px","omit=true")   as `Op Curr`
+   ,"width=120px,right=true"                             as `Total`,'
+   ,@SQLwrkMatrixMeta,'
+   ,"width=100px,omit=true"                              as Total1
+   -- ,IF(@MultiCurrency="YES","width=080px","omit=true")            as `Finan Curr`
+   -- ,IF(@MultiCurrency="YES","width=120px,right=true","omit=true") as `Finan Total`
+   ,"omit=yes"                                           as `Affiliate_id`
+	FROM DUAL WHERE @Meta="YES")'
+);
+
+SET @SQLwrkTotal=CONCAT(
+   '(
+    SELECT '
+    ,IF(@Meta="YES","'total' as `Meta`,",""),'
+    Owner
+    ,""                                      as `Date`
+    ," ~~TOTAL~~"                            as `Affiliate`
+    ,Data_currency                           as `Op Curr`
+   ,SUM(`Qualified_Players`)                 AS `Total CPA`,'
+   ,@SQLwrkMatrix
+   ,',\r\nSUM(`Qualified_Players`)           AS `Total CPA1` \r\n
+   ,`Affiliate_id`
+   FROM '
+   ,@DataTable,' WHERE LEFT(DATE,7)',@Compare,'"',@Month_Report,'"'
+   ,@WhereOwner,@WhereAffiliate_id,@WhereAdvertiser_id,'\r\n' -- 31.05.2023
+   );
+
+SET @SQLwrkDetail=CONCAT(
+   '(
+    SELECT '
+    ,IF(@Meta="YES","'data' as `Meta`,",""),'
+    Owner
+   ,IF("',@ByDay,'"="YES",Date,LEFT(Date,7)) as `xDate`
+   ,IF("',@Affiliate_id,'"="ALL",if("',@ByDay,'"="YES","ALL",F.Affiliate),F.Affiliate) as `xAffiliate`
+   ,Data_currency                           as `Op Curr`
+   ,SUM(`Qualified_Players`) AS `Total`,'
+   ,@SQLwrkMatrix
+   ,',\r\nSUM(`Qualified_Players`) AS `Total1` \r\n
+   ,`Affiliate_id`
+   FROM '
+   ,@DataTable
+   ,' F WHERE LEFT(DATE,7)',@Compare,'"',@Month_Report,'"'
+   ,@WhereOwner,@WhereAffiliate_id,@WhereAdvertiser_id,'\r\n' -- 31.05.2023
+   ,@Group_by,' HAVING SUM(`Qualified_Players`)<>0
+   )');
+--
+SET @SQLcheckTotal=CONCAT(
+   'SELECT SUM(Qualified_Players) INTO @Kreg FROM '
+   ,@DataTable,' WHERE LEFT(DATE,7)',@Compare,'"',@Month_Report,'"'
+   ,@WhereOwner,@WhereAffiliate_id,@WhereAdvertiser_id); -- 31.05.2023
+
+SET @SQLnodataTotal='SELECT "data" as `Meta`,"No data to show" as "" FROM DUAL
+UNION ALL SELECT "setting" as `Meta`, "omit=true"  FROM DUAL';   -- 04.09.2023
+--
+IF @Debug!="NO" THEN SELECT @Debug,@View,@Month_Report,@Affiliate_id
+                           ,@SQLmeta,@SQLwrkTotal,@SQLwrkDetail,@SQLcheckTotal; END IF;
+
+IF @MatrixBy='SIGNUP' THEN
+   SET @SQLwrkMatrix    =REPLACE(@SQLwrkMatrix,    "Qualified_Players","Signups");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Qualified_Players","Signups");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Qualified_Players","Signups");
+   SET @SQLcheckTotal   =REPLACE(@SQLcheckTotal,   "Qualified_Players","Signups");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Total CPA","Total Signups");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Total CPA","Total Signups");
+   -- SET @OrderByClauseEnd=REPLACE(@OrderByClauseEnd,"Total CPA","Total Signups");
+END IF;
+
+IF @MatrixBy='FTD' THEN
+   SET @SQLwrkMatrix    =REPLACE(@SQLwrkMatrix,    "Qualified_Players","First_Time_Deposit");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Qualified_Players","First_Time_Deposit");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Qualified_Players","First_Time_Deposit");
+   SET @SQLcheckTotal   =REPLACE(@SQLcheckTotal,   "Qualified_Players","First_Time_Deposit");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Total CPA","Total FTD");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Total CPA","Total FTD");
+   -- SET @OrderByClauseEnd=REPLACE(@OrderByClauseEnd,"Total CPA","Total FTD");
+END IF;
+
+IF @MatrixBy='CLICK' THEN
+   SET @SQLwrkMatrix    =REPLACE(@SQLwrkMatrix,    "Qualified_Players","Clicks");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Qualified_Players","Clicks");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Qualified_Players","Clicks");
+   SET @SQLcheckTotal   =REPLACE(@SQLcheckTotal,   "Qualified_Players","Clicks");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Total CPA","Total Clicks");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Total CPA","Total Clicks");
+   -- SET @OrderByClauseEnd=REPLACE(@OrderByClauseEnd,"Total CPA","Total Clicks");
+END IF;
+
+IF @MatrixBy='NR' THEN
+   SET @SQLwrkMatrix    =REPLACE(@SQLwrkMatrix,    "Qualified_Players","Net_Revenue");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Qualified_Players","Net_Revenue");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Qualified_Players","Net_Revenue");
+   SET @SQLcheckTotal   =REPLACE(@SQLcheckTotal,   "Qualified_Players","Net_Revenue");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Total CPA","Net_Revenue");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Total CPA","Net_Revenue");
+   -- SET @OrderByClauseEnd=REPLACE(@OrderByClauseEnd,"Total CPA","Affiliate");
+END IF;
+-- getCurrencyConversion(`CPA_Value_Affiliate`,`Data_Currency`,@Currency)+getCurrencyConversion(ifnull(`Revenue_Share_Affiliate`,0),`Data_Currency`,@Currency)
+IF @MatrixBy='TotComm' AND @View="VIEWAFF" THEN
+   SET @SQLwrkMatrix    =REPLACE(@SQLwrkMatrix,    "`Qualified_Players`","(getCurrencyConversion(`CPA_Value_Affiliate`,`Data_Currency`,@Currency)+getCurrencyConversion(ifnull(`Revenue_Share_Affiliate`,0),`Data_Currency`,@Currency))");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "`Qualified_Players`","(getCurrencyConversion(`CPA_Value_Affiliate`,`Data_Currency`,@Currency)+getCurrencyConversion(ifnull(`Revenue_Share_Affiliate`,0),`Data_Currency`,@Currency))");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "`Qualified_Players`","(getCurrencyConversion(`CPA_Value_Affiliate`,`Data_Currency`,@Currency)+getCurrencyConversion(ifnull(`Revenue_Share_Affiliate`,0),`Data_Currency`,@Currency))");
+   SET @SQLcheckTotal   =REPLACE(@SQLcheckTotal,   "`Qualified_Players`","(getCurrencyConversion(`CPA_Value_Affiliate`,`Data_Currency`,@Currency)+getCurrencyConversion(ifnull(`Revenue_Share_Affiliate`,0),`Data_Currency`,@Currency))");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Total CPA","Total Commission");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Total CPA","Total Commission");
+   -- SET @OrderByClauseEnd=REPLACE(@OrderByClauseEnd,"Total CPA","Affiliate");
+END IF;
+IF @MatrixBy='TotComm' AND @View="VIEWGES" THEN
+   SET @SQLwrkMatrix    =REPLACE(@SQLwrkMatrix,    "`Qualified_Players`","(`CPA_Value_Gestor`+`Revenue_Share_Gestor`)");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "`Qualified_Players`","(`CPA_Value_Gestor`+`Revenue_Share_Gestor`)");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "`Qualified_Players`","(`CPA_Value_Gestor`+`Revenue_Share_Gestor`)");
+   SET @SQLcheckTotal   =REPLACE(@SQLcheckTotal,   "`Qualified_Players`","(`CPA_Value_Gestor`+`Revenue_Share_Gestor`)");
+   SET @SQLwrkDetail    =REPLACE(@SQLwrkDetail,    "Total CPA","Total Commission");
+   SET @SQLwrkTotal     =REPLACE(@SQLwrkTotal,     "Total CPA","Total Commission");
+   -- SET @OrderByClauseEnd=REPLACE(@OrderByClauseEnd,"Total CPA","Affiliate");
+END IF;
+-- -----
+-- ---------------------------------------------------------------
+
+-- IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQLcheckTotal;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+-- END IF;
+-- ---------------------------------------------------------------
+
+IF @Debug!="NO" THEN SELECT @SQLcheckTotal, @Kreg; END IF;
+IF @Debug!="NO" THEN SELECT @SQLwrkMatrix; END IF;
+IF @Debug!="NO" THEN SELECT @SQLwrkDetail; END IF;
+IF @Debug!="NO" THEN SELECT @SQLwrkTotal;  END IF;
+
+SET @SQL = CONCAT(
+    if(@Total='YES' AND @TotLine='FIRST',@SQLwrkTotal,'')
+   ,if(@Total='YES' AND @TotLine='FIRST',' UNION ALL ','')
+   ,@SQLwrkDetail
+   ,if(@Total='YES' AND @TotLine!='FIRST',' UNION ALL ','')
+   ,if(@Total='YES' AND @TotLine!='FIRST',@SQLwrkTotal,'')
+   ,IF(@Meta='YES',' UNION ALL ','')
+   ,IF(@Meta='YES',@SQLmeta,'')
+   ,@Order_By
+   ,');');
+
+IF @Kreg IS NULL OR @Kreg<1 THEN SET @SQL=@SQLnodataTotal; END IF;
+
+SET @M0=left(date_sub(curdate(), interval 0 month),7);
+SET @M1=left(date_sub(curdate(), interval 1 month),7);
+SET @M2=left(date_sub(curdate(), interval 2 month),7);
+SET @M3=left(date_sub(curdate(), interval 3 month),7);
+SET @M4=left(date_sub(curdate(), interval 4 month),7);
+SET @M5=left(date_sub(curdate(), interval 5 month),7);
+SET @M6=left(date_sub(curdate(), interval 6 month),7);
+SET @M7=left(date_sub(curdate(), interval 7 month),7);
+SET @M2=left(date_sub(curdate(), interval 2 month),7);
+
+SET @Dat0='CPA';
+SET @Dat1='Signup',@Dat1a='Sign Ups';
+SET @Dat2='FTD';
+SET @Dat3='Click',@Dat3a='Clicks';
+IF @View="VIEWGES" THEN SET @Dat4='NR'; ELSE SET @Dat4=''; END IF; -- Net Rev no se muestra en Afiliado
+SET @Dat5='TotComm',@Dat5a='Commission';
+
+SET @SQL_Affiliate_list=CONCAT(
+   'WITH Affiliate_list as (
+    SELECT
+       `Affiliate`
+      ,`Affiliate_id`
+      ,SUM(`Qualified_Players`) AS "CPA"
+      ,count(*) AS "Rows"
+      FROM '
+   ,@DataTable,'
+    WHERE LEFT(DATE,7)',@Compare,'"',@Month_Report,'"'
+   ,@WhereOwner,@WhereAffiliate_id,@WhereAdvertiser_id,'\r\n' -- 31.05.2023
+   ,'GROUP BY `Affiliate`,`Affiliate_id` HAVING SUM(`Qualified_Players`)<>0
+   )');
+
+
+SET @SQLfilters=CONCAT(
+@SQL_Affiliate_list,
+'
+(SELECT "7" as "Korder","Affiliate" AS "Key",`Affiliate`    AS "Value","Affiliate_id"    AS `CallKey`,`Affiliate_id` AS "CallValue","" AS "Rows"
+  FROM Affiliate_list) UNION ALL
+(SELECT "1","Month"   ,@M0              ,"Month"       ,@M0   ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1","Month"   ,@M1              ,"Month"       ,@M1   ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1","Month"   ,@M2              ,"Month"       ,@M2   ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1","Month"   ,@M3              ,"Month"       ,@M3   ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1","Month"   ,@M4              ,"Month"       ,@M4   ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1","Month"   ,@M5              ,"Month"       ,@M5   ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1","Month"   ,@M6              ,"Month"       ,@M6   ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1","Month"   ,@M7              ,"Month"       ,@M7   ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1","Month"   ,"Last 6 months"  ,"LastMonths" ,"YES" ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "3","Criteria","Data By Day"    ,"ByDay"       ,"YES" ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "3","Criteria","ALL: detail by day","Affiliate_id","ALLdetail" ,"" AS "Rows" FROM DUAL where @View="VIEWGES") UNION ALL
+(SELECT "5","Data"    ,@Dat0            ,"MatrixBy"    ,@Dat0 ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "5","Data"    ,@Dat1a           ,"MatrixBy"    ,@Dat1 ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "5","Data"    ,@Dat2            ,"MatrixBy"    ,@Dat2 ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "5","Data"    ,@Dat3a           ,"MatrixBy"    ,@Dat3 ,"" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "5","Data"    ,@Dat5a           ,"MatrixBy"    ,@Dat5 ,"" AS "Rows" FROM DUAL)
+ORDER BY 1, CASE WHEN `CallKey`="Affiliate_id"  THEN Value ELSE "1" END  ASC,
+				CASE WHEN `CallKey`!="Affiliate_id" THEN Value ELSE "1" END  DESC
+;');
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Dash_BrandMatrix(' '); -- No devolverá nada porque asume ViewAFF y Affiliate_id=9999999
+call Dash_BrandMatrix('View=VIEWGES,debug=ye');
+call Dash_BrandMatrix('View=VIEWGES,Affiliate_id=ALLdetail,debug=ye');
+call Dash_BrandMatrix('View=VIEWGES,Month=2022-11,OrderBy=CPA,meta=yes,debug=no');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=39,Month=lm,ByDay=yes,filters=yes,debug=ye');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=ALL,Month=lm,ByDay=yes,filters=yes,debug=yeS');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=ALL,ByDay=yes,Month=2022-08,meta=yes');
+call Dash_BrandMatrix('View=ViewAFF,Affiliate_id=ALL,ByDay=yes'); --  ERROR Para View=viewAFF Default Affiliate_id=9999999
+call Dash_BrandMatrix('View=ViewAFF,Month=2022-12,Affiliate_id=39,ByDay=yes,MatrixBy=cpa,meta=yes,filters=yes,debug=no');
+
+call Dash_BrandMatrix('View=ViewAFF,Month=2023-07,Affiliate_id=39,ByDay=yes,MatrixBy=ftd,meta=yes,debug=no');
+call Dash_BrandMatrix('View=ViewAFF,Month=2022-12,Affiliate_id=39,ByDay=yes,MatrixBy=click,meta=yes,debug=no');
+call Dash_BrandMatrix('View=ViewGES,Month=LM,debug=yes');
+call Dash_BrandMatrix('View=ViewGES,filters=yes,debug=non');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=512,filters=ye,debug=ye');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=39,LastMonths=YES,debug=ye');
+call Dash_BrandMatrix('View=ViewAFF,Month=LM,Affiliate_id=39,MatrixBy=ftd,meta=yes,debug=ye');
+call Dash_BrandMatrix('View=ViewAFF,Month=LM,Affiliate_id=39,MatrixBy=totcomm,meta=yes,debug=ye');
+-- sub/mafcall Dash_BrandMatrix('View=ViewAFF,Month=LM,Affiliate_id=829,MatrixBy=totcomm,debug=ye');
+call Dash_BrandMatrix('View=ViewMAF,Month=LM,debug=ye'); -- ERROR falta MasterAff_id
+call Dash_BrandMatrix('View=ViewMAF,MasterAff_id=39,Month=LM,debug=ye'); -- ERROR MasterAff_id no es MAF
+call Dash_BrandMatrix('View=ViewMAF,MasterAff_id=440,Month=LM,debug=ye');
+call Dash_BrandMatrix('View=ViewMAF,MasterAff_id=440,Month=LM,filters=yes,debug=ye');
+call Dash_BrandMatrix('View=ViewGES,MasterAff_id=440,Month=LM,filters=yes,debug=ye');
+call Dash_BrandMatrix('View=ViewAFF,Affiliate_id=469,Month=lm,ByDay=yes,filters=ye,meta=YEs,debug=ye');
+
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=all,Month=CM,filters=ye,meta=yes,debug=yes');
+call Dash_BrandMatrix('View=ViewAFF,Month=lm,Affiliate_id=39,ByDay=yes,MatrixBy=totcomm,meta=yes,debug=ye');
+*/

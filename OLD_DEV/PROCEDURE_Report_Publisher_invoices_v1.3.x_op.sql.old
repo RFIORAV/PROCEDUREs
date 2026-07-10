@@ -1,0 +1,366 @@
+/*
+PROCEDURE_Report_Publisher_invoices_v1.sql - Report Invoices and Payment Publishers (campaign_publisher_invoice y campaign_publisher_receivable)
+
+Descripción:
+  Procedimiento Report_Publisher_invoices.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+DataFrom        =[Invoices | Payments]. OPCIONAL. Default=Invoices
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Category        =[ALL | Invoice | Proforma]. OPCIONAL. Default=ALL
+Invoiced_Month  =[ALL | AAAA-MM ]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Invoice_id      =[ALL | id de Invoice]. OPCIONAL. Default=ALL. 
+Status_id       =[ALL | 1 | 0 | N]. OPCIONAL. Default=ALL. 1=Active 0=Inactive 4=Paused 6=Paused NM N=Other inactiv
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+ 
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_Publisher_invoices('debug=ye'); -- Devuelve todas las MS
+call Report_Publisher_invoices('debug=ye,filters=yes');
+call Report_Publisher_invoices('debug=ye,filters=no,status=0');
+
+18.10.2024 V1     Primera versión operativa
+04.03.2025        fix INNER JOIN x LEFT JOIN
+05.03.2025 v1.1   Cambio de diseño de campaign_publisher_invoice para soportar Proforma
+14.04.2025        Agregada columna `Account`
+13.08.2025 v1.2   Cambio de ORDER BY para que se ordene por `Invoiced Month` desc,`Category`,`Invoice Number`,`Publisher`
+05.09.2025 v1.2.1 Agregada columna `Brand`
+24.02.2026 v1.3   Agregadas columnas `Invoice Date` y `Payment Date`
+10.04.2026 v1.4   Meta/filtros: etiqueta de nombre publisher (grid) Publisher -> Operator
+*/
+
+DROP PROCEDURE IF EXISTS Report_Publisher_invoices;
+-- DROP PROCEDURE IF EXISTS Report_Publisher_invoices_dev;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Publisher_invoices`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Publisher invoices'
+
+proc_label:BEGIN
+DECLARE v_Version            VARCHAR(30);
+DECLARE v_CurrentDay         DATE;
+DECLARE v_Month              VARCHAR(7);
+DECLARE v_Owner              VARCHAR(30);
+DECLARE v_DataFrom           VARCHAR(20);
+DECLARE v_Category           VARCHAR(20);
+DECLARE v_Publisher_id       VARCHAR(30);
+DECLARE v_Invoice_id         VARCHAR(30);
+DECLARE v_Invoiced_Month     VARCHAR(20);
+DECLARE v_Status_id          VARCHAR(20);
+DECLARE v_Debug              VARCHAR(20);
+DECLARE v_Filters            VARCHAR(10);
+DECLARE v_Meta               VARCHAR(10);
+DECLARE v_InputCommLine      VARCHAR(300);
+DECLARE v_e                  INT;
+DECLARE v_c                  INT;
+DECLARE v_k                  VARCHAR(100);
+DECLARE v_v                  VARCHAR(250);
+DECLARE v_WhereOwner         VARCHAR(200);
+DECLARE v_WherePublisher     VARCHAR(200);
+DECLARE v_WhereInvoice_id    VARCHAR(200);
+DECLARE v_WhereInvoiced_Month VARCHAR(200);
+DECLARE v_WhereStatus        VARCHAR(200);
+DECLARE v_WhereCategory      VARCHAR(200);
+DECLARE v_Count              INT;
+DECLARE v_CTE_Invoices       LONGTEXT;
+DECLARE v_CTE_Payments       LONGTEXT;
+DECLARE v_SQLmeta_Invoices   LONGTEXT;
+DECLARE v_SQLmeta_Payments   LONGTEXT;
+DECLARE v_SQL                LONGTEXT;
+DECLARE v_Month_INI          VARCHAR(7);
+DECLARE v_SQLfilters         LONGTEXT;
+
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET v_Version         ='v1.4 10.04.2026';
+SET v_CurrentDay      =curdate();
+SET v_Month           =left(curdate(),7);
+SET v_Owner           ='ALL';
+SET v_DataFrom        ='Invoices';
+SET v_Category        ='ALL';
+SET v_Publisher_id    ='ALL';
+SET v_Invoice_id      ='ALL';
+SET v_Invoiced_Month  ='ALL';
+SET v_Status_id       ='ALL';
+SET v_Debug           ='NO';
+SET v_Filters         ='NO';
+SET v_Meta            ='YES';
+
+SET v_InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET v_InputCommLine=replace(v_InputCommLine,' ','');  -- Elimina espacios
+SET v_InputCommLine=replace(v_InputCommLine,'"','');  -- Elimina comillas
+
+IF v_Debug!="NO" THEN SELECT v_InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE v_InputCommLine>' ' DO
+-- v_InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- v_InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET v_e=INSTR(v_InputCommLine,'=');    				   -- 6
+   SET v_c=INSTR(v_InputCommLine,','); 					   -- 14
+   SET v_k=SUBSTRING(v_InputCommLine,1,v_e-1); 			   -- Month
+   SET v_v=SUBSTRING(v_InputCommLine,v_e+1,v_c-(v_e+1)); 	-- 2022-08
+   SET v_InputCommLine=SUBSTRING(v_InputCommLine,v_c+1);
+   SET v_k=TRIM(v_k);
+   SET v_v=TRIM(v_v);
+
+   IF lower(v_k)='datafrom'        THEN SET v_DataFrom      =UPPER(v_v); END IF;
+   IF lower(v_k)='owner'           THEN SET v_Owner         =UPPER(v_v); END IF;
+   IF lower(v_k)='publisher_id'    THEN SET v_Publisher_id  =UPPER(v_v); END IF;
+   IF lower(v_k)='invoice_id'      THEN SET v_Invoice_id    =UPPER(v_v); END IF;
+   IF lower(v_k)='category'        THEN SET v_Category      =UPPER(v_v); END IF;
+   IF lower(v_k)='invoiced_month'  THEN SET v_Invoiced_Month=UPPER(v_v); END IF;
+   IF lower(v_k)='status_id'       THEN SET v_Status_id     =      v_v;  END IF;
+   IF lower(v_k)='debug'           THEN SET v_Debug         =UPPER(v_v); END IF;
+   IF lower(v_k)='filters'         THEN SET v_Filters       =UPPER(v_v); END IF;
+   IF lower(v_k)='meta'            THEN SET v_Meta          =UPPER(v_v); END IF;
+
+END WHILE;
+
+IF v_Debug!="NO" THEN SELECT v_DataFrom,v_Category,v_Month,v_Filters,v_Owner,v_Publisher_id,v_Invoice_id,v_Debug,v_Meta,InputCommLine; END IF;
+
+SET v_WhereOwner='';
+SET v_WherePublisher='';
+SET v_WhereInvoice_id='';
+SET v_WhereInvoiced_Month='';
+SET v_WhereStatus='';
+SET v_WhereCategory='';
+
+IF v_Owner         !="ALL" THEN SET v_WhereOwner         =CONCAT(" AND i.Owner_id=",v_Owner);                  END IF;
+IF v_Publisher_id  !="ALL" THEN SET v_WherePublisher     =CONCAT(" AND i.Publisher_id   =",v_Publisher_id );   END IF;
+IF v_Category      !="ALL" THEN SET v_WhereCategory      =CONCAT(" AND i.Category   ='",v_Category,"'");       END IF;
+IF v_Status_id     !="ALL" THEN SET v_WhereStatus        =CONCAT(" AND i.`Status_id`    =",v_Status_id );      END IF;
+IF v_Invoiced_Month!="ALL" THEN SET v_WhereInvoiced_Month=CONCAT(" AND i.`Invoiced_Month`='",v_Invoiced_Month,"'" ); END IF;
+IF v_Invoice_id    !="ALL" 
+THEN SET v_WhereInvoice_id=CONCAT(" AND i.id=",v_Invoice_id );
+     SET v_WhereOwner='';
+     SET v_WherePublisher='';
+     SET v_WhereInvoiced_Month='';
+     SET v_DataFrom="PAYMENTS";
+END IF;
+
+IF v_Debug!="NO" THEN SELECT v_WhereOwner,v_WhereCategory,v_WhereStatus,v_WherePublisher,v_WhereInvoice_id,v_WhereInvoiced_Month; END IF;
+
+SET v_Count=0;
+
+/**************************************************************************************************************/
+
+SET v_CTE_Invoices=CONCAT('
+WITH Main_Table_Data as (
+SELECT i.id
+      ,i.`Category`
+      ,i.`Status`
+      ,i.`Owner_id`
+      ,i.`Owner`           as OwnerName
+      ,i.`Publisher_id`
+      ,i.`Publisher`           AS `Operator`
+      ,i.`Invoice_address`  
+      -- ,i.`Brand`
+      -- ,i.`Account`
+      ,i.`Invoiced_Month`
+      ,i.`Invoice_Number`
+      ,i.`Date`
+      ,i.`Due_Date`
+      ,i.`Paymt_Date`       
+      ,CASE WHEN i.`Category`="Proforma" 
+            THEN "--" 
+            ELSE FORMAT(i.`Ammount`,2)
+            END            AS `Invoice Total`      
+      ,i.`Total_Commission` 
+      ,CASE WHEN i.`Category`="Proforma" 
+            THEN "--" 
+            ELSE FORMAT(i.`Ammount`-i.`Total_Commission`,2)
+            END            AS `Invoice Diff` 
+      ,i.`Currency`
+      ,i.`Remarks`         as `Invoice details`              
+      ,i.`CPA`              
+      ,i.`CPA_Value`        
+      ,i.`Net_Revenue`      
+      ,i.`net_RS_Val`       
+      ,CASE WHEN i.`Category`="Proforma" 
+            THEN "--" 
+            ELSE CASE WHEN i.`Gen_invoice`!=1 THEN "No" ELSE "Yes" END
+            END            AS `Gen_invoice`
+      ,CASE WHEN i.`Category`="Proforma" 
+            THEN "--" 
+            ELSE CASE WHEN i.`Generated`!=1 THEN "No" ELSE "Yes" END
+            END            AS `Generated`           
+      ,i.`Invoice_File` 
+      ,LEFT(i.`Last_Update`,16) as `Last_Update`
+      ,o.`username` as `User`
+FROM `campaign_publisher_invoice` i
+-- LEFT JOIN campaign_publisher  p     ON p.id=i.Publisher_id 
+-- LEFT JOIN account_account     a     ON a.id=i.Owner_id     
+LEFT JOIN account_account     o     ON o.id=i.Operator     
+WHERE 1=1 '
+   ,v_WhereOwner
+   ,v_WhereCategory
+   ,v_WherePublisher
+   ,v_WhereInvoiced_Month
+   ,v_WhereStatus
+,')
+');
+
+SET v_CTE_Payments=CONCAT('
+WITH Main_Table_Data as (
+SELECT r.id,r.`Status`,i.Owner,a.`username` as OwnerName
+      ,i.Publisher_id,p.`Advertiser_Name` as `Operator`
+      ,i.`Invoiced_Month`,i.`Invoice_Number`,i.`Date` `Inv Date`
+      ,r.`Bank_account`,r.`Date` `Pay Date`
+      ,format(r.`Gross_Ammount`,2),r.`Transfer_Currency`
+      ,format(r.`Net_Ammount`,2),r.`Currency`
+      ,r.`Remarks`,left(r.`Last_Update`,16) as `Last_Update`,o.`username` as `User`
+FROM `campaign_publisher_receivable` r
+INNER JOIN `campaign_publisher_invoice` i ON i.id=r.`Invoice_id`
+LEFT  JOIN campaign_publisher  p     ON p.id=i.Publisher_id      -- 04.03.2025
+LEFT  JOIN account_account     a     ON a.id=i.Owner             -- 04.03.2025
+LEFT  JOIN account_account     o     ON o.id=r.Operator          -- 04.03.2025
+WHERE 1=1 '
+   ,v_WhereOwner
+   ,v_WherePublisher
+   ,v_WhereInvoice_id
+   ,v_WhereStatus
+,')
+');
+
+SET v_SQLmeta_Invoices=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"width=80px,action=2"     as `Action`
+   ,"omit=yes"                as `id`
+   ,"width=100px,colorBg=[Invoice:green;Proforma:orange]" AS `Category`    
+   ,"width=080px"             as `Status`
+   ,"omit=yes"                as `Owner_id`
+   ,"width=100px"             as `Owner`
+   ,"omit=yes"                as `Publisher_id`
+   ,"width=130px"             as `Operator`
+   ,"width=100px,tooltip=yes" as `Invoice address` 
+   -- ,"width=100px"             as `Brand`
+   -- ,"width=100px"             as `Account`
+   ,"width=100px"             as `Invoiced Month`
+   ,"width=100px"             as `Invoice Number`
+   ,"width=100px"             as `Invoice Date`
+   ,"width=100px"             as `Due Date`
+   ,"width=100px"             as `Payment Date`
+   ,"width=100px,right=yes"   as `Invoice Total`
+   ,"width=100px,right=yes"   as `Proforma Total`
+   ,"width=100px,right=yes"   as `Invoice Diff`
+   ,"width=100px"             as `Currency`
+   ,"width=200px,tooltip=yes" as `Invoice details`
+   ,"width=100px,right=yes"   as `CPA`             
+   ,"width=100px,right=yes"   as `CPA Value`       
+   ,"width=100px,right=yes"   as `Net Revenue`     
+   ,"width=100px,right=yes"   as `net RS_Val`      
+   ,"width=100px,center=yes"  as `Generate invoice`     
+   ,"width=100px,center=yes"  as `Generated`       
+   ,"width=100px,tooltip=yes" as `Invoice File`       
+   ,"width=130px"             as `Last Update`
+   ,"width=100px"             as `User`
+FROM DUAL WHERE "',v_Meta,'"="YES")
+UNION ALL '
+);
+
+SET v_SQLmeta_Payments=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"width=80px,action=2"   as `Action`
+   ,"omit=yes"              as `id`
+   ,"omit=yes"              as `Status`
+   ,"omit=yes"              as `Owner_id`
+   ,"omit=yes"              as `Owner`
+   ,"omit=yes"              as `Publisher_id`
+   ,"omit=yes"              as `Operator`
+   ,"omit=yes"              as `Invoiced Month`
+   ,"width=100px"           as `Invoice Number`
+   ,"width=100px"           as `Invoice Date`
+   ,"width=100px"           as `Bank account`
+   ,"width=100px"           as `Date Payment`
+   ,"width=100px,right=yes" as `Gross Amount`
+   ,"width=100px"           as `Transfer Currency`
+   ,"width=100px,right=yes" as `Credited Amount`
+   ,"width=100px"           as `Credited Currency`
+   ,"width=100px"           as `Remarks`
+   ,"width=130px"           as `Last Update`
+   ,"width=100px"           as `User`
+FROM DUAL WHERE "',v_Meta,'"="YES")
+UNION ALL '
+);
+
+SET v_SQL=CONCAT(
+IF( v_DataFrom="PAYMENTS",v_CTE_Payments,v_CTE_Invoices),
+IF( v_DataFrom="PAYMENTS",v_SQLmeta_Payments,v_SQLmeta_Invoices),
+'
+SELECT "data" as `Meta`,"..." as `Action`,
+   MT.*
+FROM Main_Table_Data MT
+ORDER BY `Invoiced Month` desc,`Category`,`Invoice Number`,`Operator`
+;'
+);
+
+-- IF @DataFrom="PAYMENTS" THEN SET @SQL=(REPLACE(@SQL,"_Invoices","_Payments")); END IF;
+
+-- WHERE 1=1 '
+--    ,@WhereStat_final,
+-- ------------------------------------------------------------
+
+SET v_Month_INI=left(DATE_SUB(CURDATE(), INTERVAL 12 MONTH),7);
+
+SET v_SQLfilters=CONCAT(
+v_CTE_Invoices,'
+(SELECT "01" as "Korder","Owner" AS "Key",`OwnerName` AS "Value","Owner" AS `CallKey`,`Owner_id` AS "CallValue",COUNT(*) AS "Rows"
+                                                                                     FROM Main_Table_Data GROUP BY `Owner_id`) UNION ALL
+(SELECT "03","Category",`Category`,"Category" ,`Category`,"" FROM Main_Table_Data WHERE `Invoiced_Month`>="',v_Month_INI,'"  
+                                                                                     GROUP BY `Category`) UNION ALL
+(SELECT "05","Invoiced Month",`Invoiced_Month`,"Invoiced_Month" ,`Invoiced_Month`,"" FROM Main_Table_Data WHERE `Invoiced_Month`>="',v_Month_INI,'"  
+                                                                                     GROUP BY `Invoiced_Month`) UNION ALL
+(SELECT "75","Operator",`Operator`,"Publisher_id" ,`Publisher_id`              ,COUNT(*) AS K FROM Main_Table_Data GROUP BY `Operator`)
+ORDER BY 1, case when `CallKey`="Invoiced_Month" then `CallValue` else "" end desc, 3
+;');
+/*
+SELECT i.id,i.`Status`,i.Owner,a.`username` as OwnerName,i.Publisher_id,p.`Advertiser_Name` as Publisher
+      ,i.`Invoiced_Month`,i.`Invoice_Number`,i.`Date`,i.`Due_Date`
+      ,i.`Ammount`,i.`Currency`,i.`Remarks`,left(i.`Last_Update`,16) as `Last_Update`,i.`Operator`
+*/
+IF v_Filters="YES" THEN SET v_SQL=v_SQLfilters; END IF;
+
+IF v_Debug!="NO" THEN SELECT v_SQLfilters; END IF;
+IF v_Debug!="NO" THEN SELECT v_SQL; END IF;
+
+IF v_Debug != "YES" THEN
+   set @v_SQL=v_SQL;
+	PREPARE stmt1 FROM @v_SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/* 
+
+call Report_Publisher_invoices('debug=ye'); -- Devuelve todas las MS
+call Report_Publisher_invoices('debug=ye,filters=yeS');
+call Report_Publisher_invoices('debug=ye,DataFrom=Payments');
+call Report_Publisher_invoices('debug=ye,filters=no,Category=proforma');
+call Report_Publisher_invoices('debug=ye,filters=no,Invoice_id=10');
+call Report_Publisher_invoices('debug=ye,filters=no,Invoiced_Month=2024-01');
+*/

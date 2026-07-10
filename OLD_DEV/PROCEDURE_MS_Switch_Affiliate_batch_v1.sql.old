@@ -1,0 +1,220 @@
+/* PROCEDURE_MS_Switch_Affiliate_batch.sql
+
+
+Descripción:
+  Procedimiento MS_MS_Switch_Affiliate_batch.
+Funcionalidades principales:
+
+Keys:
+Accounts_origen = [valor]. Parámetro de entrada.
+Account_destino = [valor]. Parámetro de entrada.
+Product = [valor]. Parámetro de entrada.
+Debug = [valor]. Parámetro de entrada.
+
+- Migración masiva de Marketing Sources: Permite transferir múltiples fuentes de marketing desde varias cuentas origen a una cuenta destino
+- Validación de actividad: Solo migra MS con más de 30 jugadores calificados en los últimos 3 meses
+- Prevención de duplicados: Verifica que no existan registros duplicados en la cuenta destino antes de la migración
+- Actualización automática de estados: Marca las fuentes migradas como inactivas en la cuenta origen
+- Gestión de fechas: Establece fechas de validez futuras para asegurar una transición suave
+
+Características técnicas:
+
+- Procesamiento por lotes mediante cursores para manejo eficiente de múltiples registros
+- Implementación de manejo de errores con CONTINUE HANDLER
+- Modo Debug para verificación previa de registros afectados
+- Validaciones múltiples:
+  * Verificación de actividad histórica
+  * Control de duplicados
+  * Estado de agregación válido
+- Actualización atómica con LIMIT 1 para garantizar integridad
+- Trazabilidad mediante descripción automática de cambios
+- Preservación de información crítica: códigos de afiliado, canales y deals
+
+Test:
+CUENTAS --------------------------------------------------------------------------
+id  Username             Publisher_id Advertiser_Name Advertiser_id Advertiser_Name
+26  EAFFGB               16           Better          16            GoldBet
+28  EAFFGBsport1         16           Better          16            GoldBet
+45  EAFFGB2              16           Better          16            GoldBet
+69  EAffGBPro1           16           Better          16            GoldBet
+85  AvetusS1             16           Better          16            GoldBet
+87  Eaffgbpro2           16           Better          16            GoldBet
+92  EA2Casino            16           Better          16            GoldBet
+231 WebwiseGoldSport     16           Better          16            GoldBet
+232 WebwiseGoldCasino    16           Better          16            GoldBet
+27  EAFFGBsport2         16           Better          16            GoldBet        <Account_destiono
+86  AvetusC1             16           Better          16            GoldBet        <Account_destiono
+229 Webwise_Casino       16           Better          67            Lottomatica
+230 Webwise_Sport        16           Better          67            Lottomatica
+110 EALottomaticaSport   16           Better          67            Lottomatica    <Account_destiono
+111 EALottomaticaCasino  16           Better          67            Lottomatica    <Account_destiono
+34  fullmoon1S           17           PlanetWin365    17            PlanetWin365
+35  fullmoon2S           17           PlanetWin365    17            PlanetWin365
+36  fullmoon1C           17           PlanetWin365    17            PlanetWin365
+37  fullmoon2C           17           PlanetWin365    17            PlanetWin365
+236 webwise_1C           17           PlanetWin365    17            PlanetWin365
+237 webwise              17           PlanetWin365    17            PlanetWin365
+   
+   CALL MS_MS_Switch_Affiliate_batch('26,28,45,69,85,87,92',86,'casino','yes');
+   CALL MS_MS_Switch_Affiliate_batch('26,28,45,69,85,87,92',27,'sport','yes');
+   CALL MS_MS_Switch_Affiliate_batch('229,230',111,'casino','yes');
+   CALL MS_MS_Switch_Affiliate_batch('229,230',110,'sport','yes');
+   CALL MS_MS_Switch_Affiliate_batch('34,35,36,37,236,237',86,'casino','yes');
+
+11.06.2025 v1     Primera versión operativa
+  
+*/
+
+DROP PROCEDURE IF EXISTS MS_Switch_Affiliate_batch;
+
+DELIMITER $$
+
+CREATE PROCEDURE MS_MS_Switch_Affiliate_batch(
+    IN Accounts_origen VARCHAR(1000), -- Lista de IDs separados por comas
+    IN Account_destino INT,
+    IN Product VARCHAR(50),
+    IN Debug VARCHAR(3)
+)
+COMMENT 'Procedimiento MS_MS_Switch_Affiliate_batch.'
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE v_id INT;
+    DECLARE v_code_to_affiliate VARCHAR(50);
+    DECLARE v_product VARCHAR(50);
+    DECLARE v_status VARCHAR(30);
+    DECLARE v_status_id VARCHAR(2);
+    DECLARE v_Stat_aggreg VARCHAR(2);
+    DECLARE v_affiliate_id INT;
+    DECLARE v_channel_id INT;
+    DECLARE v_deal_id INT;
+    DECLARE v_country_deal VARCHAR(2);
+    DECLARE v_product_deal VARCHAR(50);
+    DECLARE v_deal_valid_from DATE;
+    DECLARE v_shortlink VARCHAR(150);
+    DECLARE v_shortlink_id VARCHAR(150);
+    DECLARE v_existing_count INT DEFAULT 0;
+    DECLARE v_username_id INT;
+    
+    -- Cursor para leer registros origen usando IN
+    DECLARE cur_origen CURSOR FOR 
+        SELECT cms.id, cms.Code_To_Affiliate, cms.Product, cms.Status, cms.Status_id, cms.Stat_aggreg, cms.Affiliate_id, 
+               cms.Channel_id, cms.Deal_id, cms.Country_Deal, cms.Product_Deal, 
+               cms.Deal_Valid_From, cms.Shortlink, cms.Shortlink_id,
+               cms.Username_id
+        FROM campaign_marketing_source cms
+        LEFT JOIN campaign_marketing_source cms_dest ON 
+                cms_dest.Username_id = Account_destino
+            AND cms_dest.Affiliate_id = cms.Affiliate_id
+            AND cms_dest.Channel_id = cms.Channel_id
+            AND cms_dest.Product = cms.Product
+            AND cms_dest.Stat_aggreg = '1'
+        WHERE FIND_IN_SET(cms.Username_id, Accounts_origen)
+          AND cms.Stat_aggreg in ('1','4') 
+          AND cms.Product = Product
+          AND cms_dest.id IS NULL -- Asegura que no existe un registro correspondiente en destino
+          AND EXISTS (
+              SELECT 1 
+              FROM Snapshot_day_by_day_fact1 sdbdf
+              WHERE sdbdf.MS_id = cms.id
+                AND sdbdf.Date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+              HAVING SUM(sdbdf.Qualified_Players) > 30
+          );
+    
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    --  Modo Debug: mostrar registros seleccionados ---------------
+    SELECT 'Cuentas origen ' AS 'Info', Accounts_origen AS 'Cuentas','Cuenta destino ', Account_destino;
+    
+    SELECT cms.id as `MS_id`,cms.Username_id as `Accnt_orig`, cms.Code_To_Affiliate, cms.Product, 
+           cms.Status, cms.Status_id, cms.Stat_aggreg, 
+           cms.Affiliate_id, A.username as `Affiliate`,
+           cms.Channel_id, cms.Deal_id, cms.Country_Deal, cms.Product_Deal, 
+           cms.Deal_Valid_From, cms.Shortlink, cms.Shortlink_id
+    FROM campaign_marketing_source cms
+    LEFT JOIN `account_account` `A` ON `A`.`id`  = `cms`.`Affiliate_id`
+    LEFT JOIN campaign_marketing_source cms_dest ON 
+            cms_dest.Username_id = Account_destino
+        AND cms_dest.Affiliate_id = cms.Affiliate_id
+        AND cms_dest.Channel_id = cms.Channel_id
+        AND cms_dest.Product = cms.Product
+        AND cms_dest.Stat_aggreg = '1'
+    WHERE FIND_IN_SET(cms.Username_id, Accounts_origen)
+      AND cms.Stat_aggreg in ('1','4') 
+      AND cms.Product = Product
+      AND cms_dest.id IS NULL
+      AND EXISTS (
+          SELECT 1 
+          FROM Snapshot_day_by_day_fact1 sdbdf
+          WHERE sdbdf.MS_id = cms.id
+            AND sdbdf.Date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+          HAVING SUM(sdbdf.Qualified_Players) > 30)
+    ;
+            
+    SELECT cms.id, cms.Code_To_Affiliate, cms.Product, cms.Status, cms.Status_id, cms.Affiliate_id, 
+           cms.Channel_id, cms.Deal_id, cms.Country_Deal, cms.Product_Deal, 
+           cms.Deal_Valid_From, cms.Shortlink, cms.Shortlink_id
+    FROM campaign_marketing_source cms
+       WHERE Username_id  = Account_destino 
+         AND Affiliate_id = 84 
+         AND Status_id = '1'
+         AND Product = Product;
+    --  -----------------------------------------------------------
+
+    
+    -- Abrir cursor
+    OPEN cur_origen;
+    
+    read_loop: LOOP
+        FETCH cur_origen INTO v_id, v_code_to_affiliate, v_product, v_status, 
+                             v_status_id, v_stat_aggreg, v_affiliate_id, v_channel_id, v_deal_id,
+                             v_country_deal, v_product_deal, v_deal_valid_from,
+                             v_shortlink, v_shortlink_id, v_username_id;
+        
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+
+        IF Debug = 'NO' THEN
+            -- Intentar actualizar UN registro destino
+            UPDATE campaign_marketing_source 
+            SET Code_To_Affiliate = v_code_to_affiliate,
+                  Product           = v_product,
+                  Status            = v_status,
+                  Status_id         = v_status_id,
+                  Affiliate_id      = v_affiliate_id,
+                  Channel_id        = v_channel_id,
+                  Deal_id           = v_deal_id,
+                  Country_Deal      = v_country_deal,
+                  Product_Deal      = v_product_deal,
+                  -- Deal_Valid_From   = v_deal_valid_from,
+                  Deal_Valid_From   = DATE_ADD(CURDATE(), INTERVAL 7 DAY),
+                  Shortlink         = v_shortlink,
+                  Shortlink_id      = v_shortlink_id,
+                  Description       = concat_ws(" ","Batch switch aff",NOW(),"Aff origin:",Affiliate_id) 
+            WHERE Username_id  = Account_destino 
+               AND Affiliate_id = 84 
+               AND Status_id = '1'
+               AND Product = v_product
+            LIMIT 1;
+            
+            -- Si se actualizó correctamente el registro destino, actualizar el registro origen
+            IF ROW_COUNT() > 0 THEN
+                  UPDATE campaign_marketing_source 
+                  SET   Status_id   ='9',
+                        Affiliate_id      = 300, -- Aff_SWAP
+                        Deal_Valid_From   = DATE_ADD(CURDATE(), INTERVAL 7 DAY),
+                        Description =concat_ws(" ","Batch switch aff",NOW(),"Aff origin:",v_affiliate_id), 
+                        -- Shortlink   ='',
+                        Shortlink_id=''
+                  WHERE id = v_id;
+            END IF;
+        END IF;
+        
+    END LOOP;
+    
+    CLOSE cur_origen;
+    
+END$$
+
+DELIMITER ;
+

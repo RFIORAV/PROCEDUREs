@@ -1,0 +1,8 @@
+Modificar el PROCEDURE_Update_auto_from_dbd_manual que está en D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_monthly_comms_gestor_v5.5_incremental.sql
+creando otro file D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_monthly_comms_gestor_v5.6.sql
+para que reciba como parámetro el mes a procesar en formato YYYY-MM
+
+Debe modificarse estas dos líneas para que se utilce CURDATE() solo si el parámetro de entrada no viene informado o es inválido:
+SET @LMonth          =LEFT(DATE_SUB(CURDATE(), INTERVAL 3 MONTH),7);
+SET @LMonth_minus1   =LEFT(DATE_SUB(CURDATE(), INTERVAL 4 MONTH),7);
+Tener en cuenta que @LMonth_minus1 es igual a @LMonth menos 1 mes.

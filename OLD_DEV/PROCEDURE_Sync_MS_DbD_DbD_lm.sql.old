@@ -1,0 +1,40 @@
+/* PROCEDURE_Sync_MS_DbD_DbD_lm.sql
+   21.09.2022 V1 Sincroniza una Marketing Source entre Snapshot_day_by_day y Snapshot_day_by_day_lm
+   
+*/
+DROP PROCEDURE IF EXISTS Sync_MS_DbD_DbD_lm;
+
+DELIMITER $$
+CREATE PROCEDURE Sync_MS_DbD_DbD_lm(IN 
+Brand        varchar(50),
+Username     varchar(50),
+Tracker_Name varchar(50)
+)
+   
+   COMMENT 'Sync una Marketing Source entre Snapshot_day_by_day y Snapshot_day_by_day_lm'
+   LANGUAGE SQL
+
+BEGIN
+
+SET @LastMonth=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+/* ("EuroBet","21","WinCasin");
+SET NAMES utf8mb4; -- COLLATION utf8mb4_0900_ai_ci;
+SET @Brand       ='BetClic';
+SET @Username    ='72';
+SET @Tracker_Name='catke0';
+*/
+SET @Brand       =Brand       ;
+SET @Username    =Username    ;
+SET @Tracker_Name=Tracker_Name;
+
+SELECT @Brand,@Username,@Tracker_Name;
+
+-- SELECT * FROM snapshot_day_by_day WHERE LEFT(Date,7)=@LastMonth AND Username=@Username AND Brand=@Brand AND Tracker_Name=@Tracker_Name;
+DELETE FROM snapshot_day_by_day WHERE LEFT(Date,7)=@LastMonth AND Username=@Username AND Brand=@Brand AND Tracker_Name=@Tracker_Name;
+INSERT IGNORE INTO Snapshot_day_by_day 
+   SELECT * FROM Snapshot_day_by_day_lm 
+	WHERE LEFT(Date,7)=@LastMonth AND Username=@Username AND Brand=@Brand AND Tracker_Name=@Tracker_Name
+;
+
+END$$
+DELIMITER ;

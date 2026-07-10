@@ -1,0 +1,126 @@
+Crea el stored procedure Report_Cashflow en D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_Report_Cashflow_v1.x.sql
+siguiendo el estilo de PROCEDURE_Check_Bot_Status_v2.sql D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_InvoiceToPubliser_v1.x.sql 
+
+Tablas de referencia:
+CREATE TABLE `campaign_publisher_invoice` (
+   `id` INT NOT NULL AUTO_INCREMENT,
+   `Category` VARCHAR(80) NULL DEFAULT 'Invoice',
+   `Status` VARCHAR(80) NULL DEFAULT 'Active',
+   `Status_id` TINYINT NULL DEFAULT '1',
+   `Owner` VARCHAR(80) NULL DEFAULT NULL,
+   `Owner_id` INT NULL DEFAULT NULL,
+   `Publisher` VARCHAR(80) NULL DEFAULT NULL,
+   `Publisher_id` INT NULL DEFAULT NULL,
+   `Brand` VARCHAR(80) NULL DEFAULT NULL,
+   `Account` VARCHAR(80) NULL DEFAULT 'all',
+   `Invoiced_Month` VARCHAR(50) NULL DEFAULT NULL,
+   `Invoice_Number` VARCHAR(30) NULL DEFAULT NULL,
+   `Date` DATE NULL DEFAULT NULL COMMENT 'Issued date',
+   `Due_Date` DATE NULL DEFAULT NULL COMMENT 'Due date',
+   `Paymt_Date` DATE NULL DEFAULT NULL COMMENT 'Payment date',
+   `Ammount` DECIMAL(10,2) NULL DEFAULT '0.00',
+   `Currency` VARCHAR(3) NULL DEFAULT 'EUR',
+   `Invoice_address` TINYTEXT NULL DEFAULT NULL,
+   `CPA` INT NULL DEFAULT '0',
+   `CPA_Value` DECIMAL(10,2) NULL DEFAULT '0.00',
+   `Net_Revenue` DECIMAL(10,2) NULL DEFAULT '0.00',
+   `net_RS_Val` DECIMAL(10,2) NULL DEFAULT '0.00',
+   `Total_Commission` DECIMAL(10,2) NULL DEFAULT '0.00',
+   `Gen_invoice` TINYINT NULL DEFAULT '0',
+   `Generated` TINYINT NULL DEFAULT '0',
+   `Remarks` TEXT NULL DEFAULT NULL,
+   `Invoice_File` TEXT NULL DEFAULT NULL COMMENT 'Generated pdf file',
+   `Doc_Saved` DATETIME NULL DEFAULT NULL,
+   `Doc_Sent` DATETIME NULL DEFAULT NULL,
+   `Creation_Date` DATETIME NULL DEFAULT (now()),
+   `Last_Update` DATETIME NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+   `Operator` VARCHAR(30) NULL DEFAULT NULL,
+   PRIMARY KEY (`id`) USING BTREE
+)
+;
+CREATE TABLE `campaign_publisher` (
+   `id` INT NOT NULL AUTO_INCREMENT,
+   `Owner` VARCHAR(30) NULL DEFAULT NULL,
+   `Advertiser_Name` VARCHAR(150) NULL DEFAULT NULL,
+   `Status` VARCHAR(30) NULL DEFAULT NULL,
+   `Status_id` VARCHAR(2) NULL DEFAULT NULL,
+   `Brand_Group` VARCHAR(50) NULL DEFAULT '',
+   `Brand_Group_Acum` TINYINT NULL DEFAULT NULL,
+   `CPA_Limit` VARCHAR(30) NULL DEFAULT '0',
+   `Dominio_Commerciale` VARCHAR(150) NULL DEFAULT NULL,
+   `Affiliate_Manager` VARCHAR(30) NULL DEFAULT NULL,
+   `Commercial_History` TINYTEXT NULL DEFAULT NULL COMMENT 'Direccion para emitir factura',
+   `Pay_Day` VARCHAR(50) NULL DEFAULT NULL,
+   `Category` VARCHAR(50) NULL DEFAULT NULL,
+   `Country` VARCHAR(2) NULL DEFAULT NULL,
+   `Platform_Domain` VARCHAR(250) NULL DEFAULT NULL,
+   `KYC` TINYINT NULL DEFAULT '0',
+   `InvoiceByAccnt` TINYINT NULL DEFAULT '0' COMMENT '1=Fact por accnt',
+   `InvoiceByBrand` TINYINT NULL DEFAULT '0' COMMENT '1=Fact por Brand',
+   `Affiliate_Manager_Email` VARCHAR(30) NULL DEFAULT NULL,
+   `Affiliate_Manager_Phone` VARCHAR(30) NULL DEFAULT NULL,
+   `Affiliate_Manager_Skype` VARCHAR(30) NULL DEFAULT NULL,
+   `Creation_Date` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP),
+   `Last_Update` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP,
+   `Operator` VARCHAR(30) NULL DEFAULT ' ',
+   PRIMARY KEY (`id`) USING BTREE,
+   INDEX `Advertiser_Name` (`Advertiser_Name`, `Owner`) USING BTREE
+)
+;
+
+DROP TEMPORARY TABLE IF EXISTS `tmp_balance_by_affiliate`;
+CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_balance_by_affiliate` (
+   `Meta`               VARCHAR(5) NOT NULL DEFAULT '',
+   `Affiliate_id`       VARCHAR(11) NOT NULL DEFAULT '',
+   `Affiliate`          VARCHAR(100) NULL DEFAULT NULL,
+   `Currency`           VARCHAR(16) NULL DEFAULT NULL,
+   `Estimated`          DECIMAL(20,2) NULL DEFAULT NULL,
+   `Confirmed`          DECIMAL(20,2) NULL DEFAULT NULL,
+   `Confirmed21`        DECIMAL(20,2) NULL DEFAULT NULL,
+   `Financial Currency` VARCHAR(16) NULL DEFAULT NULL,
+   `Financial Confirmed` DECIMAL(20,2) NULL DEFAULT NULL,
+   `Latest_op`          VARCHAR(9) NOT NULL DEFAULT '',
+   `Curr`               VARCHAR(3) NULL DEFAULT NULL,
+   `Withdraw`           VARCHAR(36) NULL DEFAULT NULL,
+   `Status`             VARCHAR(6) NOT NULL DEFAULT '',
+   `last_login`         VARCHAR(16) NULL DEFAULT NULL,
+   `confirmed_today`    DECIMAL(20,2) NULL DEFAULT NULL,
+   `confirmed_days`     DECIMAL(20,2) NULL DEFAULT NULL
+)
+COLLATE='utf8mb4_0900_ai_ci'
+ENGINE=InnoDB
+;
+
+Día de previsto de pago a partir del cierre del mes facturado: 
+- por ejemplo `Pay_Day`="Closed_month+75"
+- por ejemplo `Invoiced_Month`="2026-01"
+- SET Due_date=DATE_ADD(LAST_DAY(CONCAT(Invoiced_Month,'-01')), INTERVAL CAST(SUBSTRING_INDEX(Pay_Day, '+', -1) AS UNSIGNED) DAY;
+
+El sp debe producir un reporte tabular agrupado por Owner y Publisher por 12 meses
+- Utilizando la info de la tabla campaign_publisher_invoice
+- Datos con Invoiced_Month comenzando 3 meses antes de hoy
+- Una columna por mes
+- Incluir datos: `Owner`,`Owner_id`,`Publisher`,`Publisher_id`,`Pay_Day`
+- Hacer un total with rollup por `Owner` indicando en la línea de totales "Total Owner" y un total global llamado "Expected Collections"
+
+- cada línea de campaign_publisher_invoice será sumada a la columna que corresponda según due_date
+-- Si para el mismo Invoiced_Month hay una línea `Category`="Invoice" y otra "Proforma" del mismo Publisher debe considerse solo la "Invoice"
+-- Si la línea tiene fecha de `Paymt_Date` informada, no se toma en cuenta para este análisis
+
+Con la tabla `tmp_balance_by_affiliate` obtenida al ejecutar
+CALL  Report_balance_by_affiliate('tmptable=yes,debug=no');
+Se obtiene la lista saldos de Afiliados (proveedores) de la cual solo interesan los totales
+sin distinguir por afiliado, y los valores `Confirmed` y `Confirmed21` tienen el siguiente significado:
+- `Confirmed` es el saldo exigible que tenemos que pagar a los proveedores (afiliados) el día de hoy. 
+- `Confirmed21` es el saldo que tenemos que pagar a los proveedores (afiliados) y que será exigible
+el día 20 del mes corriente. Si la fecha de hoy es igual o mayor al día 20, el valor a tomar como exigible es 
+`Confirmed`. Si la fecha de hoy es menor al día 20 del mes corriente, el valor a tomar es `Confirmed21`
+- `Estimated` es la cantidad de comisiones que tenemos pendientes de pagar, de las cuales solamente son exigibles 
+en el mes corriente `Confirmed` o `Confirmed21` según sea la fecha de hoy. La diferencia entre `Estimated` y `Confirmed`/`Confirmed21`
+debe considerarse exigible el mes siguiente.
+
+Con la información de la deuda firme a pagar a los proveedores, hay que insertar una línea en el reporte
+de saldos a cobrar con el valor en negativo en el mes corriente para que el total general del reporte
+ahora refleje el cash flow esperado. Esta línea debe aparecer luego de los Owners y antes del total general
+
+Agregar un filtro que permita elegir uno cualquiera de los útimos 6 meses y el nombre de la opción sea "Mes inicial"

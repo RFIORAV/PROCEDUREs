@@ -1,0 +1,79 @@
+/* 
+PROCEDURE Total_FACT1_AFFILIATE_NRbyDay_BrandMatrix() - Sobre FACT1-NR x Month x Affiliate - Matriz por Brand 
+
+   Observaciones: 
+      Columnas Brands variables. 
+      Doble columna de Totales
+      Parámetro ROLLUP se aplica al GROUP BY Owner,Affiliate
+      NO EJECUTAR EN VIEWS DEL AFILIADO
+   
+   Parámetros ( [AffiliateID | ALL] , [Month] , [Owner | ALL] , [ROLLUP | ' '] )
+   
+   Ejemplos:
+      call Total_FACT1_AFFILIATE_NRbyDay_BrandMatrix('ALL','2022-09','ALL','ROLLUP');
+      call Total_FACT1_AFFILIATE_NRbyDay_BrandMatrix('ALL','2022-09','ALL','');
+      call Total_FACT1_AFFILIATE_NRbyDay_BrandMatrix('ALL','2022-06','2','ROLLUP');
+      call Total_FACT1_AFFILIATE_NRbyDay_BrandMatrix('39','2022-08','ALL','');
+
+   04.09.2022 V1
+*/
+DROP PROCEDURE IF EXISTS Total_FACT1_AFFILIATE_NRbyDay_BrandMatrix;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Total_FACT1_AFFILIATE_NRbyDay_BrandMatrix`(IN
+   AffiliateID VARCHAR(50),
+   Month VARCHAR(7),
+   Owner VARCHAR(50),
+   RollUp VARCHAR(6)
+   )
+    COMMENT 'FACT1-NR x [Affiliate/ALL] [Month] x [Owner/ALL] - Matriz por Brand'
+BEGIN
+
+	IF LOWER(AffiliateID)='all' THEN
+   	SET @AffiliateID_from='0';
+      SET @AffiliateID_until='9999999999999';
+   ELSE
+   	SET @AffiliateID_from=CAST(AffiliateID AS UNSIGNED INTEGER);
+      SET @AffiliateID_until=CAST(AffiliateID AS UNSIGNED INTEGER);
+	END IF;
+
+	IF LOWER(ifnull(Owner,'ALL'))='all' THEN
+   	SET @Owner_from='0';
+      SET @Owner_until='9999999999999';
+   ELSE
+   	SET @Owner_from=CAST(Owner AS UNSIGNED INTEGER);
+      SET @Owner_until=CAST(Owner AS UNSIGNED INTEGER);
+	END IF;
+
+	IF Month is not null THEN
+      SET @Month_Report=CONCAT("'",Month,"'");
+   ELSE
+      SET @Month_Report=CONCAT("'",LEFT(curdate(),7),"'");
+	END IF;
+   
+	IF LOWER(ifnull(RollUp,''))='rollup' THEN
+      SET @RollUp='rollup';
+   ELSE
+      SET @RollUp='';
+	END IF;
+   
+   SET SESSION group_concat_max_len = 100000;
+   
+   SET @SQL = CONCAT('SELECT Owner,`Date`,',IF(@AffiliateID_from="0","'All'","Affiliate"),' as Affiliate
+   ,SUM(Net_Revenue) AS `Total`,',
+   (SELECT GROUP_CONCAT(CONCAT("\r\nSUM(CASE WHEN Brand='", Brand,"' THEN `Net_Revenue` ELSE 0 END) AS '",Brand,"'")
+   ORDER BY Brand)
+   FROM (select distinct Brand from Snapshot_day_by_day_fact1
+         where LEFT(DATE,7)=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7) AND Net_Revenue<>0
+   ) AS xx),'
+,SUM(Net_Revenue) AS `Total`
+FROM Snapshot_day_by_day_fact1
+WHERE LEFT(DATE,7)=',@Month_Report,' and Affiliate_id BETWEEN ',@AffiliateID_from,' AND ',@AffiliateID_until,'
+GROUP BY Owner,Date ',IF(@RollUp="","","WITH ROLLUP"),' HAVING SUM(Net_Revenue)<>0');
+   -- SELECT @SQL;
+   PREPARE stmt1 FROM @SQL;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+
+END$$
+DELIMITER ;

@@ -1,0 +1,502 @@
+/* 
+INSTALACIÓN DE SOPORTE PARA TRATAMIENTO DE Rebrandly y Status en CASCADA
+
+-- Conceptos/Campos
+`Stat_effect`     : Status Efectivo (texto descriptivo de Stat_aggreg)
+`Stat_aggreg`     : Código (0/1/4/6/X) del Status Compuesto derivado de la cascada y los demás Status del registro
+`NotUse_StatEf`   : Flag (0/1) para obligar al uso del Status normal en lugar del Status Effectivo en una MS
+                    Impide aplicar el Status derivado de la cascada 
+                    (Por ej: excluir una ms al poner Paused el Advertiser por Cap)
+                    
+-- Campos de Status derivados de otras tablas (creados para evitar conflictos con existentes)
+`Stat_Publ`      = en TABLE `campaign_advertiser`       valor de `Stat_aggreg` de TABLE `campaign_publisher`
+`Stat_Adve`      = en TABLE `campaign_username`         valor de `Stat_aggreg` de TABLE `campaign_advertiser`
+`Stat_Affi`      = en TABLE `account_landing_pages`     valor de `Stat_aggreg` de TABLE `account_account`
+`Stat_Acct`      = en TABLE `campaign_marketing_source` valor de `Stat_aggreg` de TABLE `campaign_username`
+`Stat_Chan`      = en TABLE `campaign_marketing_source` valor de `Stat_aggreg` de TABLE `account_landing_pages`
+
+03.03.2023 V1     Inicial
+04.03.2023 V1.1   Tabla campaign_mkt_source_url
+                  Trigger por Insert de MS
+
+
+/* Agrega campos y tabla antes de modelo para prueba de concepto ---------------------------------------------------------------
+
+ALTER TABLE `campaign_marketing_source` ADD COLUMN `Stat_effect`   VARCHAR(30) NULL DEFAULT "Active" AFTER `Status_id`  ,
+                                        ADD COLUMN `Stat_aggreg`   VARCHAR(2)  NULL DEFAULT "1" AFTER `Stat_effect`     ,
+                                        ADD COLUMN `Stat_Acct`     VARCHAR(2)  NULL DEFAULT "1" AFTER `Stat_aggreg`     ,
+                                        ADD COLUMN `Stat_Chan`     VARCHAR(2)  NULL DEFAULT "1" AFTER `Stat_aggreg`     ,
+                                        ADD COLUMN `NotUse_StatEf` VARCHAR(2)  NULL DEFAULT "0" AFTER `Status_id`       ;
+ALTER TABLE `campaign_advertiser`       ADD COLUMN `Stat_Publ`     VARCHAR(2)  NULL DEFAULT "1" AFTER `Status_id`       ,
+                                        ADD COLUMN `Stat_effect`   VARCHAR(30) NULL DEFAULT "Active" AFTER `Status_id`  ,
+                                        ADD COLUMN `Stat_aggreg`   VARCHAR(2)  NULL DEFAULT "1" AFTER `Stat_effect`     ;
+ALTER TABLE `campaign_username`         ADD COLUMN `Stat_Adve`     VARCHAR(2)  NULL DEFAULT "1" AFTER `Status`          ,
+                                        ADD COLUMN `Stat_effect`   VARCHAR(30) NULL DEFAULT "Active" AFTER `Status`     ,
+                                        ADD COLUMN `Stat_aggreg`   VARCHAR(2)  NULL DEFAULT "1" AFTER `Stat_effect`     ;
+ALTER TABLE `account_landing_pages`     ADD COLUMN `Stat_Affi`     VARCHAR(2)  NULL DEFAULT "1" AFTER `Status_id`       ,
+                                        ADD COLUMN `Stat_effect`   VARCHAR(30) NULL DEFAULT "Active" AFTER `Status_id`  ,
+                                        ADD COLUMN `Stat_aggreg`   VARCHAR(2)  NULL DEFAULT "1" AFTER `Stat_effect`     ;
+*/
+CREATE TABLE IF NOT EXISTS `campaign_mkt_source_url` 
+(
+	`id`               INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`MS_id`            INT(10) UNSIGNED NOT NULL DEFAULT '0',
+	`Stat_MS`          VARCHAR(2)           NULL DEFAULT NULL,
+	`Stat_aggreg`      VARCHAR(2)           NULL DEFAULT NULL,
+	`Stat_effect`      VARCHAR(30)          NULL DEFAULT NULL,
+	`Affiliate_id`     INT(10)              NULL DEFAULT NULL,
+	`Tracker_ID`       VARCHAR(50)          NULL DEFAULT NULL,
+	`Tracklink`        VARCHAR(250)         NULL DEFAULT NULL,
+	`Shortlink`        VARCHAR(150)         NULL DEFAULT NULL,
+	`Shortlink_id`     VARCHAR(150)         NULL DEFAULT NULL,
+	`Tracklink_to_API` VARCHAR(250)         NULL DEFAULT NULL,
+	`Stat_Sent_to_API` TINYINT(3)           NULL DEFAULT '0',
+	`Creation_Date`    TIMESTAMP            NULL DEFAULT CURRENT_TIMESTAMP,
+	`Last_Update`      TIMESTAMP            NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`Operator`         VARCHAR(30)          NULL DEFAULT 'SysOp',
+	PRIMARY KEY (`id`) USING BTREE,
+	UNIQUE INDEX `MS_id` (`MS_id`) USING BTREE
+)
+ENGINE=InnoDB
+;
+
+-- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS campaign_publisher_BEFORE_UPDATE_status_id;
+DELIMITER $$
+--
+CREATE TRIGGER campaign_publisher_BEFORE_UPDATE_status_id BEFORE UPDATE
+ON campaign_publisher FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='v1 03.03.2023';
+SET @UpdateCascada="no";
+
+IF    NEW.`Status_id`!=OLD.`Status_id` THEN  SET @UpdateCascada="yes"; END IF;
+
+SET NEW.Status=(
+   CASE NEW.Status_id
+      WHEN '0' THEN 'Inactive'
+      WHEN '1' THEN 'Active'
+      WHEN '4' THEN 'Paused'
+      WHEN '6' THEN 'Paused auto NM'
+      ELSE 'Other'
+   END
+);
+
+/* Replica Status_id en todas las Brands del Publisher */
+
+IF @UpdateCascada="yes" THEN
+   UPDATE campaign_advertiser
+   SET Stat_Publ=NEW.`Status_id`
+   WHERE Publisher_id=NEW.id
+   ;
+END IF;
+
+END$$
+--
+DELIMITER ;
+
+-- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS campaign_advertiser_BEFORE_UPDATE_status_id;
+DELIMITER $$
+--
+CREATE TRIGGER campaign_advertiser_BEFORE_UPDATE_status_id BEFORE UPDATE
+ON campaign_advertiser FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='v1 03.03.2023';
+SET @Update_Stat_aggreg="no";
+
+IF    NEW.`Status_id`!=OLD.`Status_id` 
+   OR NEW.`Stat_Publ`!=OLD.`Stat_Publ`
+THEN  SET @Update_Stat_aggreg="yes"; 
+END IF;
+
+
+IF @Update_Stat_aggreg="yes" THEN
+   SET NEW.Stat_aggreg=(
+   CASE WHEN NEW.`Status_id`!='1'
+        THEN NEW.`Status_id`
+        ELSE NEW.`Stat_Publ`
+   END
+   );
+END IF;
+
+SET NEW.Stat_effect=(
+   CASE NEW.Stat_aggreg
+      WHEN '0' THEN 'Inactive'
+      WHEN '1' THEN 'Active'
+      WHEN '4' THEN 'Paused'
+      WHEN '6' THEN 'Paused auto NM'
+      ELSE 'Other'
+   END
+);
+
+/* Replica Stat_aggreg todas los Accounts del Brand */
+
+IF @Update_Stat_aggreg="yes" THEN
+   UPDATE campaign_username U
+   SET U.Stat_Adve=NEW.`Stat_aggreg`
+   WHERE U.Advertiser_id=NEW.id and U.Publisher_id=NEW.Publisher_id
+   ;
+END IF;
+
+END$$
+--
+DELIMITER ;
+
+-- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS campaign_username_BEFORE_UPDATE_status_id;
+DELIMITER $$
+--
+CREATE TRIGGER campaign_username_BEFORE_UPDATE_status_id BEFORE UPDATE
+ON campaign_username FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='v1 03.03.2023';
+SET @Update_Stat_aggreg="no";
+
+IF    NEW.`Status_id`!=OLD.`Status_id` 
+   OR NEW.`Stat_Adve`!=OLD.`Stat_Adve`
+THEN  SET @Update_Stat_aggreg="yes"; END IF;
+
+
+IF @Update_Stat_aggreg="yes" THEN
+   SET NEW.Stat_aggreg=(
+   CASE WHEN NEW.`Status_id`!='1'
+        THEN NEW.`Status_id`
+        ELSE NEW.`Stat_Adve`
+   END
+   );
+END IF;
+
+SET NEW.Stat_effect=(
+   CASE NEW.Stat_aggreg
+      WHEN '0' THEN 'Inactive'
+      WHEN '1' THEN 'Active'
+      WHEN '4' THEN 'Paused'
+      WHEN '6' THEN 'Paused auto NM'
+      ELSE 'Other'
+   END
+);
+/* Replica Status_id en todas las MS del Account*/
+
+IF @Update_Stat_aggreg="yes" THEN
+   UPDATE campaign_marketing_source  
+   SET Stat_Acct=NEW.`Stat_aggreg`
+   WHERE Username_id=NEW.id
+   ;
+END IF;
+
+END$$
+--
+DELIMITER ;
+
+-- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS account_account_BEFORE_UPDATE_status_id;
+DELIMITER $$
+--
+CREATE TRIGGER account_account_BEFORE_UPDATE_status_id BEFORE UPDATE
+ON account_account FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='v1 03.03.2023';
+SET @UpdateCascada="no";
+
+IF    NEW.`Status_id`!=OLD.`Status_id` THEN  SET @UpdateCascada="yes"; END IF;
+
+SET NEW.Status=(
+   CASE NEW.Status_id
+      WHEN '0' THEN 'Inactive'
+      WHEN '1' THEN 'Active'
+      WHEN '4' THEN 'Paused'
+      WHEN '6' THEN 'Paused auto NM'
+      ELSE 'Other'
+   END
+);
+
+/* Replica Status_id en todas los Accounts del Brand*/
+
+IF @UpdateCascada="yes" THEN
+   UPDATE account_landing_pages  
+   SET Stat_Affi=NEW.`Status_id`
+   WHERE Account_id=NEW.id
+   ;
+END IF;
+
+END$$
+--
+DELIMITER ;
+
+-- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS account_landing_pages_BEFORE_UPDATE_status_id;
+DELIMITER $$
+--
+CREATE TRIGGER account_landing_pages_BEFORE_UPDATE_status_id BEFORE UPDATE
+ON account_landing_pages FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='v1 03.03.2023';
+SET @UpdateCascada="no";
+
+IF    NEW.`Status_id`!=OLD.`Status_id` 
+   OR NEW.`Stat_Affi`!=OLD.`Stat_Affi`
+THEN  SET @Update_Stat_aggreg="yes"; END IF;
+
+
+IF @Update_Stat_aggreg="yes" THEN
+   SET NEW.Stat_aggreg=(
+   CASE WHEN NEW.`Status_id`!='1'
+        THEN NEW.`Status_id`
+        ELSE NEW.`Stat_Affi`
+   END
+   );
+END IF;
+
+SET NEW.Stat_effect=(
+   CASE NEW.Stat_aggreg
+      WHEN '0' THEN 'Inactive'
+      WHEN '1' THEN 'Active'
+      WHEN '4' THEN 'Paused'
+      WHEN '6' THEN 'Paused auto NM'
+      ELSE 'Other'
+   END
+);
+/* Replica Status_id en todas las MS del Channel */
+
+IF @Update_Stat_aggreg="yes" THEN
+   UPDATE campaign_marketing_source M
+   SET M.Stat_Chan=NEW.`Stat_aggreg`
+   WHERE M.Channel_id=NEW.id AND M.Affiliate_id=NEW.Account_id
+   ;
+END IF;
+
+END$$
+--
+DELIMITER ;
+
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS campaign_marketing_source_AFTER_INSERT_Stat_aggreg;
+
+DELIMITER $$
+--
+CREATE TRIGGER campaign_marketing_source_AFTER_INSERT_Stat_aggreg AFTER INSERT
+ON campaign_marketing_source FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='v1 06.03.2023';
+SET @Update_Stat_aggreg="no";
+
+-- SET @LastKeyInserted = LAST_INSERT_ID()+1;
+
+INSERT INTO `campaign_mkt_source_url` (
+   `MS_id`        
+   ,`Stat_aggreg`  
+   ,`Stat_effect`  
+   ,`Affiliate_id` 
+   ,`Tracker_ID`   
+   ,`Tracklink`    
+   ,`Shortlink`    
+   ,`Shortlink_id` 
+)
+VALUES (
+    -- NEW.`id`
+    NEW.id
+   ,NEW.`Stat_aggreg`  
+   ,NEW.`Stat_effect`  
+   ,NEW.`Affiliate_id` 
+   ,NEW.`Tracker_ID`   
+   ,NEW.`Tracklink`    
+   ,NEW.`Shortlink`    
+   ,NEW.`Shortlink_id`
+);
+
+END$$
+
+DELIMITER ;
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS campaign_marketing_source_BEFORE_INSERT_Stat_aggreg;
+
+DELIMITER $$
+--
+CREATE TRIGGER campaign_marketing_source_BEFORE_INSERT_Stat_aggreg BEFORE INSERT
+ON campaign_marketing_source FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='v1 04.03.2023';
+SET @Update_Stat_aggreg="no";
+
+-- Lee Account y Channels para actualizar su Stat_aggreg
+
+SET NEW.`Stat_Chan`=(SELECT IFNULL(CH.Stat_aggreg,'1') FROM account_landing_pages CH where CH.id=NEW.Channel_id);
+SET NEW.`Stat_Acct`=(SELECT IFNULL(U.Stat_aggreg,'1')  FROM campaign_username U      where U.id=NEW.Username_id);
+
+/* Calcula Stat_aggreg */
+
+-- IF @Update_Stat_aggreg="yes" THEN
+SET NEW.Stat_aggreg=(
+   CASE WHEN IFNULL(NEW.`Status_id`,'1')!='1'
+        THEN NEW.`Status_id`
+        ELSE 
+            CASE WHEN NEW.`Stat_Acct`!='1'
+                 THEN NEW.`Stat_Acct`
+                 ELSE NEW.`Stat_Chan`
+            END
+   END
+   );
+-- END IF;
+
+-- Status_id blocked -- Ignora Stat_aggreg
+IF    NEW.NotUse_StatEf='1' 
+THEN  SET NEW.Stat_aggreg=NEW.`Status_id`;
+END IF;
+
+SET NEW.Stat_effect=(
+   CASE NEW.Stat_aggreg
+      WHEN '0' THEN 'Inactive'
+      WHEN '1' THEN 'Active'
+      WHEN '4' THEN 'Paused'
+      WHEN '6' THEN 'Paused auto NM'
+      ELSE 'Other'
+   END
+);
+
+
+END$$
+
+DELIMITER ;
+
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS campaign_marketing_source_before_update_status;  -- antiguo
+DROP TRIGGER IF EXISTS campaign_marketing_source_BEFORE_UPDATE_Stat_aggreg;
+--
+DELIMITER $$
+
+CREATE TRIGGER campaign_marketing_source_BEFORE_UPDATE_Stat_aggreg BEFORE UPDATE
+ON campaign_marketing_source FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='v1 03.03.2023';
+SET @Update_Stat_aggreg="no";
+
+IF    NEW.`Status_id`!=OLD.`Status_id` 
+   OR NEW.`Stat_Acct`!=OLD.`Stat_Acct` 
+   OR NEW.`Stat_Chan`!=OLD.`Stat_Chan` 
+THEN  SET @Update_Stat_aggreg="yes"; 
+END IF;
+
+/* Calcula Stat_aggreg */
+
+IF @Update_Stat_aggreg="yes" THEN
+   SET NEW.Stat_aggreg=(
+   CASE WHEN NEW.`Status_id`!='1'
+        THEN NEW.`Status_id`
+        ELSE 
+            CASE WHEN NEW.`Stat_Acct`!='1'
+                 THEN NEW.`Stat_Acct`
+                 ELSE NEW.`Stat_Chan`
+            END
+   END
+   );
+END IF;
+
+-- Status_id blocked -- Ignora Stat_aggreg
+IF    NEW.NotUse_StatEf='1' 
+THEN  SET NEW.Stat_aggreg=NEW.`Status_id`;
+END IF;
+
+SET NEW.Stat_effect=(
+   CASE NEW.Stat_aggreg
+      WHEN '0' THEN 'Inactive'
+      WHEN '1' THEN 'Active'
+      WHEN '4' THEN 'Paused'
+      WHEN '6' THEN 'Paused auto NM'
+      ELSE 'Other'
+   END
+);
+
+IF NEW.`Stat_aggreg`!=OLD.`Stat_aggreg` THEN 
+   DELETE FROM `campaign_mkt_source_url` WHERE `MS_id`=NEW.`id`;
+   INSERT INTO `campaign_mkt_source_url` (
+      `MS_id`        
+      ,`Stat_aggreg`  
+      ,`Stat_effect`  
+      ,`Affiliate_id` 
+      ,`Tracker_ID`   
+      ,`Tracklink`    
+      ,`Shortlink`    
+      ,`Shortlink_id` 
+)
+   VALUES (
+       NEW.`id`        
+      ,NEW.`Stat_aggreg`  
+      ,NEW.`Stat_effect`  
+      ,NEW.`Affiliate_id` 
+      ,NEW.`Tracker_ID`   
+      ,NEW.`Tracklink`    
+      ,NEW.`Shortlink`    
+      ,NEW.`Shortlink_id`
+);
+END IF;
+END$$
+--
+DELIMITER ;
+
+-- T E S T S ----------------------------------------------------------------------------------
+/*
+SELECT * FROM campaign_publisher where id=68;
+update campaign_publisher set Status_id='6' where id=68;
+
+SELECT * FROM campaign_advertiser where publisher_id=68;
+SELECT * FROM campaign_username  where publisher_id=68;
+SELECT * FROM campaign_marketing_source where Affiliate_id=39 and Advertiser_id=68;
+
+SELECT * FROM account_account where id=39;
+UPDATE account_account SET Status_id='4' where id=39;
+SELECT * FROM campaign_marketing_source where Affiliate_id=39;
+*/
+
+-- SET INIT STATUS-------------------------------------------------------------------------------
+/*                                                                                                            Stat_aggreg en uso normal
+UPDATE campaign_advertiser    A LEFT JOIN campaign_publisher  P ON P.id=Publisher_id  SET Stat_Publ=IFNULL(P.`Status_id`,"1");
+UPDATE campaign_username      U LEFT JOIN campaign_advertiser A ON A.id=Advertiser_id SET Stat_Adve=IFNULL(A.`Status_id`,"1");
+UPDATE account_landing_pages  L LEFT JOIN account_account     A ON A.id=Account_id    SET Stat_Affi=IFNULL(A.`Status_id`,"1");
+
+-- Calcula Stat_effect
+UPDATE campaign_marketing_source M 
+LEFT JOIN account_landing_pages L ON L.id=Channel_id
+LEFT JOIN campaign_username     U ON U.id=Username_id
+SET M.Stat_Chan=IFNULL(L.`Status_id`,"1")
+   ,M.Stat_Acct=IFNULL(U.`Status_id`,"1")
+   ,M.Stat_aggreg=(
+      CASE  WHEN M.`Status_id`!='1'
+            THEN M.`Status_id`
+            ELSE 
+                  CASE  WHEN M.`Stat_Acct`!='1'
+                        THEN M.`Stat_Acct`
+                        ELSE M.`Stat_Chan`
+                  END
+      END)
+   ,M.Stat_effect=(
+      CASE M.Stat_aggreg
+         WHEN '0' THEN 'Inactive'
+         WHEN '1' THEN 'Active'
+         WHEN '4' THEN 'Paused'
+         WHEN '6' THEN 'Paused auto NM'
+         ELSE 'Other'
+      END)
+where 1=1
+;
+
+*/

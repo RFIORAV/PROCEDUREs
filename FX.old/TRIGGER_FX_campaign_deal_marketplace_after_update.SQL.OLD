@@ -1,0 +1,121 @@
+DROP TRIGGER IF EXISTS forex_deal_marketplace_after_update;
+
+DELIMITER $$
+
+CREATE TRIGGER forex_deal_marketplace_after_update
+AFTER UPDATE
+ON forex_deal_marketplace FOR EACH ROW
+
+BEGIN
+DECLARE `Trigger_generated_on` TEXT DEFAULT '20230124-10.57'; 	
+DECLARE `Aud_Action` TEXT DEFAULT 'Change in: '; 	                              
+IF OLD.`id` != NEW.`id` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'id'); END IF;
+IF OLD.`Owner` != NEW.`Owner` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Owner'); END IF;
+IF OLD.`Deal_Name` != NEW.`Deal_Name` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Deal_Name'); END IF;
+IF OLD.`Description` != NEW.`Description` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Description'); END IF;
+IF OLD.`Deal_Type` != NEW.`Deal_Type` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Deal_Type'); END IF;
+IF OLD.`Currency` != NEW.`Currency` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Currency'); END IF;
+IF OLD.`Status` != NEW.`Status` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Status'); END IF;
+IF OLD.`Status_id` != NEW.`Status_id` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Status_id'); END IF;
+-- IF OLD.`Campaign_id` != NEW.`Campaign_id` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Campaign_id'); END IF;
+IF OLD.`Advertiser_id` != NEW.`Advertiser_id` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Advertiser_id'); END IF;
+IF OLD.`Advertiser_Name` != NEW.`Advertiser_Name` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Advertiser_Name'); END IF;
+IF OLD.`traffic_source` != NEW.`traffic_source` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'traffic_source'); END IF;
+IF OLD.`Product` != NEW.`Product` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Product'); END IF;
+IF OLD.`Baseline` != NEW.`Baseline` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Baseline'); END IF;
+IF OLD.`Valid_From` != NEW.`Valid_From` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Valid_From'); END IF;
+IF OLD.`CPA_Value` != NEW.`CPA_Value` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'CPA_Value'); END IF;
+IF OLD.`RS_Percentage` != NEW.`RS_Percentage` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'RS_Percentage'); END IF;
+-- IF OLD.`RS_Percentage_Displayed` != NEW.`RS_Percentage_Displayed` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'RS_Percentage_Displayed'); END IF;
+IF OLD.`RS_Base` != NEW.`RS_Base` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'RS_Base'); END IF;
+IF OLD.`Carry_Over` != NEW.`Carry_Over` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Carry_Over'); END IF;
+IF OLD.`RS_Against_CPA` != NEW.`RS_Against_CPA` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'RS_Against_CPA'); END IF;
+IF OLD.`Country` != NEW.`Country` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Country'); END IF;
+IF OLD.`Creation_Date` != NEW.`Creation_Date` THEN SET Aud_Action=CONCAT_WS(' ',Aud_Action,'Creation_Date'); END IF;
+
+IF                                            		
+      OLD.`id`!=NEW.`id`
+   OR OLD.`Owner`!=NEW.`Owner`
+   OR OLD.`Deal_Name`!=NEW.`Deal_Name`
+   OR OLD.`Description`!=NEW.`Description`
+   OR OLD.`Deal_Type`!=NEW.`Deal_Type`
+   OR OLD.`Currency`!=NEW.`Currency`
+   OR OLD.`Status`!=NEW.`Status`
+   OR OLD.`Status_id`!=NEW.`Status_id`
+--   OR OLD.`Campaign_id`!=NEW.`Campaign_id`
+   OR OLD.`Advertiser_id`!=NEW.`Advertiser_id`
+   OR OLD.`Advertiser_Name`!=NEW.`Advertiser_Name`
+   OR OLD.`traffic_source`!=NEW.`traffic_source`
+   OR OLD.`Product`!=NEW.`Product`
+   OR OLD.`Baseline`!=NEW.`Baseline`
+   OR OLD.`Valid_From`!=NEW.`Valid_From`
+   OR OLD.`CPA_Value`!=NEW.`CPA_Value`
+   OR OLD.`RS_Percentage`!=NEW.`RS_Percentage`
+   -- OR OLD.`RS_Percentage_Displayed`!=NEW.`RS_Percentage_Displayed`
+   OR OLD.`RS_Base`!=NEW.`RS_Base`
+   OR OLD.`Carry_Over`!=NEW.`Carry_Over`
+   OR OLD.`RS_Against_CPA`!=NEW.`RS_Against_CPA`
+   OR OLD.`Country`!=NEW.`Country`
+   OR OLD.`Creation_Date`!=NEW.`Creation_Date`
+
+THEN                                          		
+INSERT INTO forex_deal_marketplace_history ( 				   			
+    `id`
+   ,`Owner`
+   ,`Deal_Name`
+   ,`Description`
+   ,`Deal_Type`
+   ,`Currency`
+   ,`Status`
+   ,`Status_id`
+--   ,`Campaign_id`
+   ,`Advertiser_id`
+   ,`Advertiser_Name`
+   ,`traffic_source`
+   ,`Product`
+   ,`Baseline`
+   ,`Valid_From`
+   ,`CPA_Value`
+   ,`RS_Percentage`
+   -- ,`RS_Percentage_Displayed`
+   ,`RS_Base`
+   ,`Carry_Over`
+   ,`RS_Against_CPA`
+   ,`Country`
+   ,`Last_Update`
+   ,`Creation_Date`
+   ,`Operator`
+   ,`Aud_Agent`                              			
+   ,`Aud_Action`                              		
+)                                            			
+VALUES (                                      		
+    OLD.`id`
+   ,OLD.`Owner`
+   ,OLD.`Deal_Name`
+   ,OLD.`Description`
+   ,OLD.`Deal_Type`
+   ,OLD.`Currency`
+   ,OLD.`Status`
+   ,OLD.`Status_id`
+--   ,OLD.`Campaign_id`
+   ,OLD.`Advertiser_id`
+   ,OLD.`Advertiser_Name`
+   ,OLD.`traffic_source`
+   ,OLD.`Product`
+   ,OLD.`Baseline`
+   ,OLD.`Valid_From`
+   ,OLD.`CPA_Value`
+   ,OLD.`RS_Percentage`
+   -- ,OLD.`RS_Percentage_Displayed`
+   ,OLD.`RS_Base`
+   ,OLD.`Carry_Over`
+   ,OLD.`RS_Against_CPA`
+   ,OLD.`Country`
+   ,OLD.`Last_Update`
+   ,OLD.`Creation_Date`
+   ,OLD.`Operator`
+   ,NEW.`Operator`                               	
+   ,`Aud_Action`                               		
+);                                            		
+END IF;                                       		
+END$$

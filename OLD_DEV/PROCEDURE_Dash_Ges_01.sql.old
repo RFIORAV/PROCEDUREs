@@ -1,0 +1,100 @@
+/* 
+PROCEDURE_Dash_Ges_01.sql.dev - Dashboard Gestor datos 01
+
+   Observaciones: 
+      Parámetro ROLLUP se aplica al GROUP BY Owner,Affiliate
+      NO EJECUTAR EN VIEWS DEL AFILIADO
+   
+   Parámetros ( [AffiliateID | ALL] , [Month] , [Owner | ALL] , [ROLLUP | ' '] )
+   
+   Ejemplos:
+      call Dash_Ges_ByAff_ByCurrency('ALL','2022-09','ALL','ROLLUP');
+      call Dash_Ges_ByAff_ByCurrency('ALL','2022-09','ALL','');
+      call Dash_Ges_ByAff_ByCurrency('ALL','2022-06','2','ROLLUP');
+      call Dash_Ges_ByAff_ByCurrency('39','2022-08','ALL','');
+
+   07.09.2022 V1
+*/
+DROP PROCEDURE IF EXISTS Dash_Ges_ByAff_ByCurrency;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_Ges_ByAff_ByCurrency`(IN
+   AffiliateID VARCHAR(50),
+   Month VARCHAR(7),
+   Owner VARCHAR(50),
+   RollUp VARCHAR(6)
+   )
+    COMMENT 'Dashboard Gestor - x Currency x Affiliate/All'
+BEGIN
+
+	IF LOWER(AffiliateID)='all' THEN
+   	SET @AffiliateID_from='0';
+      SET @AffiliateID_until='9999999999999';
+   ELSE
+   	SET @AffiliateID_from=CAST(AffiliateID AS UNSIGNED INTEGER);
+      SET @AffiliateID_until=CAST(AffiliateID AS UNSIGNED INTEGER);
+	END IF;
+
+	IF LOWER(ifnull(Owner,'ALL'))='all' THEN
+   	SET @Owner_from='0';
+      SET @Owner_until='9999999999999';
+   ELSE
+   	SET @Owner_from=CAST(Owner AS UNSIGNED INTEGER);
+      SET @Owner_until=CAST(Owner AS UNSIGNED INTEGER);
+	END IF;
+
+	IF Month is not null THEN
+      SET @Month_Report=CONCAT("'",Month,"'");
+   ELSE
+      SET @Month_Report=CONCAT("'",LEFT(curdate(),7),"'");
+	END IF;
+   
+	IF LOWER(ifnull(RollUp,''))='rollup' THEN
+      SET @ROLLUP=' WITH ROLLUP';
+   ELSE
+      SET @RollUp='';
+	END IF;
+   
+   SET SESSION group_concat_max_len = 100000;
+   
+   SET @SQL = CONCAT(
+   'SELECT Owner,left(Date,7) as `Month`,Data_Currency
+   	,IF(',@AffiliateID_from,'="0","ALL",Affiliate) as `Affiliate`
+      ,SUM(Qualified_Players) AS `CPA`
+      ,SUM(CPA_Value_Gestor) AS `CPA_Value_Gestor`
+      ,SUM(Net_Revenue) AS `Net_Revenue`
+      ,SUM(Revenue_Share_Gestor) AS `RS_Gestor`
+      ,"EUR" as `Curr_Aff`
+      ,SUM(CPA_Value_Affiliate) AS `CPA_Value_Affiliate`
+      ,SUM(Revenue_Share_Affiliate) AS `RS_Affiliate`
+   FROM Snapshot_day_by_day_fact1
+   WHERE LEFT(DATE,7)=',@Month_Report
+   ,' and Affiliate_id BETWEEN ',@AffiliateID_from,' AND ',@AffiliateID_until
+   ,' and Owner BETWEEN ',@Owner_from,' AND ',@Owner_until
+   ,' GROUP BY ',IF(@AffiliateID_from!="0","Owner,","")
+   ,' Data_Currency ',@RollUp,';');
+   -- SELECT @SQL;
+   PREPARE stmt1 FROM @SQL;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+
+END$$
+DELIMITER ;
+/*
+   SET @SQL = CONCAT('SELECT Owner,left(Date,7) as `Month`,',
+   'Affiliate,SUM(Net_Revenue) AS `Total`,',
+   (SELECT GROUP_CONCAT(
+    CONCAT("\r\nSUM(CASE WHEN Data_Currency='", Data_Currency,"' THEN `Qualified_Players` ELSE 0 END) AS '",Data_Currency,"'")
+   ,CONCAT("\r\nSUM(CASE WHEN Data_Currency='", Data_Currency,"' THEN `Net_Revenue` ELSE 0 END) AS '",Data_Currency,"'")
+   ORDER BY Data_Currency)
+   FROM (select distinct Data_Currency from Snapshot_day_by_day_fact1
+         where LEFT(DATE,7)=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7) AND Net_Revenue<>0
+   ) AS xx),'
+,SUM(Net_Revenue) AS `Total`
+FROM Snapshot_day_by_day_fact1
+WHERE LEFT(DATE,7)=',@Month_Report
+,' and Affiliate_id BETWEEN ',@AffiliateID_from,' AND ',@AffiliateID_until
+,' and Affiliate_id BETWEEN ',@Owner_from,' AND ',@Owner_until
+,'GROUP BY Owner,Affiliate ',IF(@RollUp="","","WITH ROLLUP"),';');
+   -- SELECT @SQL;
+*/

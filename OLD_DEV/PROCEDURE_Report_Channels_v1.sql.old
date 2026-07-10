@@ -1,0 +1,255 @@
+/*
+PROCEDURE_Report_Channels.sql - ReportChannels (account_landing_pages)
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Affiliate_id    =[ALL | Affiliate_id ]. OPCIONAL. Default=ALL
+Status_id       =[ALL | Status_id ]. OPCIONAL. Default=ALL
+Stat_final      =[ALL | Stat* ]. OPCIONAL. Default=ALL. Stat* es el que se indica con *
+Product         =[ALL | Product ]. OPCIONAL. Default=ALL
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_Channels('MS_id=130,debug=no');
+
+18.03.2023 V1     Primera versión operativa
+
+*/
+
+DROP PROCEDURE IF EXISTS Report_Channels;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Channels`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Channels'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.1 25.02.2023';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @Affiliate_id    ='all';
+SET @Status_id       ='all';
+SET @Stat_final      ='all';
+SET @Product         ='all';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =      @v;  END IF;
+   IF lower(@k)='Status_id'       THEN SET @Status_id     =      @v;  END IF;
+   IF lower(@k)='Stat_final'      THEN SET @Stat_final    =UPPER(@v); END IF;
+   IF lower(@k)='product'         THEN SET @Product       =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   -- IF lower(@k)='MS_id'           THEN SET @MS_id         =UPPER(@v); END IF;
+   -- IF lower(@k)='advertiser_id'   THEN SET @Advertiser_id =UPPER(@v); END IF;
+   -- IF lower(@k)='publisher_id'    THEN SET @Publisher_id  =UPPER(@v); END IF;
+   -- IF lower(@k)='owner'           THEN SET @Owner         =UPPER(@v); END IF;
+   -- IF lower(@k)='area'            THEN SET @Area          =UPPER(@v); END IF;
+   -- IF lower(@k)='channel_id'      THEN SET @Channel_id    =UPPER(@v); END IF;
+   -- IF lower(@k)='currency'        THEN SET @Currency      =UPPER(@v); END IF;
+   -- IF lower(@k)='dealbyproduct'   THEN SET @DealbyProduct =UPPER(@v); END IF;
+   -- IF lower(@k)='groupbyms'       THEN SET @GroupByMS     =UPPER(@v); END IF;
+   -- IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   -- IF lower(@k)='month'           THEN SET @Month         =UPPER(@v); END IF;
+   -- IF lower(@k)='ms_id'           THEN SET @MS_id         =UPPER(@v); END IF;
+   -- IF lower(@k)='onlyovercap'     THEN SET @OnlyOverCap   =UPPER(@v); END IF;
+   -- IF lower(@k)='platform'        THEN SET @Platform      =      @v;  END IF;
+   -- IF lower(@k)='search'          THEN SET @Search        =     (@v); END IF;
+   -- IF lower(@k)='total'           THEN SET @Total         =UPPER(@v); END IF;
+   -- IF lower(@k)='totline'         THEN SET @TotLine       =UPPER(@v); END IF;
+   -- IF lower(@k)='view'            THEN SET @View          =UPPER(@v); END IF;
+
+END WHILE;
+
+-- Recupera espacios reemplazados en front end por caracter "\"
+-- SET @Product      =replace(@Product,"!"," ");
+-- SET @Platform     =replace(@Platform,"!"," ");
+-- SET @Brand_Group  =replace(@Brand_Group,"!"," ");
+
+-- IF @Debug!="NO" THEN SELECT @Product,@Platform,@Brand_Group; END IF;
+--
+
+-- IF @Mode!='GESTOR' THEN
+   -- SET @Mode='AFFILIATE';
+   -- SET @View='VIEWAFF';
+-- END IF;
+
+IF @Debug!="NO" THEN SELECT @Mode,@Month,@View,@Filters,@MS_id,@Affiliate_id,@Account_id
+                     ,@Currency,@Total,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereAffiliate_id='';
+SET @WhereStatus_id   ='';
+SET @WhereStat_final ='';
+SET @WhereProduct     ='';
+
+IF @Affiliate_id  !="ALL" THEN SET @WhereAffiliate_id=CONCAT(" AND CH.Account_id  =",@Affiliate_id);     END IF;
+IF @Status_id     !="ALL" THEN SET @WhereStatus_id   =CONCAT(" AND CH.Status_id   =",@Status_id);        END IF;
+IF @Stat_final    !="ALL" THEN SET @WhereStat_final  =CONCAT(" AND `Stat_final`   ='",@Stat_final,"'");   END IF;
+IF @Product       !="ALL" THEN SET @WhereProduct     =CONCAT(" AND CH.Product     ='",@Product,"'");     END IF;
+
+IF @Debug!="NO" THEN SELECT @WhereAffiliate_id,@WhereStatus_id,@WhereStat_final,@WhereProduct; END IF;
+
+/**************************************************************************************************************/
+/*
+SELECT `id`,`Account_id`,`landing_page_channel`,`landing_page_url`,`landing_page_name`
+,`landing_page_logo`,`landing_page_color`,`product`,`Status`,`Status_id`,`nation`
+,`traffic_source`,`socials`,`Owner`,`Priority`,`Creation_Date`,`Last_Update`,`Operator` 
+FROM account_landing_pages
+*/
+SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT 
+    CH.`id`
+   ,CH.`Account_id`           as `Affiliate_id`
+   ,A.`Username`              as `Affiliate`
+   ,CH.`landing_page_channel`
+   ,CH.`landing_page_url`
+   ,CH.`landing_page_name`
+   ,CH.`product`
+   ,CH.`Status_id`
+   -- ,CH.`Status`
+   -- ,CH.`Stat_effect`
+   ,case when CH.`Status_id`!=CH.`Stat_aggreg` 
+        then case when CH.`Status_id`=1
+                  then CH.`Status`
+                  else concat(CH.`Status`,"*")
+                  end
+        else concat(CH.`Status`,"*")
+        end                                        as `CHStatus`
+   ,case when CH.`Status_id`!=CH.`Stat_aggreg` 
+        then case when CH.`Status_id`=1
+                  then concat(CH.`Stat_effect`,"*")
+                  else CH.`Stat_effect`
+                  end
+        else CH.`Stat_effect`
+        end                                        as `CHStat_effect`    
+   ,CH.`nation`
+   ,CH.`traffic_source`
+   ,CH.`Priority`
+   ,left(ifnull(CH.`Last_Update`,""),16) `Last Update`
+   ,CH.`Operator`
+   ,CH.`Status`
+   ,CH.`Stat_aggreg`
+   ,case when CH.`Status_id`!=CH.`Stat_aggreg` 
+         then case when CH.`Status_id`="1" 
+                     then concat(CH.`Stat_effect`,"*")
+                     else concat(CH.`Status`,"*") end 
+         else concat(CH.`Status`,"*") end 			as `Stat_final`
+FROM account_landing_pages CH
+LEFT JOIN `account_account` `A` ON `A`.`id`  =  CH.`Account_id`
+WHERE 1=1 '
+   ,@WhereAffiliate_id
+   ,@WhereStatus_id   
+--    ,@WhereStat_final 
+   ,@WhereProduct     
+,')
+');
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+	,"width=80px,action=2"     as `Action`
+   ,"width=080px"             as `Chann` 
+   ,"omit=yes"                as `Affiliate_id`   
+   ,"width=150px"             as `Affiliate`
+   ,"width=200px,tooltip=yes" as `Channel`
+   ,"width=100px"             as `url`
+   ,"width=300px,tooltip=yes" as `name`
+   ,"width=100px"             as `Product`
+   ,"width=080px"             as `Status id`
+   ,"width=100px"             as `Status`
+   ,"width=100px"             as `Derived Status`
+   ,"width=090px"             as `Country`
+   ,"width=080px"             as `traffic source`
+   ,"width=080px"             as `Priority`
+   ,"width=130px"             as `Last Update`
+   ,"width=080px"             as `User`
+   ,"omit=yes"                as `Stat_aggreg`   
+   ,"omit=yes"                as `Status`   
+   ,"omit=yes"                as `Stat_final`   
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`
+	,"..." as `Action`
+	,MT.* 
+FROM Main_Table_Data MT
+WHERE 1=1 '
+   ,@WhereStat_final,
+'
+order by Affiliate,Channel
+;');
+
+-- ------------------------------------------------------------
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "01" as "Korder","CH Status" AS "Key",`Status` AS "Value","Status_id" AS `CallKey`,`Status_id` AS "CallValue",COUNT(*) AS "Rows"
+                                                                                     FROM Main_Table_Data GROUP BY `Status`)                 UNION ALL
+(SELECT "03","Effective Status",`Stat_final`,"Stat_final" ,`Stat_final`  ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Stat_final`,""))  UNION ALL
+(SELECT "06","Affiliate"     ,`Affiliate`  ,"Affiliate_id",`Affiliate_id`,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Affiliate`,""))   UNION ALL
+(SELECT "07","Product" 	     ,`Product`    ,"Product"     ,`Product`     ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Product`,""))
+ORDER BY 1,3
+;');
+
+IF @Filters="yes" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Report_Channels('debug=ye,filters=yes');
+call Report_Channels('stat_final=active*,debug=ye');
+*/

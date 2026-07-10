@@ -1,0 +1,46 @@
+/*** forex_Totali_username_new REEMPLAZA a Totali_username
+	10.12.2021 First version
+	11.12.2021 Compatible server with sql_mode=ONLY_FULL_GROUP_BY
+	13.12.2021 Modificado server with sql_mode=	
+	15.12.2021 Elimina campos que no acumulan datos
+*/
+
+CREATE OR REPLACE VIEW `forex_Totali_username_new` AS 
+SELECT 
+     Owner                              		  	AS 'Owner'                        
+    ,MAX(Hour_Update) 		                      	AS 'Hour_Update'                  
+    ,Left(DATE,7)       		                  	AS 'Date'                         
+    ,Username		                                AS 'Username'                     
+    ,Brand				                            AS 'Brand'                        
+    ,sum(Product_Real)                         		AS 'Product_Real'                 
+    ,sum(Qualified_Players)                       	AS 'Qualified_Players'              
+    ,sum(Qualified_Players_Adjusted)              	AS 'Qualified_Players_Adjusted'     
+    ,sum(First_Time_Deposit)                      	AS 'First_Time_Deposit'             
+    ,sum(Views)                                   	AS 'Views'                          
+    ,sum(Clicks)                                  	AS 'Clicks'                         
+    ,sum(Signups)                                 	AS 'Signups'                        
+    ,sum(Impressions)                             	AS 'Impressions'                    
+    ,sum(Deposits)                             		AS 'Deposits'                     
+    ,sum(Depositing_Customers)                    	AS 'Depositing_Customers'
+    ,sum(Active_Customers)                        	AS 'Active_Customers'
+    ,sum(New_Depositing_Customers)                	AS 'New_Depositing_Customers'
+    ,sum(New_Active_Customers)                    	AS 'New_Active_Customers'
+    ,sum(First_Time_Active_Customers)             	AS 'First_Time_Active_Customers'
+    ,sum(Turnover)                                	AS 'Turnover'
+    ,sum(Net_Revenue)                             	AS 'Net_Revenue'
+    ,sum(Revenue_Share_Gestor)                    	AS 'Revenue_Share_Gestor'
+    ,sum(Revenue_Share_Affiliate)                 	AS 'Revenue_Share_Affiliate'
+    ,sum(CPA_Value_Affiliate)                     	AS 'CPA_Value_Affiliate'
+    ,sum(CPA_Value_Gestor)                        	AS 'CPA_Value_Gestor'
+
+FROM forex_day_by_day_fact1_2
+
+GROUP by Owner,Left(DATE,7),Brand,Username
+;
+
+/*
+-- Pruebas y comprobaciones
+SELECT * FROM forex_Totali_username_new;
+WHERE Affiliate='Anatriello'
+ORDER BY Affiliate,DATE;
+*/

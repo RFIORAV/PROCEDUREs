@@ -1,0 +1,255 @@
+/**
+	PROCEDURE_players_nerefer_to_DbD_AR_v1.sql
+
+	**	Actualiza tabla Snapshot_day_by_day desde players_netrefer_API
+	
+   **	ADAPTADA PARA USO DE AFFILIATE REVOLUTION
+   
+	22.03.2025 v1     
+   
+   call players_nerefer_to_DbD_AR('');
+   call players_nerefer_to_DbD_AR('LM');   
+*/
+
+DROP PROCEDURE IF EXISTS players_nerefer_to_DbD_AR;
+-- DROP PROCEDURE IF EXISTS players_nerefer_to_DbD;
+-- -------------------------------------------------------------
+DELIMITER //
+
+CREATE PROCEDURE players_nerefer_to_DbD_AR(IN Curr_Last_Month varchar(7))
+COMMENT 'AR - Actualiza tabla Snapshot_day_by_day desde players_netrefer_API - Last Month y Cte / AAAA-MM'
+DETERMINISTIC
+MODIFIES SQL DATA
+-- SQL SECURITY INVOKER
+ 
+Proc_main:BEGIN
+
+SET @Version ='v1 16.03.2025';
+SET @DB      =database();    
+SET @DateFrom=LEFT(CURDATE(),7);    -- Asume Curr Month por defecto
+
+IF UPPER(Curr_Last_Month)='LM' THEN SET @DateFrom=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+-- Cuando se pide reproceso general de todo, limita a MES de movimiento más antiguo DbD
+SET @MinDateFromDbD=(SELECT MIN(LEFT(DATE,7)) FROM players_netrefer_API WHERE DATE IS NOT NULL);
+IF    UPPER(Curr_Last_Month)='ALLALL' 
+THEN  SET @DateFrom=@MinDateFromDbD;
+END IF;
+
+-- SELECT  Curr_Last_Month,@MinDateFromDbD,@DateFrom from dual;
+
+-- Valida fecha
+IF    LEFT(Curr_Last_Month,3)='202' 
+THEN
+      IF   SUBSTRING(Curr_Last_Month,6,2) IN ('01','02','03','04','05','06','07','08','09','10','11','12')
+      THEN SET @DateFrom=LEFT(Curr_Last_Month,7);
+      ELSE SELECT "Invalid Month parameter" from dual;
+           LEAVE Proc_main; 
+      END IF;
+END IF;
+
+-- Valida que se haya pedido un mes dentro del rango de datos de DbD
+IF    @DateFrom < @MinDateFromDbD OR @DateFrom > LEFT(CURDATE(),7)
+THEN  SELECT "Month out of range DbD data" from dual;
+      LEAVE Proc_main; 
+END IF;
+
+-- ------------------ SOLAMENTE PARA affiliaterevolution -----------------------
+-- USE affiliaterevolution;
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS Snapshot_day_by_day_temp_NR LIKE Snapshot_day_by_day;
+
+/***** LOOP POR Account_id *****/
+
+Cycle_Username_id:BEGIN
+    -- Declarar variables para el cursor
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE current_username VARCHAR(255);
+    
+    -- Declarar cursor para recorrer todos los Username_id únicos
+    DECLARE username_cursor CURSOR FOR 
+        SELECT DISTINCT Username_id 
+        FROM players_netrefer_API 
+        WHERE (LEFT(DATE,7)=@DateFrom OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0'));
+    
+    -- Declarar handler para cuando no hay más registros
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    -- Abrir cursor
+    OPEN username_cursor;
+    
+    -- Iniciar ciclo
+    username_loop: LOOP
+        -- Obtener el siguiente Username_id
+        FETCH username_cursor INTO current_username;
+        
+        -- Salir del ciclo si no hay más registros
+        IF done THEN
+            LEAVE username_loop;
+        END IF;
+        
+        -- Paso 1: Insertar datos existentes del usuario actual
+        INSERT INTO Snapshot_day_by_day_temp_NR 
+        SELECT * FROM Snapshot_day_by_day 
+        WHERE (LEFT(DATE,7)=@DateFrom OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0'))
+        AND Username = current_username;
+        
+        -- Paso 2: Eliminar datos del usuario actual
+        DELETE FROM Snapshot_day_by_day_temp_NR 
+        WHERE (LEFT(DATE,7)=@DateFrom OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0'))
+        AND Username = current_username;
+        
+        -- Paso 3: Insertar nuevos datos del usuario actual
+        INSERT IGNORE INTO Snapshot_day_by_day_temp_NR (
+            `Date`
+            ,`Hour_Update`
+            ,`Brand`
+            ,`Username`
+            ,`Product`
+            ,`Country`
+            ,`Sign_Up_Offer`
+            ,`Tracker_Name`
+            ,`Tracker_ID`
+            ,`Level_Reached`
+            ,`Brand_Name`   
+            ,`Signups`   
+            ,`Qualified_Players`          
+            ,`Deposits`             
+            ,`Turnover`               
+            ,`Net_Revenue`
+        )
+        SELECT
+            `Date`,
+            `Hour_Update`,
+            `Advertiser`,
+            `Username_id`,
+            CASE WHEN @DB="affiliaterevolution" AND `Advertiser`="Snai"
+                      AND DATE_FORMAT(STR_TO_DATE(Signup_Date, "%d-%m-%Y"), "%Y-%m-%d")<"2024-12-01"
+                 THEN CONCAT(`Prodotto`,"-20")
+                 ELSE `Prodotto` END AS `Product`,
+            `Country`,
+            `Reward_Plan`           as `Sign_Up_Offer`,
+            `Marketing_Source_Name` as `Tracker_Name`,
+            `Marketing_Source_ID`   as `Tracker_ID`,
+            `Customer_Level`        as `Level_Reached`,
+            `Brand`                 as `Brand_Name`,
+            SUM(CASE WHEN Signup_Date>"" AND DATE_FORMAT(STR_TO_DATE(Signup_Date, "%d-%m-%Y"), "%Y-%m")=LEFT(`Date`,7)
+                    THEN 1 ELSE 0 END) AS `Signups`,     
+            SUM(CASE WHEN CPA_Processed_Date>"" AND DATE_FORMAT(STR_TO_DATE(CPA_Processed_Date, "%d-%m-%Y"), "%Y-%m")=LEFT(`Date`,7)
+                    THEN 1 ELSE 0 END) AS `Qualified_Players`,     
+            ROUND(SUM(`Deposits`          ),2) AS `Deposits`,
+            ROUND(SUM(`Turnover`          ),2) AS `Turnover`,
+            ROUND(SUM(`Total_Net_Revenue` ),2) AS `Net_Revenue` 
+        FROM players_netrefer_API p
+        WHERE (LEFT(DATE,7)=@DateFrom OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0'))
+        AND Username_id = current_username
+        GROUP BY 
+            `Advertiser`,
+            `Username_id`,
+            `Date`,
+            `Product`,
+            `Reward_Plan`,
+            `Marketing_Source_Name`,
+            `Marketing_Source_ID`,
+            `Brand`;
+    
+    END LOOP;
+    
+    -- Cerrar cursor
+    CLOSE username_cursor;
+    
+END Cycle_Username_id;
+
+/*************** UPDATE ONLY AFFILIATE REVOLUTION ********************************/
+
+IF DATABASE()!="affiliaterevolution" THEN LEAVE Proc_main; END IF;
+
+SET @Month=@DateFrom,@DB="affiliaterevolution",@Brand="Snai", @Username="124" ;
+
+DELETE FROM Snapshot_day_by_day
+    WHERE LEFT(DATE,7)=@Month AND Database()=@DB AND `Brand`=@Brand AND `Username`=@Username
+      AND `Portal`="SNAI deal adjust"
+;
+-- INSERT IGNORE INTO Snapshot_day_by_day_temp_NR_AR (
+INSERT IGNORE INTO Snapshot_day_by_day (
+   `Portal`
+   ,`Date`
+   ,`Hour_Update`
+   ,`Brand`
+   ,`Username`
+   ,`Product`
+   ,`Country`
+   ,`Sign_Up_Offer`
+   ,`Tracker_Name`
+   ,`Tracker_ID`
+   ,`Level_Reached`
+   ,`Brand_Name`   
+   ,`Qualified_Players`          
+   ,`Signups`   
+   ,`Deposits`             
+   ,`Net_Revenue`
+   ,`Turnover`               
+)
+SELECT
+    -- "Old deal",
+    "SNAI deal adjust" AS `Portal`,
+    `Date`,
+     CURRENT_TIMESTAMP(),
+    `Brand`,
+    `Username`,
+    `Sign_Up_Offer` as `Product`,
+    `Country`,
+    `Sign_Up_Offer`,
+    `Tracker_Name`,
+    `Tracker_ID`,
+    `Level_Reached`,
+    `Brand_Name`,
+    SUM(`Qualified_Players`) AS `Qualified_Players`,
+    SUM(`Signups`) AS `Signups`,
+    SUM(`Deposits`) AS `Deposits`,
+    SUM(`Net_Revenue`) AS `Net_Revenue`,
+    SUM(`Turnover`) AS `Turnover`
+FROM Snapshot_day_by_day_temp_NR NR
+WHERE LEFT(DATE,7)=@Month
+  AND Database()=@DB AND `Brand`=@Brand AND `Username`=@Username
+  AND NR.`Product` LIKE "%-20"
+GROUP BY `Username`,`Tracker_ID`,`Tracker_Name`,NR.`Product`,`Sign_Up_Offer`
+
+UNION ALL
+
+-- Segunda fila con Net_Revenue cambiado de signo
+SELECT
+    -- "New deal",
+    "SNAI deal adjust" AS `Portal`,    
+    `Date`,
+     CURRENT_TIMESTAMP(),    
+    `Brand`,
+    `Username`,
+    REPLACE(`Product`,"-20","") AS `Productok`,
+    `Country`,
+    "" as `Sign_Up_Offer`,
+    `Tracker_Name`,
+    `Tracker_ID`,
+    `Level_Reached`,
+    `Brand_Name`,
+    -SUM(`Qualified_Players`) AS `Qualified_Players`,
+    -SUM(`Signups`) AS `Signups`,
+    -SUM(`Deposits`) AS `Deposits`,
+    -SUM(`Net_Revenue`) AS `Net_Revenue`,
+    -SUM(`Turnover`) AS `Turnover`
+FROM Snapshot_day_by_day_temp_NR NR
+WHERE LEFT(DATE,7)=@Month
+  AND Database()=@DB AND `Brand`=@Brand AND `Username`=@Username
+  AND NR.`Product` LIKE "%-20"
+GROUP BY `Username`,`Tracker_ID`,`Tracker_Name`,`Product`,`Sign_Up_Offer`
+;
+
+END Proc_main;
+//
+DELIMITER ;
+
+/*
+call players_nerefer_to_DbD_AR;
+
+*/

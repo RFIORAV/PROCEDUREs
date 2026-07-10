@@ -1,0 +1,452 @@
+/* PROCEDURE_Show_Diff_CPA_DbD_90days.sql - Check Raw Data: CPA missing from 90 days comparison
+
+
+Descripción:
+  Procedimiento Show_Diff_CPA_DbD_90days.
+Características principales:
+1. Acumulación de 90 días
+   Crea una nueva tabla Snapshot_day_by_day_diff_90days que almacena datos diarios
+   Incluye campo Date para rastrear cada día individualmente
+   Mantiene automáticamente solo los últimos 90 días de datos
+2. Parámetro LAPSE
+   Nuevo parámetro LAPSE que controla cuántos días mostrar en las columnas
+   Valor por defecto: 5 días
+   Máximo: 90 días
+   Se ajusta automáticamente si no hay suficientes días disponibles
+3. Funcionalidad SET
+   Cuando @Action='SET':
+      - Elimina datos del día actual si existen (para evitar duplicados)
+      - Inserta los datos del día actual en la tabla de acumulación
+      - Elimina datos más antiguos de 90 días
+      - Finaliza el proceso
+4. Funcionalidad VIEW con auto-creación
+   Cuando @Action='VIEW':
+      - Verifica si existen datos del día actual
+      - Si no existen, los crea automáticamente
+      - Elimina datos más antiguos de 90 días
+      - Continúa con el reporte de comparación
+5. Reporte de comparación
+   - Muestra filas por cada MS_id que tenga diferencias (F.CPA > D.CPA)
+   - Columnas dinámicas que representan cada día según el parámetro LAPSE
+   - Cada columna muestra la diferencia con respecto al día anterior
+   - Ordenado por la diferencia más significativa
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Action          =[View | SET]. Modifica datos o solo muestra. OPCIONAL. Default=VIEW.
+LAPSE           =[1-90]. Número de días para mostrar en columnas. OPCIONAL. Default=5.
+OnlyNegative    =[0 | 1]. Si es 1, muestra solo diferencias negativas. OPCIONAL. Default=0.
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW');
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,Debug=KEYVALUES');
+CALL Show_Diff_CPA_DbD_90days('Action=SET,debug=no'); -- ejecutado por EVENT a partir de las 23
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,LAPSE=7'); -- muestra 7 días de comparación
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,OnlyNegative=1,debug=no'); -- muestra solo diferencias negativas
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,OnlyNegative=0,debug=non'); -- muestra todas las diferencias en 10 días
+
+Modificaciones:
+
+25.09.2022 V1     Compara CPA Snapshot_day_by_day ayer con Snapshot_day_by_day_fact1 de hoy
+                  Detecta CPA quitadas por MS/Afiliado
+19.10.2022 V1.1
+01.07.2025 V1.2   Agregada auto-creación de datos para VIEW y eliminación de duplicados para SET   
+   
+*/
+DROP PROCEDURE IF EXISTS Show_Diff_CPA_DbD_90days;
+
+DELIMITER $$
+CREATE PROCEDURE Show_Diff_CPA_DbD_90days(IN
+   InputCommLine    VARCHAR(250)
+   )  
+   COMMENT 'Check Raw Data: CPA missing from 90 days comparison'
+   LANGUAGE SQL
+
+proc_label:BEGIN
+
+SET @Version         ='v1.2 01.07.2025';
+SET @CurrentDay      =CURDATE();
+SET @Action          ='VIEW';
+SET @LAPSE           =7;
+SET @Meta            ='YES';
+SET @Debug           ='NO';
+SET @OnlyNegative    =0;
+
+SET @InputCommLine=Concat(InputCommLine ,',');      
+SET @InputCommLine=replace(@InputCommLine,'"','');  
+IF  @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+
+   SET @e=INSTR(@InputCommLine,'=');    				   
+   SET @c=INSTR(@InputCommLine,','); 					   
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='action'         THEN SET @Action        =UPPER(@v); END IF;
+   IF lower(@k)='lapse'          THEN SET @LAPSE         =@v;        END IF;
+   IF lower(@k)='meta'           THEN SET @Meta          =UPPER(@v); END IF; 
+   IF lower(@k)='debug'          THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='onlynegative'   THEN SET @OnlyNegative  =CAST(@v AS UNSIGNED); END IF;
+
+END WHILE;
+
+-- Validar LAPSE
+IF @LAPSE > 90 THEN SET @LAPSE = 90; END IF;
+IF @LAPSE < 1 THEN SET @LAPSE = 5; END IF;
+
+IF  @Debug!="NO" THEN SELECT @Action,@LAPSE,@Meta,@Debug,@OnlyNegative; END IF;
+
+IF   DAY(@CurrentDay)<=3 THEN SET @Curr_Month=LEFT(DATE_SUB(@CurrentDay, INTERVAL 1 MONTH),7);
+ELSE SET @Curr_Month=left(@CurrentDay,7); END IF;
+
+-- DROP TABLE IF EXISTS `Snapshot_day_by_day_diff_90days`;
+CREATE TABLE IF NOT EXISTS `Snapshot_day_by_day_diff_90days` (
+   `Date` DATE NULL DEFAULT NULL,
+   `Month` VARCHAR(7) NULL DEFAULT NULL,
+   `Brand` VARCHAR(50) NULL DEFAULT '0',
+   `Username` VARCHAR(50) NULL DEFAULT '0',
+   `Username_id` INT NULL DEFAULT '0',
+   `MS_id` INT NULL DEFAULT '0',
+   `Tracker_Name` VARCHAR(50) NULL DEFAULT NULL,
+   `Tracker_id` VARCHAR(50) NULL DEFAULT NULL,
+   `Product` VARCHAR(200) NULL DEFAULT NULL,
+   `Qualified_Players` INT NULL DEFAULT '0',
+   `Hour_Update` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP,
+   `Creation_date` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP),
+   UNIQUE INDEX `Date_MS_Product` (`Date`, `Brand`, `Username_id`, `MS_id`, `Tracker_Name`, `Tracker_id`, `Product`) USING BTREE,
+   INDEX `idx_date` (`Date`) USING BTREE
+)
+;
+
+
+-- --------------------------------------------
+IF @Action='SET' THEN
+   -- Eliminar datos del día actual si existen (para evitar duplicados)
+   DELETE FROM Snapshot_day_by_day_diff_90days 
+   WHERE Date = @CurrentDay;
+   
+   -- Insertar datos del día actual
+   INSERT INTO Snapshot_day_by_day_diff_90days 
+      SELECT 
+         @CurrentDay as Date,
+         left(@CurrentDay,7) as Month,
+         Brand,
+         Username,
+         Username_id,
+         ifnull(MS_id,0) AS MS_id,
+         Tracker_Name,
+         Tracker_id,
+         Product,
+         sum(Qualified_Players) AS Qualified_Players,
+         Hour_Update,
+         now()
+      FROM  Snapshot_day_by_day_fact1 D
+      -- WHERE D.Date = @CurrentDay AND Origin=''
+      WHERE left(D.DATE,7)=@Curr_Month AND Origin=''      
+      GROUP BY Brand,Username_id,ifnull(MS_id,0),Tracker_Name,Tracker_id,Product HAVING sum(Qualified_Players)<>0;
+   
+   -- Eliminar datos más antiguos de 90 días
+   DELETE FROM Snapshot_day_by_day_diff_90days 
+   WHERE Date < DATE_SUB(@CurrentDay, INTERVAL 90 DAY);
+END IF;
+
+-- Si Action='SET' finaliza proceso
+IF @Action='SET' THEN LEAVE proc_label; END IF;
+
+-- --------------------------------------------
+-- Para Action='VIEW', verificar si existen datos del día actual
+-- Si no existen, crearlos automáticamente
+SET @today_data_exists = (
+   SELECT COUNT(*) 
+   FROM Snapshot_day_by_day_diff_90days 
+   WHERE Date = @CurrentDay
+);
+
+IF @today_data_exists = 0 THEN
+   -- Insertar datos del día actual automáticamente
+   INSERT INTO Snapshot_day_by_day_diff_90days 
+      SELECT 
+         @CurrentDay as Date,
+         left(@CurrentDay,7) as Month,
+         Brand,
+         Username,
+         Username_id,
+         ifnull(MS_id,0) AS MS_id,
+         Tracker_Name,
+         Tracker_id,
+         Product,
+         sum(Qualified_Players) AS Qualified_Players,
+         Hour_Update,
+         now()
+      FROM  Snapshot_day_by_day_fact1 D
+      WHERE left(D.DATE,7)=@Curr_Month AND Origin=''      
+      GROUP BY Brand,Username_id,ifnull(MS_id,0),Tracker_Name,Tracker_id,Product HAVING sum(Qualified_Players)<>0;
+   
+   -- Eliminar datos más antiguos de 90 días
+   DELETE FROM Snapshot_day_by_day_diff_90days 
+   WHERE Date < DATE_SUB(@CurrentDay, INTERVAL 90 DAY);
+   
+   IF @Debug != 'NO' THEN
+      SELECT CONCAT('Datos del día ', @CurrentDay, ' creados automáticamente') as Info;
+   END IF;
+END IF;
+
+-- --------------------------------------------
+-- Obtener las fechas disponibles en la tabla de diferencias
+SET @MaxDaysAvailable = (
+   SELECT COUNT(DISTINCT Date) 
+   FROM Snapshot_day_by_day_diff_90days 
+   WHERE Date >= DATE_SUB(@CurrentDay, INTERVAL @LAPSE DAY)
+);
+
+-- Ajustar LAPSE si no hay suficientes días
+IF @MaxDaysAvailable < @LAPSE THEN 
+   SET @LAPSE = @MaxDaysAvailable; 
+END IF;
+
+-- Verificar que hay datos disponibles
+IF @LAPSE = 0 THEN
+   SELECT 'No hay datos disponibles en la tabla Snapshot_day_by_day_diff_90days' as Error;
+   LEAVE proc_label;
+END IF;
+
+-- Inicializar variables
+SET @sql_columns = '';
+SET @sql_headers = '';
+SET @sql_calculations = '';
+SET @first_date_format = '';
+SET SESSION group_concat_max_len = 32000;
+
+-- Debug: Verificar datos disponibles
+IF @Debug != 'NO' THEN
+   SELECT COUNT(*) as Total_Records FROM Snapshot_day_by_day_diff_90days;
+   SELECT COUNT(DISTINCT Date) as Distinct_Dates FROM Snapshot_day_by_day_diff_90days;
+   SELECT MIN(Date) as Min_Date, MAX(Date) as Max_Date FROM Snapshot_day_by_day_diff_90days;
+END IF;
+
+-- Crear tabla temporal con las fechas disponibles
+DROP TEMPORARY TABLE IF EXISTS temp_dates;
+CREATE TEMPORARY TABLE temp_dates AS
+SELECT DISTINCT Date 
+FROM Snapshot_day_by_day_diff_90days 
+WHERE Date >= DATE_SUB(@CurrentDay, INTERVAL @LAPSE DAY)
+ORDER BY Date DESC;
+
+-- Debug: Verificar tabla temporal
+IF @Debug != 'NO' THEN
+   SELECT COUNT(*) as Temp_Dates_Count FROM temp_dates;
+   SELECT * FROM temp_dates LIMIT 5;
+END IF;
+
+-- Verificar si la tabla temporal tiene datos
+SET @temp_dates_count = (SELECT COUNT(*) FROM temp_dates);
+
+IF @temp_dates_count = 0 THEN
+   SELECT 'No hay fechas disponibles en el rango especificado' as Error;
+   LEAVE proc_label;
+END IF;
+
+-- Construir columnas usando la tabla temporal
+SELECT GROUP_CONCAT(
+   CONCAT('MAX(CASE WHEN Date = "', Date, '" THEN Qualified_Players ELSE 0 END) AS Day_', 
+          DATE_FORMAT(Date, '%m%d'))
+   ORDER BY Date
+   SEPARATOR ', '
+) INTO @sql_columns
+FROM temp_dates;
+
+-- Verificar que se generaron las columnas
+IF @sql_columns IS NULL THEN
+   SELECT 'Error: No se pudieron generar las columnas dinámicas' as Error;
+   LEAVE proc_label;
+END IF;
+
+-- Construir headers
+SELECT GROUP_CONCAT(
+   CONCAT('"width=100px,right=true" as `Diff ', DATE_FORMAT(Date, '%m-%d'), '`')
+   ORDER BY Date
+   SEPARATOR ', '
+) INTO @sql_headers
+FROM temp_dates;
+
+-- Verificar que se generaron los headers
+IF @sql_headers IS NULL THEN
+   SELECT 'Error: No se pudieron generar los headers' as Error;
+   LEAVE proc_label;
+END IF;
+
+-- Obtener el formato de la primera fecha
+SELECT DATE_FORMAT(MIN(Date), '%m%d') INTO @first_date_format
+FROM temp_dates;
+
+-- Verificar que se obtuvo el formato de la primera fecha
+IF @first_date_format IS NULL THEN
+   SELECT 'Error: No se pudo obtener el formato de la primera fecha' as Error;
+   LEAVE proc_label;
+END IF;
+
+-- Construir condición adicional para OnlyNegative
+IF @OnlyNegative = 1 THEN
+   SET @only_negative_condition = CONCAT('AND (dd.Day_', @first_date_format, ' - COALESCE(cd.CPA, 0)) < 0');
+   SET @base_condition = CONCAT('dd.Day_', @first_date_format, ' != COALESCE(cd.CPA, 0)');
+ELSE
+   SET @only_negative_condition = '';
+   SET @base_condition = CONCAT('dd.Day_', @first_date_format, ' != COALESCE(cd.CPA, 0)');
+END IF;
+
+-- Construir cálculos de diferencias usando ROW_NUMBER
+DROP TEMPORARY TABLE IF EXISTS temp_dates_with_rn;
+CREATE TEMPORARY TABLE temp_dates_with_rn AS
+SELECT Date, ROW_NUMBER() OVER (ORDER BY Date) as rn
+FROM temp_dates;
+
+DROP TEMPORARY TABLE IF EXISTS temp_dates_with_rn2;
+CREATE TEMPORARY TABLE temp_dates_with_rn2 AS
+SELECT Date, ROW_NUMBER() OVER (ORDER BY Date) as rn
+FROM temp_dates;
+
+SELECT GROUP_CONCAT(
+   CONCAT('(dd.Day_', DATE_FORMAT(d1.Date, '%m%d'), ' - ', 
+          CASE 
+             WHEN d2.Date IS NOT NULL THEN CONCAT('dd.Day_', DATE_FORMAT(d2.Date, '%m%d'))
+             ELSE 'COALESCE(cd.CPA, 0)'
+          END, ') as Diff_', DATE_FORMAT(d1.Date, '%m%d'))
+   ORDER BY d1.Date
+   SEPARATOR ', '
+) INTO @sql_calculations
+FROM temp_dates_with_rn d1
+LEFT JOIN temp_dates_with_rn2 d2 ON d1.rn = d2.rn + 1;
+
+-- Verificar que se generaron los cálculos
+IF @sql_calculations IS NULL THEN
+   SELECT 'Error: No se pudieron generar los cálculos de diferencias' as Error;
+   LEAVE proc_label;
+END IF;
+
+-- Construir la consulta final usando subconsulta para evitar problemas con ORDER BY y UNION
+SET @sql = CONCAT('
+SELECT * FROM (
+   SELECT 
+      "setting" as Meta,
+      "width=150px" as Brand,
+      "width=200px" AS `Account Name`,
+      "width=100px" AS `Account id`,
+      "width=80px,center=yes" as MS_id,
+      "width=100px" AS `Tracker ID`,
+      "width=150px" AS `Tracker Name`,
+      "width=150px" as `Product`,
+      "omit=yes"    as `CPA Today`,
+      ', @sql_headers, ',
+      "omit=yes"    as sort_order
+   FROM DUAL WHERE "', @Meta, '"="YES"
+   
+   UNION ALL
+   
+   SELECT 
+      "" as Meta,
+      dd.Brand,
+      dd.Username,
+      dd.Username_id,
+      dd.MS_id,
+      dd.Tracker_id,
+      dd.Tracker_Name,
+      dd.Product,
+      COALESCE(cd.CPA, 0) as CPA_Today,
+      ', @sql_calculations, ',
+      (dd.Day_', @first_date_format, ' - COALESCE(cd.CPA, 0)) as sort_order
+   FROM (
+      SELECT 
+         Brand,
+         Username,
+         Username_id,
+         MS_id,
+         Tracker_Name,
+         Tracker_id,
+         Product,
+         ', @sql_columns, '
+      FROM Snapshot_day_by_day_diff_90days
+      WHERE Date >= DATE_SUB(@CurrentDay, INTERVAL ', @LAPSE, ' DAY)
+      GROUP BY Brand, Username_id, MS_id, Tracker_Name, Tracker_id, Product
+   ) dd
+   LEFT JOIN (
+      SELECT 
+         Brand,
+         Username,
+         Username_id,
+         ifnull(MS_id,0) AS MS_id,
+         Tracker_Name,
+         Tracker_id,
+         Product,
+         sum(Qualified_Players) AS CPA
+      FROM Snapshot_day_by_day_fact1 D
+      WHERE D.Date = @CurrentDay AND Origin=""
+      GROUP BY Brand,Username_id,ifnull(MS_id,0),Tracker_Name,Tracker_id,Product 
+      HAVING sum(Qualified_Players)<>0
+   ) cd ON dd.MS_id = cd.MS_id AND dd.Product = cd.Product
+   WHERE ', @base_condition, '
+   ', IF(@OnlyNegative = 1, CONCAT('AND (dd.Day_', @first_date_format, ' - COALESCE(cd.CPA, 0)) < 0'), ''), '
+) final_result
+ORDER BY sort_order DESC
+');
+
+-- Ejecutar la consulta
+IF @Debug != 'NO' THEN
+   SELECT @sql as Query_Generated;
+   SELECT @sql_columns as Columns_Generated;
+   SELECT @sql_calculations as Calculations_Generated;
+ELSE
+   SET @stmt = @sql;
+   PREPARE stmt FROM @stmt;
+   EXECUTE stmt;
+   DEALLOCATE PREPARE stmt;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+Test:
+
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,debug=non');
+CALL Show_Diff_CPA_DbD_90days('Action=SET'); -- ejecutado por EVENT a partir de las 23
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,LAPSE=7'); -- muestra 7 días de comparación
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,LAPSE=3,Debug=KEYVALUES'); -- muestra query generado
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,OnlyNegative=1'); -- muestra solo diferencias negativas
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,OnlyNegative=0'); -- muestra todas las diferencias
+
+Correcciones realizadas en v1.1:
+1. Simplificado el cálculo de diferencias para mostrar valores reales en lugar de solo negativos
+2. Corregida la lógica de filtrado para OnlyNegative=1
+3. Mejorada la concatenación de condiciones en la consulta final
+4. Eliminada la lógica CASE compleja que causaba problemas con los valores negativos
+5. Agregada funcionalidad de auto-creación de datos para VIEW
+6. Agregada eliminación de datos duplicados para SET
+
+El procedimiento ahora:
+- Muestra diferencias reales entre días consecutivos
+- Para OnlyNegative=1: filtra solo registros donde la diferencia con el día actual es negativa
+- Para OnlyNegative=0: muestra todas las diferencias (positivas y negativas)
+- Compara correctamente los datos históricos con los datos actuales de fact1
+- Para Action='VIEW': crea automáticamente datos del día actual si no existen
+- Para Action='SET': elimina datos duplicados del día actual antes de insertar nuevos
+
+*/

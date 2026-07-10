@@ -1,0 +1,73 @@
+/*
+      PROCESO DE TRANSFERENCIA DE MS DE AFILIADO EA A PARKING FIVESTARS
+      06.03.2025 V1
+      
+*/
+-- Constantes para fivestars -- REVISAR Y CAMBIAR EN CADA EJECUCIÓN
+
+SET @Affiliate_id    =4;              -- Parking
+SET @Affiliate_id_ea =909;            -- Afiliado ea fivestars
+SET @Publisher_id    =67;             -- Euroaffiliati
+SET @Channel_id      =1;              -- Parking
+SET @Last_Update     ='2025-03-06';   -- CAMBIAR SEGUN CORRESPONDA
+SET @Deal_id         =188;            -- CPA=0 RS=0 BL=0
+SET @Deal_Valid_From ='2025-03-01';   -- CAMBIAR SEGUN CORRESPONDA
+SET @Product_Deal    ='';
+
+INSERT INTO fivestars.`campaign_marketing_source`(
+    `Owner`
+   ,`Code`
+   ,`Tracklink`
+   ,`Tracker_ID`
+   ,`Tracker_Name`
+   ,`Code_To_Affiliate`
+   ,`Product`
+   ,`Source`
+   ,`CPA_Limit`
+   ,`Status_id`
+   ,`NotUse_StatEf`
+   ,`Description`
+   ,`Affiliate_id`
+   ,`Advertiser_id`
+   ,`Publisher_id`
+   ,`Username_id`
+   ,`Channel_id`
+   ,`Deal_id`
+   ,`Deal_Valid_From`
+   ,`Product_Deal`
+   ,`Operator`
+   )
+SELECT
+    5stars.`Owner`            AS `Owner`
+   ,""                        as `Code`
+   ,CONCAT("https://",m.`Shortlink`) as `Tracklink`
+   ,m.`Tracker_ID`
+   ,m.`Tracker_Name`
+   ,m.`Code_To_Affiliate`
+   ,m.`Product`
+   ,m.`Source`
+   ,m.`CPA_Limit`
+   ,"1"                       as `Status_id`
+   ,"0"                       as `NotUse_StatEf`
+   ,CONCAT("Transfer SysOp ",NOW()) as `Description`
+   ,@Affiliate_id             AS `Affiliate_id`
+   ,5stars.`Advertiser_id`    AS `Advertiser_id`
+   ,@Publisher_id             AS `Publisher_id`
+   ,5stars.`Username_id`      AS `Username_id`
+   ,@Channel_id               AS `Channel_id`
+   ,@Deal_id                  AS `Deal_id`
+   ,@Deal_Valid_From          AS `Deal_Valid_From`
+   ,@Product_Deal             AS `Product_Deal`
+   ,"SysOp"                   AS `Operator`
+FROM euroaffiliati2.`campaign_marketing_source` m
+LEFT JOIN euroaffiliati2.campaign_advertiser A ON A.id=m.Advertiser_id
+LEFT JOIN LATERAL (
+      SELECT A5.id as Advertiser_id,U5.id as Username_id,U5.Owner,U5.Data_Currency
+      FROM fivestars.campaign_username U5
+      LEFT JOIN fivestars.campaign_advertiser A5 ON A5.id=U5.Advertiser_id
+      WHERE U5.Publisher_id=@Publisher_id   -- Euroaffiliati
+        AND A5.Advertiser_name=A.`Advertiser_name`
+) AS 5stars on TRUE
+WHERE m.`Affiliate_id`=@Affiliate_id_ea 
+AND   LEFT(m.`Last_Update`,10)=@Last_Update  
+;

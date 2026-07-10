@@ -1,0 +1,173 @@
+/* PROCEDURE_Monitor_CPA_trend.sql
+      Tendencia CPA en una quincena contra la misma quincena de los meses anteriores
+
+Descripción:
+  Procedimiento Monitor_CPA_trend.
+      
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+ 
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Monitor_CPA_trend('Debug=yes');
+
+08.09.2023 v1     Primera versión operativa
+10.04.2024 v1.1   Tratamiento estándar de los parámetros      
+27.06.2024 v1.2   fix errores    
+
+*/
+
+DROP PROCEDURE IF EXISTS Monitor_CPA_trend;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Monitor_CPA_trend`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Monitor CPA trend'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.2 27.06.2024';
+SET @CurrentDay      =curdate();
+SET @Affiliate_id    ='';
+SET @Mode            ='';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+-- --------------------------------------------------------------------------
+SET @InputCommLine=Concat(InputCommLine ,',');
+SET @InputCommLine=replace(@InputCommLine,'"','');
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+
+   SET @e=INSTR(@InputCommLine,'=');
+   SET @c=INSTR(@InputCommLine,',');
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1);
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1));
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =      @v;  END IF;
+	IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+
+END WHILE;
+-- --------------------------------------------------------------------------
+
+SET @CM        =LEFT(CURDATE(),7);                         
+SET @LM        =LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+SET @LM_1      =LEFT(DATE_SUB(CURDATE(), INTERVAL 2 MONTH),7);
+SET @LM_2      =LEFT(DATE_SUB(CURDATE(), INTERVAL 3 MONTH),7);
+SET @Base_Avg  =DATE_SUB(CURDATE(), INTERVAL 1 MONTH);
+SET @Days_Avg  =DATEDIFF(CURDATE(), @Base_Avg);
+SET @Days_CM   =DAY(CURDATE()); 
+SET @Days_LM   =DAY(LAST_DAY(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))); 
+
+IF @Debug!="NO" THEN SELECT @CM,@LM,@LM_1,@Base_Avg,@Days_Avg,@Days_CM,@Days_LM,@Last_4m; END IF;
+
+SET @SQL=CONCAT('
+WITH
+SetFact1 AS (
+   SELECT 
+  	   Affiliate
+     ,Brand
+     -- ,round(sum(IFNULL(Qualified_Players,0))/@Days_Avg*@Days_CM,0) AS `Expected`
+     ,SUM(CASE WHEN LEFT(DATE,7)="@CM"   THEN Qualified_Players ELSE 0 END) AS `CM`	       
+     ,SUM(CASE WHEN LEFT(DATE,7)="@LM"   THEN Qualified_Players ELSE 0 END) AS `LM`
+     ,SUM(CASE WHEN LEFT(DATE,7)="@LM_1" THEN Qualified_Players ELSE 0 END) AS `LM_1`
+     ,SUM(CASE WHEN LEFT(DATE,7)="@LM_2" THEN Qualified_Players ELSE 0 END) AS `LM_2`
+     ,SUM(CASE WHEN DATE>="@Base_Avg"    THEN Qualified_Players ELSE 0 END) AS `30Days`
+     ,ROUND(sum(IFNULL(Qualified_Players,0))/@Days_Avg,1) AS `Average_90`
+   FROM Snapshot_day_by_day_fact1 G 
+   WHERE LEFT(DATE,7)>="@LM_2"
+   GROUP BY Brand,Affiliate HAVING (`LM`>15 OR `LM`>15 OR `LM_1`>15)
+),
+SetFact1Calc as (
+   SELECT 
+  	   Affiliate
+     ,Brand
+     ,`CM`
+     ,ROUND(`LM`/@Days_LM*@Days_CM,0)           AS `Expected`
+     ,ROUND((`CM`-(`LM`/@Days_LM*@Days_CM)))    AS `DIFF`
+     ,ROUND(((`CM`-(`LM`/@Days_LM*@Days_CM)) /
+      (`LM`/@Days_LM*@Days_CM)*100),0)          AS  `DIFF%`
+     ,`30Days`
+     ,`LM`
+     ,`LM_1`
+     ,`LM_2`
+     -- ,`Average_90`
+   FROM SetFact1
+   WHERE `LM`>15
+   ORDER BY Affiliate,Brand
+)
+SELECT  
+   "setting"                    as `Meta`
+   ,"width=140px"               as `Affiliate` 
+   ,"width=140px"               as `Brand` 
+   ,"width=100px,right=true"    as `CPA @CM REAL`
+   ,"width=100px,right=true"    as `CPA @CM EXPECTED`
+   ,"width=100px,right=true"    as `CPA EXPECTED - REAL`
+   ,"width=100px,right=true"    as `% EXPECTED - REAL`
+   ,"width=100px,right=true"    as `CPA Last 30 days`
+   ,"width=100px,right=true"    as `CPA @LM`
+   ,"width=100px,right=true"    as `CPA @LM_1`
+   ,"width=100px,right=true"    as `CPA @LM_2`
+   -- ,"width=100px,right=true"    as `CPA Avg x Day`
+FROM DUAL
+
+UNION ALL
+
+SELECT "data" as `Meta`,S.*
+FROM SetFact1Calc S
+ORDER BY Affiliate,Brand   
+;');
+
+SET @SQL=REPLACE(@SQL,"@LM_1"   ,@LM_1);
+SET @SQL=REPLACE(@SQL,"@LM_2"   ,@LM_2);
+SET @SQL=REPLACE(@SQL,"@CM"     ,@CM);
+SET @SQL=REPLACE(@SQL,"@LM"     ,@LM);
+SET @SQL=REPLACE(@SQL,"@Days_Avg",@Days_Avg);
+SET @SQL=REPLACE(@SQL,"@Base_Avg",@Base_Avg);
+SET @SQL=REPLACE(@SQL,"@Days_CM",@Days_CM);
+
+-- SET @SQL=REPLACE(@SQL,"@Mont_0_to",@Mont_0_to);
+-- SET @SQL=REPLACE(@SQL,"@Mont_1_to",@Mont_1_to);
+-- SET @SQL=REPLACE(@SQL,"@Mont_2_to",@Mont_2_to);
+-- SET @SQL=REPLACE(@SQL,"@Mont_0_from",@Mont_0_from);
+-- SET @SQL=REPLACE(@SQL,"@Mont_1_from",@Mont_1_from);
+-- SET @SQL=REPLACE(@SQL,"@Mont_2_from",@Mont_2_from);
+
+-- ------------------------------------------------------
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Monitor_CPA_trend('DEBUG=ye');
+*/

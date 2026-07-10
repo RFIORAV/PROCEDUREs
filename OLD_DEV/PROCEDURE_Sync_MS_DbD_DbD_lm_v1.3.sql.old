@@ -1,0 +1,128 @@
+/* PROCEDURE_Sync_MS_DbD_DbD_lm.sql - Check Last Month Raw data: Stored data Vs New downloaded data (DbD vs DbD_lm)
+
+   21.09.2022 V1 Sincroniza una Marketing Source entre Snapshot_day_by_day y Snapshot_day_by_day_lm
+   22.09.2022 V1.1 Sincroniza todo entre Snapshot_day_by_day y Snapshot_day_by_day_lm
+   05.10.2022      Muestra diferencias también de NR, además de CPA
+   19.10.2022 V1.2 Columna Meta
+   
+Parámetros: [ view | run ]
+   view=Muestra las diferencias pero no las aplica
+   run=Reemplaza contenido de DbD por DbD_LM para el Last Month
+   
+*/
+DROP PROCEDURE IF EXISTS Sync_MS_DbD_DbD_lm;
+
+DELIMITER $$
+CREATE PROCEDURE Sync_MS_DbD_DbD_lm(IN View_OR_run varchar (20))
+   
+   COMMENT 'Check Last Month Raw data: Stored data Vs New downloaded data (DbD vs DbD_lm)'
+   LANGUAGE SQL
+
+BEGIN
+
+SET @Version='v1.3 01.11.2022';
+SET @Meta="YES";
+
+SET @LastMonth=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+
+IF upper(View_OR_run)='RUN' then SET @Debug='NO'; else SET @Debug='YES'; END IF;
+
+SET @CPA_DbD=(SELECT SUM(Qualified_players) FROM Snapshot_day_by_day WHERE LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7));
+SET @CPA_LM=(SELECT SUM(Qualified_players) FROM Snapshot_day_by_day_lm WHERE LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7));
+
+IF @CPA_DbD>@CPA_LM*1.05 THEN
+   SET @warning_CPA='YES';
+   SET @Debug='YES';
+ELSE
+   SET @warning_CPA='NO';
+END IF; 
+
+-- IF @warning_CPA="YES" THEN
+   -- SET @warning_SQL=' Select "No data in DbD_LM" from dual union all ';
+-- ELSE 
+   -- SET @warning_SQL=' -- ';
+-- END IF;IF @warning_CPA="YES" THEN
+   -- SET @warning_SQL=' Select "No data in DbD_LM" from dual union all ';
+-- ELSE 
+   -- SET @warning_SQL=' -- ';
+-- END IF;
+   
+SET SESSION group_concat_max_len = 100000;
+
+-- -------------------------------------------------------------------------------
+-- -- -----------------------------------------------------------------------------
+
+SET @SQL=CONCAT('
+DELETE FROM Snapshot_day_by_day WHERE LEFT(Date,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7);'
+);
+SET @SQL1=CONCAT('
+INSERT IGNORE INTO Snapshot_day_by_day 
+   SELECT * FROM Snapshot_day_by_day_lm WHERE LEFT(Date,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7);'
+);
+
+-- IF @warning_CPA="YES" then
+	-- PREPARE stmt1 FROM @warning_SQL;
+	-- EXECUTE stmt1;
+	-- DEALLOCATE PREPARE stmt1;
+-- end if;
+
+IF @Debug="YES" THEN
+   SELECT "" as Meta,
+          Brand,X.Username AS 'Username_id',U.Username,Tracker_ID,Tracker_name,X.Product,SUM(CPA_DbD) AS CPA_DbD,SUM(CPA_LM) AS CPA_LM,sum(CPA_DbD-CPA_LM) AS DIFF
+			,SUM(NR_DbD) AS NR_DbD,SUM(NR_LM) AS NR_LM 
+	FROM (
+      SELECT 'DbD' AS `Table`,Brand,Username,Tracker_ID,Tracker_name,Product,SUM(Qualified_players) AS CPA_DbD,0 AS CPA_LM,SUM(Net_Revenue) AS NR_DbD,0 AS NR_LM
+      FROM Snapshot_day_by_day WHERE LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7)
+      GROUP BY Brand,Username,Tracker_ID
+      UNION ALL -- -----------------------------
+      SELECT 'LM'  AS `Table`,Brand,Username,Tracker_ID,Tracker_name,Product,0,SUM(Qualified_players) AS CPA,0,SUM(Net_Revenue) AS NR_LM 
+      FROM Snapshot_day_by_day_lm WHERE LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7)
+      GROUP BY Brand,Username,Tracker_ID
+   ) AS X
+	LEFT JOIN campaign_username U ON U.id=X.Username
+   where @warning_CPA!="yes"
+	GROUP BY Brand,X.Username,Tracker_ID having DIFF<>0 OR SUM(NR_DbD) <> SUM(NR_LM)      -- 05.10.2022
+   -- UNION ALL SELECT "" as Meta,'΋ {End report}','','','','','','','','','','' FROM dual
+   UNION ALL 
+   Select "","Not enough data in DbD_LM","","","","","","","","","","" from dual where @warning_CPA="YES" union all
+   SELECT
+   "setting" as Meta
+   ,"width=150px" as '1'
+   ,"width=100px" as '2'
+   ,"width=150px" as '3'
+   ,"width=200px" as '4'
+   ,"width=200px" as '5'
+   ,"width=200px" as '6'
+   ,"width=200px" as '7'
+   ,"width=100px" as '6'
+   ,"width=100px" as '9'
+   ,"width=100px" as '10'
+   ,"width=100px" as '11'
+   FROM DUAL WHERE @Meta="YES"
+  
+   ORDER BY Brand,Username,DIFF desc;
+END IF;
+
+-- IF @Debug="YES" THEN SELECT @SQL; END IF;
+-- IF @Debug="YES" THEN SELECT @SQL1; END IF;
+
+IF @Debug="NO" THEN 
+
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+
+   PREPARE stmt2 FROM @SQL1;
+	EXECUTE stmt2;
+	DEALLOCATE PREPARE stmt2;
+
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+
+call Sync_MS_DbD_DbD_lm('view');
+
+*/

@@ -1,0 +1,23 @@
+-- Script para crear tabla temporal con tags agrupados por Affiliate_id
+-- A partir de account_account_tags (A) y account_account_tags_list (L)
+
+-- Eliminar tabla temporal si existe
+DROP TEMPORARY TABLE IF EXISTS temp_affiliate_tags;
+
+-- Crear tabla temporal con tags agrupados por Affiliate_id
+CREATE TEMPORARY TABLE temp_affiliate_tags AS
+SELECT 
+    A.Affiliate_id,
+    GROUP_CONCAT(DISTINCT A.Tag_id ORDER BY A.Tag_id SEPARATOR ',') AS Tags_id,
+    GROUP_CONCAT(DISTINCT L.Tag ORDER BY L.Tag SEPARATOR ',') AS Tags_name
+FROM 
+    account_account_tags A
+    INNER JOIN account_account_tags_list L ON A.Tag_id = L.id
+WHERE 
+    A.Status = 1 
+    AND L.Status = 1
+GROUP BY 
+    A.Affiliate_id;
+
+-- Verificar resultados
+SELECT * FROM temp_affiliate_tags ORDER BY Affiliate_id;

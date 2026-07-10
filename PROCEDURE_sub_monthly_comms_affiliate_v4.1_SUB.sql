@@ -1,0 +1,325 @@
+/* PROCEDURE_monthly_comms_affiliate_v4_COver  - COMISIONES del AFILIADO
+
+
+Descripción:
+  Procedimiento sub_monthly_comms_affiliate.
+	22.02.2022 Calculos sobre Snapshot_day_by_day_fact1
+	02.04.2022 Se agrega Tracker_ID para estadisticas
+	19.04.2022 Tratamiento de Deal por producto y fecha
+	27.07.2022 Multimoneda
+	13.09.2022 incluye Product
+   10.10.2022 V3.1   incluye group by deal
+   27.10.2022 V3.2   Nuevo cálculo de RS (acumula por Adv Account)
+   28.10.2022 V3.2   Utiliza Brand_Group y Brand_Group_Acum
+-- 28.11.2022 v3.3   Se trata nuevos campos is_indirect,Advertiser_indirect_id,Advertiser_indirect
+   21.01.2023 v3.4   Trata nuevo concepto Publisher (pagador)
+   31.01.2023 v3.5   `Area`
+   10.03.2023 v4     PROCEDURE_monthly_comms_gestor_v4_COver.sql - C.Over
+   11.03.2023 v4     PROCEDURE_monthly_comms_affiliate_v4_COver.sql - C.Over
+   11.01.2024 v4.1   Se agrega cálculo comision referral
+                     Modifica índices monthly_comms_affiliate
+                     compatibilidad con view_monthly_fact_aff3
+   18.06.2024 v4.1   Tratamiento de Subafiliados
+
+Keys:
+  Sin parámetros de entrada documentables.
+**/
+SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+DROP PROCEDURE IF EXISTS sub_monthly_comms_affiliate;
+
+DELIMITER $$
+
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE sub_monthly_comms_affiliate()
+   COMMENT 'Commission calc using C.Over and CPAminusRS'
+   LANGUAGE SQL
+ 
+BEGIN
+-- Defaults
+SET @Version         ='v4.1 18.06.2024';
+SET @CurrentDay      =curdate();
+
+IF CURDATE()<='2024-06-18' THEN DROP TABLE IF EXISTS `sub_monthly_comms_affiliate`; END IF;
+
+CREATE TABLE IF NOT EXISTS `sub_monthly_comms_affiliate` (
+-- `id` INT(10)                      NOT NULL AUTO_INCREMENT,
+	`Month`            VARCHAR(7)     NOT NULL DEFAULT '0000-00',
+	`Affiliate`        VARCHAR(80)    NOT NULL DEFAULT '',
+	`Brand`            VARCHAR(80)    NOT NULL DEFAULT '',
+	`Affiliate_id`     INT(10)        NOT NULL DEFAULT '0',
+	`Advertiser_id`    INT(10)        NOT NULL DEFAULT '0',
+	`CPA`              DECIMAL(12,0)  NOT NULL DEFAULT '0',
+	`net_CPA_Val`      DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`net_RS_Val`       DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`net_Total_comm`   DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`RS_carry_NCO`     DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`Net_Revenue`      DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`gross_CPA_Val`    DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`gross_RS_Val`     DECIMAL(12,2)  NOT NULL DEFAULT '0',
+   `Sub_Affiliate`    VARCHAR(80)    NOT NULL DEFAULT '',
+	`Sub_Affiliate_id` INT(10)        NOT NULL DEFAULT '0',
+	`Product`          VARCHAR(80)    NOT NULL DEFAULT '',
+	`Product_Real`     VARCHAR(80)    NOT NULL DEFAULT '',
+	`Channel`          VARCHAR(80)    NOT NULL DEFAULT '',
+	`Channel_id`       INT(10)        NOT NULL DEFAULT '0',
+	-- `CarryOver`       VARCHAR(2)     NOT NULL DEFAULT '0',
+	-- `CPAminusRS`      INT(10)        NOT NULL DEFAULT '0'
+	--  PRIMARY KEY (`id`) USING BTREE,
+	-- UNIQUE INDEX `Month` (`Affiliate_id`, `Advertiser_id`,`Month`,`Sub_Affiliate_id`) USING BTREE,
+	INDEX `Month_Affiliate_id` (`Month`, `Affiliate_id`)           USING BTREE,
+	INDEX `Affiliate_id_Month` (`Affiliate_id`,`Month`)            USING BTREE,
+	INDEX `Month_Advertiser_id` (`Month`, `Advertiser_id`)         USING BTREE  
+)
+;
+TRUNCATE TABLE `sub_monthly_comms_affiliate`;
+ 
+INSERT IGNORE INTO  `sub_monthly_comms_affiliate`
+WITH DbD_Fact1_Account_monthly as (
+	SELECT
+		 LEFT(DATE,7) AS `Month`
+      ,`Affiliate_id`   
+		,`Advertiser_id`  
+		,SUM(IFNULL(`Qualified_Players`,0))  				AS `CPA`
+		,SUM(IFNULL(`Net_Revenue`,0))							AS `Net_Revenue`
+		,ROUND(SUM(IFNULL(`CPA_Value_Affiliate`,0)),2)     AS `gross_CPA_Val`
+		,ROUND(SUM(IFNULL(`Revenue_Share_Affiliate`,0)),2) AS `gross_RS_Val`
+		,`Deal_Aff_id`
+		,`Deal_Aff_CPA`
+		,`Deal_Aff_Carry_Over`                          as `CarryOver`
+		,`Deal_Aff_RS_Against_CPA`                      as `CPAminusRS`
+		,`Deal_Aff_RS_Base`
+		,`Deal_Aff_RS`
+		,`Deal_Aff_Valid_From`
+		,Data_Currency
+      ,`Affiliate`
+      ,`Brand`
+      ,`Product`
+      ,`Product_Real`
+      ,`Channel`
+      ,`Channel_id`
+		FROM `sub_Snapshot_day_by_day_fact3` -- WHERE Affiliate_id=130
+		GROUP BY `Affiliate_id`,LEFT(DATE,7),`Advertiser_id`,`Deal_Aff_RS_Against_CPA`,`Deal_Aff_Carry_Over`
+),
+DbD_Fact1_Account_monthly_CPA_versus_RS as (
+   (
+   SELECT
+		 `Month`
+      ,`Affiliate_id`   
+		,`Advertiser_id`       
+		,`CPA`
+		,`Net_Revenue`
+		,`gross_CPA_Val`
+		,`gross_RS_Val`
+		,`CarryOver`
+		,`CPAminusRS`
+      ,(CASE WHEN `gross_CPA_Val`>=ABS(gross_RS_Val)
+             THEN @net_CPA_Val:=`gross_CPA_Val`-ABS(gross_RS_Val)
+             ELSE @net_CPA_Val:=0 END) AS `net_CPA_Val`
+      ,(CASE WHEN `gross_CPA_Val`>=ABS(gross_RS_Val)
+             THEN @net_RS_Val:=0
+             ELSE @net_RS_Val:=`gross_CPA_Val`-ABS(gross_RS_Val)
+             END)                AS `net_RS_Val`
+      ,`Affiliate`
+      ,`Brand`             
+      ,`Product`
+      ,`Product_Real`
+      ,`Channel`
+      ,`Channel_id`
+	FROM `DbD_Fact1_Account_monthly` D
+   WHERE `CPAminusRS`=1 AND `gross_RS_Val`<0
+   )
+   UNION ALL -- --------------------------------------------
+   (
+	SELECT
+		 `Month`
+      ,`Affiliate_id`   
+		,`Advertiser_id`     
+		,`CPA`
+		,`Net_Revenue`
+		,`gross_CPA_Val`
+		,`gross_RS_Val`
+		,`CarryOver`
+		,`CPAminusRS`
+      ,`gross_CPA_Val`           AS `net_CPA_Val`
+      ,`gross_RS_Val`            AS `net_RS_Val`
+      ,`Affiliate`
+      ,`Brand`
+      ,`Product`
+      ,`Product_Real`
+      ,`Channel`
+      ,`Channel_id`
+	FROM `DbD_Fact1_Account_monthly` D
+   WHERE `CPAminusRS`=1 AND `gross_RS_Val`>=0
+   )
+   UNION ALL -- --------------------------------------------
+   (
+	SELECT
+		 `Month`
+      ,`Affiliate_id`   
+		,`Advertiser_id`
+		,`CPA`
+		,`Net_Revenue`
+		,`gross_CPA_Val`
+		,`gross_RS_Val`
+		,`CarryOver`
+		,`CPAminusRS`
+      ,`gross_CPA_Val`           AS `net_CPA_Val`
+      ,`gross_RS_Val`            AS `net_RS_Val`
+      ,`Affiliate`
+      ,`Brand`
+      ,`Product`
+      ,`Product_Real`
+      ,`Channel`
+      ,`Channel_id`
+	FROM `DbD_Fact1_Account_monthly` D
+   WHERE `CPAminusRS`=0 -- AND `gross_RS_Val`>=0
+   )
+	ORDER BY `Affiliate_id`,`Advertiser_id`,`Month`,`CarryOver`,`CPAminusRS`
+),
+DbD_Fact1_Account_monthly_CPA_versus_RS_acum as (
+   SELECT
+		 `Month`
+      ,`Affiliate_id`   
+		,`Advertiser_id`
+		,sum(`CPA`          ) as `CPA`          
+		,sum(`Net_Revenue`  ) as `Net_Revenue`  
+		,sum(`gross_CPA_Val`) as `gross_CPA_Val`
+		,sum(`gross_RS_Val` ) as `gross_RS_Val` 
+      ,sum(`net_CPA_Val`  ) as `net_CPA_Val`  
+      ,sum(`net_RS_Val`   ) as `net_RS_Val` 
+      ,`Affiliate`
+      ,`Brand`      
+      ,`Product`
+      ,`Product_Real`
+      ,`Channel`
+      ,`Channel_id`
+		,`CarryOver`    
+		-- ,`CPAminusRS`   
+	FROM `DbD_Fact1_Account_monthly_CPA_versus_RS`
+   GROUP BY `Affiliate_id`,`Advertiser_id`,`Month`,`CarryOver`
+	ORDER BY `Affiliate_id`,`Advertiser_id`,`Month`,`CarryOver`
+),
+DbD_Fact1_Account_monthly_CarryOver as (
+   SELECT
+		 `Month`
+      ,`Affiliate_id`
+		,`Advertiser_id`
+		,`CPA`
+		,`Net_Revenue`
+		,`gross_CPA_Val`
+		,`gross_RS_Val`
+		,`CarryOver`
+		-- ,`CPAminusRS`
+      ,`net_CPA_Val`
+      ,`net_RS_Val` as `Dummy0`
+      ,(@RS_carry_NCO:=case when IFNULL(@Prev_Deal,"")!=CONCAT_WS(" ",Affiliate_id,Advertiser_id,CarryOver) 
+                            then 0 else @RS_carry_NCO END) 	  as `Dummy1`
+      ,(@net_RS_Val  :=case when `CarryOver`="1"   then @RS_carry_NCO+`net_RS_Val`   ELSE `net_RS_Val` END)      as `Dummy2`
+      ,(@RS_carry_NCO:=case when `CarryOver`="1"   then @RS_carry_NCO+`net_RS_Val`   ELSE @RS_carry_NCO+0 END)   as `Dummy3`
+      ,(@RS_carry_NCO:=case when @RS_carry_NCO>=0  then 0 else @RS_carry_NCO+0 end)             as `RS_carry_NCO`
+      ,(@net_RS_Val  :=case when @net_RS_Val<0     then 0 else @net_RS_Val end)              	as `net_RS_Val`
+      ,(@Prev_Deal:=CONCAT_WS(" ",Affiliate_id,Advertiser_id,CarryOver)) AS `Prev_Deal`            
+      ,`Affiliate`
+      ,`Brand`
+      ,`Product`
+      ,`Product_Real`
+      ,`Channel`
+      ,`Channel_id`
+	FROM `DbD_Fact1_Account_monthly_CPA_versus_RS_acum` D
+)
+SELECT
+	 `Month`
+   ,`Affiliate`
+   ,`Brand`
+   ,`Affiliate_id`
+	,`Advertiser_id`
+   ,round(sum(`CPA`          ),0) as `CPA`  
+   ,round(sum(`net_CPA_Val`  ),2) as `net_CPA_Val`  
+   ,round(sum(`net_RS_Val`   ),2) as `net_RS_Val`   
+   ,round(sum(`net_CPA_Val`+`net_RS_Val`),2) as `net_Total_comm`   
+   ,round(sum(`RS_carry_NCO` ),2) as `RS_carry_NCO` 
+	,round(sum(`Net_Revenue`  ),2) as `Net_Revenue`  
+	,round(sum(`gross_CPA_Val`),2) as `gross_CPA_Val`
+	,round(sum(`gross_RS_Val` ),2) as `gross_RS_Val`
+	,' '
+	,0
+   ,`Product`
+   ,`Product_Real`
+   ,`Channel`
+   ,`Channel_id`
+	-- ,`CarryOver`
+	-- ,`CPAminusRS`
+   -- ,`net_RS_Value`
+	-- ,`Dummy0`,`Dummy1`,`Dummy2`,`Dummy3`
+	-- ,`Prev_Deal`
+FROM DbD_Fact1_Account_monthly_CarryOver
+GROUP BY `Affiliate_id`,`Advertiser_id`,`Month`,`Channel_id`
+ORDER BY `Affiliate_id`,`Advertiser_id`,`Month`,`Channel_id`
+;
+-- -------------------------------------------------------------------
+-- -------------------------------------------------------------------
+/*
+INSERT IGNORE INTO  `sub_monthly_comms_affiliate`
+WITH Master_Sub AS (
+SELECT Master_Affiliate_id                `Master_Affiliate_id`
+      ,MC.username                     AS `Master`
+		,Sub_Affiliate_id                   `Sub_Affiliate_id`
+      ,AC.username                     AS `Sub_Affiliate`
+		,M.Status_id
+		,M.Valid_From,M.Valid_To
+		,M.Deal_id
+		,MD.Deal_Name 
+		,MD.Commissions_Percentage       AS `Com%`
+		,MD.CPA_Value                    AS `ComByCPA`
+      ,MD.RS_Percentage                AS `RS%`
+from master_affiliate_deals_per_affiliate M
+LEFT  JOIN `account_account` AC        on M.Sub_Affiliate_id=AC.id
+LEFT  JOIN `account_account` MC        on M.Master_Affiliate_id=MC.id
+LEFT  JOIN `master_affiliate_deals` MD on M.Deal_id=MD.id
+-- WHERE Master_Affiliate_id="',@Affiliate_id,'" 
+)
+SELECT
+    LEFT(D.Date,7)                     AS `Month`
+	,MS.Master                             `Affiliate`
+   ,D.`Brand`
+	,MS.Master_Affiliate_id                `Affiliate_id`
+	,D.`Advertiser_id`   
+	,SUM(Qualified_Players)             as `CPA`
+	,SUM(Qualified_Players*ComByCPA)    as `net_CPA_Val`
+	,0                                  as `net_RS_Val`
+	,SUM(Qualified_Players*ComByCPA)    as `net_Total_comm`
+	,0                                  as `RS_carry_NCO`
+	,0                                  as `Net_Revenue`
+	,SUM(Qualified_Players*ComByCPA)    as `gross_CPA_Val`
+	,0                                  as `gross_RS_Val`
+	,D.Affiliate                           `Sub_Affiliate`
+	,D.Affiliate_id                        `Sub_Affiliate_id`
+   ,D.`Product`
+   ,D.`Product_Real`
+   ,D.`Channel`
+   ,D.`Channel_id`
+FROM Snapshot_day_by_day_fact2 D
+INNER JOIN Master_Sub MS ON MS.Sub_Affiliate_id=D.Affiliate_id
+WHERE LEFT(D.Date,7)>="2023-12"
+-- GROUP BY D.Affiliate
+GROUP BY `Affiliate_id`,`Advertiser_id`,`Channel_id`,`Month` HAVING `net_Total_comm`<>0
+ORDER BY Affiliate
+;
+*/
+
+END$$
+DELIMITER ;
+
+/*
+call sub_monthly_comms_affiliate;
+
+-- Para test
+update `Snapshot_day_by_day_fact2`
+set `Deal_Aff_Carry_Over`=1
+where Advertiser_id in ('3','16','17')
+;
+update `Snapshot_day_by_day_fact2`
+set `Deal_Aff_RS_Against_CPA`=1
+where Advertiser_id in ('3','16')
+;
+
+*/

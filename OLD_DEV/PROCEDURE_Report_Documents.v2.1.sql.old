@@ -1,0 +1,172 @@
+/*
+PROCEDURE_Report_Documents.sql - Reports Documents
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+mode             =[ GESTOR | AFFILIATE ] OBLIGATORIO. 
+Affiliate_id     =[id de affiliate]
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_Documents('Mode=Gestor,Affiliate_id=334');
+
+
+10.10.2023 V1     Karen. Primera versión operativa
+01.02.2024 V2     Karen. Se agregó "Op Type" y "Financial_Movement_id"
+27.03.2024 v2.1   RF. Cambios en la presentación del grid (RS)
+*/
+
+DROP PROCEDURE IF EXISTS Report_Documents;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Documents`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Documents'
+proc_label:BEGIN
+
+SET @Version         ='v2.1 27.03.2024';
+SET @CurrentDay      =curdate();
+SET @Affiliate_id    ='';
+SET @Mode            ='';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+-- --------------------------------------------------------------------------
+SET @InputCommLine=Concat(InputCommLine ,',');
+
+SET @InputCommLine=replace(@InputCommLine,'"','');
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+
+WHILE @InputCommLine>' ' DO
+
+   SET @e=INSTR(@InputCommLine,'=');
+   SET @c=INSTR(@InputCommLine,',');
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1);
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1));
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =      @v;  END IF;
+	IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+
+END WHILE;
+-- --------------------------------------------------------------------------
+IF @Debug!="NO" THEN SELECT @Mode,@Affiliate_id,@Debug,@Meta,InputCommLine; END IF;
+
+
+IF   @Affiliate_id IN ("","ALL") AND @MODE!="GESTOR"
+THEN
+    Select 'data' as Meta,'Affiliate_id mandatory' as '' from dual;
+    LEAVE proc_label;
+END IF;
+
+
+SET @WhereAffiliate_id='';
+
+IF @Mode != "GESTOR" THEN SET @WhereAffiliate_id=CONCAT(" AND b.Account_id  =",@Affiliate_id);     END IF;
+
+IF @Debug!="NO" THEN SELECT @WhereAffiliate_id; END IF;
+
+
+-- --------------------------------------------------------------------------
+SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT
+     b.`id`
+	 ,b.`doc_filename`
+	 ,b.Op_Type
+    ,a.`username` as Affiliate
+	 ,LEFT(b.Creation_Date,16) AS `Exp_Date`
+-- 	 ,b.`description`
+	 ,b.url_file
+    ,ifnull(f.Amount_Debit,"") AS `Ammount`
+    ,case ifnull(f.`Status`,"")
+                  when "0" then "Pending"
+                  when "1" then "Accepted"
+                  when "2" then "Paid"
+                  when "3" then "Blocked"
+                  ELSE ""
+     end as `Action taken`
+    ,case when ifnull(f.`Status`,"") IN ("1","2","3")
+      then left(f.`Last_Update`,16)
+      end AS `Reviewed on`
+    ,case when ifnull(f.`Status`,"") IN ("3")
+      then f.Description
+      ELSE ""
+      end AS `Remarks`
+FROM account_account_bills b
+LEFT JOIN account_account            a ON b.Account_id=a.id
+LEFT JOIN account_financial_movement f ON b.Financial_Movement_id=f.id
+WHERE 1=1 '
+   ,@WhereAffiliate_id
+,')
+');
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting"                                    as Meta
+	 ,"width=90px,action=2,center=yes"           as `action`
+    ,"omit=yes"                                 as `id`
+	 ,"width=250px,tooltip=yes"                  as `Name`
+	 ,"width=100px"                              as `Op. Type`
+	 -- ,"width=150px"                           as `Status`
+	 ,IF(@Mode="GESTOR","width=150px","omit=yes") as `Affiliate`
+    ,"width=130px"                              as `Date submitted`
+	 ,"omit=yes"                                 as `url`
+	 ,"width=100px,center=yes"                   as `Amount`
+	 ,"width=100px"                              as `Action taken`
+	 ,"width=130px"                              as `Reviewed on`
+    ,"width=300px,tooltip=yes"                  as `Description`
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`
+  ,"..." as `Action`
+	,MT.*
+FROM Main_Table_Data MT
+order by `Date submitted` desc
+;');
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Report_Documents('Mode=Gestor,Affiliate_id=334');
+call Report_Documents('Mode=Gestor, debug=ye');
+*/

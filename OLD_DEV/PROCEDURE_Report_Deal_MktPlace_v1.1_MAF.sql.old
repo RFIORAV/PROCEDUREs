@@ -1,0 +1,302 @@
+/*
+PROCEDURE_Report_Deal_MktPlace.sql - Report deals Market Place
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Mode            =[Affiliate | Gestor | MAF]. OPCIONAL. Default=affiliate
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO para MODE=MAF
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Product         =[ALL | Product]. OPCIONAL. Default=ALL. Si tiene más de una palabra, separar con "!" en lugar de espacio
+Status          =[ALL | 1 | 0]. OPCIONAL. Default=ALL. 1=Active 0=Inactive
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [Yes]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Key no utilizadas:
+
+Search          =[(dato a buscar]. OPCIONAL. Busca string en Tracker_ID/Tracker_Name/Code_To_Affiliate/MS_id/MS_id/affiliate/Channel
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL. tiene prioridad sobre el resto de parámetros, excepto la fecha
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Account_id      =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+DealbyProduct   =[No | Yes]. Devuelve último deal activo por cada Product. OPCIONAL. Default=no.
+
+Ejemplos:
+
+call Report_Deal_MktPlace('debug=yes'); -- Devuelve todo
+call Report_Deal_MktPlace('debug=ye,filters=yes');
+call Report_Deal_MktPlace('debug=ye,filters=no,status=inactive');
+
+17.01.2023 V1     Primera versión operativa
+15.05.2024 v1.1   Opción master afiliado (MODE = MAF)
+
+*/
+
+DROP PROCEDURE IF EXISTS Report_Deal_MktPlace;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Deal_MktPlace`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report_Deal_MktPlace'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.1 15.05.2024';
+SET @CurrentDay      =curdate();
+SET @Mode            ='AFFILIATE';
+SET @Affiliate_id    ='ALL';
+SET @Month           =left(curdate(),7);
+SET @Account_id      ='ALL';
+SET @Advertiser_id   ='ALL';
+SET @Brand_Group     ='ALL';
+SET @Channel_id      ='ALL';
+SET @Currency        ='EUR';
+SET @DealbyProduct   ='NO';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @MS_id           ='ALL';
+SET @Meta            ='YES';
+SET @Owner           ='ALL';
+SET @Platform        ='ALL';
+SET @Product         ='ALL';
+SET @STATUS          ='ALL';
+SET @Search          ='';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='account_id'      THEN SET @Account_id    =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id'   THEN SET @Advertiser_id =UPPER(@v); END IF;
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='channel_id'      THEN SET @Channel_id    =UPPER(@v); END IF;
+   IF lower(@k)='currency'        THEN SET @Currency      =UPPER(@v); END IF;
+   IF lower(@k)='dealbyproduct'   THEN SET @DealbyProduct =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='groupbyms'       THEN SET @GroupByMS     =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='month'           THEN SET @Month         =UPPER(@v); END IF;
+   IF lower(@k)='ms_id'           THEN SET @MS_id         =UPPER(@v); END IF;
+   IF lower(@k)='onlyovercap'     THEN SET @OnlyOverCap   =UPPER(@v); END IF;
+   IF lower(@k)='owner'           THEN SET @Owner         =UPPER(@v); END IF;
+   IF lower(@k)='platform'        THEN SET @Platform      =      @v;  END IF;
+   IF lower(@k)='product'         THEN SET @Product       =      @v;  END IF;
+   IF lower(@k)='search'          THEN SET @Search        =     (@v); END IF;
+   IF lower(@k)='status'          THEN SET @Status        =      @v;  END IF;
+   IF lower(@k)='total'           THEN SET @Total         =UPPER(@v); END IF;
+   IF lower(@k)='totline'         THEN SET @TotLine       =UPPER(@v); END IF;
+   IF lower(@k)='view'            THEN SET @View          =UPPER(@v); END IF;
+
+END WHILE;
+
+-- Recupera espacios reemplazados en front end por caracter "\"
+SET @Product      =replace(@Product,"!"," ");
+-- SET @Platform     =replace(@Platform,"!"," ");
+-- SET @Brand_Group  =replace(@Brand_Group,"!"," ");
+
+-- IF @Debug!="NO" THEN SELECT @Product,@Platform,@Brand_Group; END IF;
+--
+
+-- IF @Mode!='GESTOR' THEN
+   -- SET @Mode='AFFILIATE';
+   -- SET @View='VIEWAFF';
+-- END IF;
+
+IF @Debug!="NO" THEN SELECT @Mode,@Month,@View,@Filters,@OWNER,@OnlyOverCap,@Brand_Group,@Advertiser_id,@Affiliate_id,@Account_id
+                           ,@Channel_id,@Product,@DealbyProduct,@Platform,@Currency,@Total,@Debug,@Meta,InputCommLine; END IF;
+
+-- Affiliate_id OBLIGATORIO cuando MODE=MAF
+IF  @Affiliate_id IN ("","ALL") AND @Mode="MAF" THEN
+    Select 'data' as Meta,'Affiliate_id mandatory when MODE=MAF' as '' from dual;
+    LEAVE proc_label;
+END IF;                            
+
+SET @WhereMS_id='';
+SET @WhereOwner='';
+SET @WhereAdvertiser_id ='';
+SET @WhereAffiliate_id  ='';
+SET @WhereAdv_Account_id='';
+SET @WhereChannel_id    ='';
+SET @WhereProduct       ='';
+SET @WhereStatus        ='';
+SET @WhereSearch        ='';
+
+SET @SearchClause=replace('and (M.id like "%XXX%" or Description like "%XXX%"
+     or M.Deal_Name like "%XXX%") like "%XXX%")','XXX',@Search);
+
+IF @Owner         !="ALL" THEN SET @WhereOwner         =CONCAT(" AND M.Owner=",@Owner);                    END IF;
+IF @Advertiser_id !="ALL" THEN SET @WhereAdvertiser_id =CONCAT(" AND M.Advertiser_id  =",@Advertiser_id ); END IF;
+IF @Product       !="ALL" THEN SET @WhereProduct       =CONCAT(" AND M.`Product`      ='",@Product,"'");   END IF;
+IF @Status        !="ALL" THEN SET @WhereStatus        =CONCAT(" AND `Status`       ='",@Status,"'");      END IF;
+-- IF @Status      ="0"   THEN SET @WhereStatus        =CONCAT(" AND `Status_id`   !='1'");              END IF;
+IF @Search        !=""    THEN SET @WhereSearch        =@SearchClause; END IF;
+
+-- En MODE=MAF Affiliate_id=MAF_id
+SET @MarketplaceTable="`campaign_deal_marketplace`";
+IF   @Mode="MAF" 
+THEN SET @WhereOwner=CONCAT(" AND M.Owner='",@Affiliate_id,"'"); 
+     SET @MarketplaceTable="`sub_campaign_deal_marketplace`";
+END IF;
+
+IF @Debug!="NO" THEN SELECT @MarketplaceTable,@WhereOwner,@WhereAdvertiser_id,@WhereAffiliate_id,@WhereAdv_Account_id,@WhereChannel_id
+                           ,@WhereProduct,@WhereStatus,@WhereMS_id,@WhereSearch; END IF;
+
+SET @Count=0;
+
+/**************************************************************************************************************/
+SET @SQLmeta=concat(
+' UNION ALL (
+SELECT
+   "setting" as Meta
+   ,"width=80px,action=2" as `Action`
+   ,"omit=true"   as `id`
+   ,"omit=true"   as `Owner`
+   ,"width=150px" as `Brand`
+   ,"width=100px" as `Product`
+   ,"width=100px" as `Status`
+   ,"width=200px" as `Deal Name`
+   ,"width=100px" as `CPA Value`
+   ,"width=090px" as `% RS`
+   ,"width=200px" as `Description`
+   ,"width=090px" as `Baseline`
+   ,"omit=true"   as `RS Base`
+   ,"width=090px" as `Carry Over`
+   ,"width=090px" as `CPA minus RS`
+   ,"width=090px" as `Country`
+   ,"omit=true"   as `Advertiser id`
+   ,"width=150px" as `Last Update`
+   ,"width=100px" as `Operator`
+	FROM DUAL WHERE @Meta="YES")'
+);
+-- IF @Debug!="NO" THEN SELECT @SQLmeta; END IF;
+/**************************************************************************************************************/
+
+SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('with deal_marketplace as (
+SELECT '
+   ,IF(@Meta="YES","'data' as `Meta`,'...' as `Action`,",""),'
+    M.`id`
+   ,M.`Owner`
+   ,M.`Advertiser_Name`
+   ,M.`Product`
+   ,M.`Status_id`
+   ,M.`Status`
+   ,M.`Deal_Name`
+   ,M.`CPA_Value`
+   ,M.`RS_Percentage`
+   ,M.`Description`
+   ,M.`Baseline`
+   ,case when M.`RS_Percentage`>0 then M.`RS_Base` else "" end as `RS_Base`
+   ,case when M.`RS_Percentage`>0
+         then case when M.`Carry_Over`=0 then "No" else "Yes" end
+         else "" end as `Carry_Over`
+   ,case when M.`RS_Percentage`>0
+         then case when M.`RS_Against_CPA`=0 then "No" else "Yes" end
+         else "" end as `RS_Against_CPA`
+   ,case when ifnull(M.`Country`,"")="" then "All" else M.`Country` end as `Country`
+   ,M.`Advertiser_id`
+   ,left(ifnull(M.`Last_Update`,""),19) `Last_Update`
+   ,M.`Operator`
+FROM ',@MarketplaceTable,' M
+WHERE 1=1 '
+   ,@WhereOwner
+   ,@WhereAdvertiser_id
+   ,@WhereProduct
+   ,@WhereStatus
+   ,@WhereSearch
+,')');
+
+SET @CloseQuery=';';
+
+SET @SQL=CONCAT(
+@CTE,
+'
+SELECT '
+   ,IF(@Meta="YES","'data' as `Meta`,'...' as `Action`,",""),'
+    M.`id`                       as `id`
+   ,M.`Owner`                    as `Owner`
+   ,M.`Advertiser_Name`          as `Brand`
+   ,M.`Product`                  as `Product`
+   ,M.`Status`                   as `Status`
+   ,M.`Deal_Name`                as `Deal Name`
+   ,M.`CPA_Value`                as `CPA Value`
+   ,M.`RS_Percentage`            as `% RS`
+   ,M.`Description`              as `Description`
+   ,M.`Baseline`                 as `Baseline`
+   ,M.`RS_Base`                  as `RS Base`
+   ,M.`Carry_Over`               as `Carry Over`
+   ,M.`RS_Against_CPA`           as `CPA minus RS`
+   ,M.`Country`                  as `Country`
+   ,M.`Advertiser_id`            as `Advertiser id`
+   ,M.`Last_Update`              as `Last Update`
+   ,M.`Operator`                 as `Operator`
+FROM deal_marketplace M
+'
+,IF(@Meta="YES",@SQLmeta,""),'
+ORDER BY `Brand`,Product,`Deal Name`'
+,@CloseQuery);
+
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "7" as "Korder","Country" AS "Key",`Country` AS "Value","Country" AS `CallKey`,`Country` AS "CallValue",COUNT(*) AS "Rows"
+                                                                                       FROM deal_marketplace GROUP BY `Country`       ) UNION ALL
+(SELECT "3","Status" ,`Status`         ,"Status"       ,`Status`        ,COUNT(*) AS K FROM deal_marketplace WHERE IFNULL(`Status`     ,"")>""     GROUP BY IFNULL(`Status`     ,""))      UNION ALL
+(SELECT "5","Brand" 	,`Advertiser_Name`,"Advertiser_id",`Advertiser_id` ,COUNT(*) AS K FROM deal_marketplace WHERE IFNULL(`Advertiser_Name`,"")>"" GROUP BY IFNULL(`Advertiser_Name` ,"")) UNION ALL
+(SELECT "9","Product",`Product`        ,"Product"      ,`Product`       ,COUNT(*) AS K FROM deal_marketplace WHERE IFNULL(`Product`    ,"")>" "    GROUP BY IFNULL(`Product`    ,""))
+ORDER BY 1,3
+;');
+
+IF @Filters!="NO" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+
+call Report_Deal_MktPlace('debug=yes'); -- Devuelve todo
+call Report_Deal_MktPlace('debug=ye,filters=yes');
+call Report_Deal_MktPlace('debug=ye,filters=no,status=all');
+
+call Report_Deal_MktPlace('mode=MAF,Affiliate_id=440,debug=ye,filters=no,status=all');
+call Report_Deal_MktPlace('mode=MAF,Affiliate_id=440,debug=ye,filters=yes');
+
+*/

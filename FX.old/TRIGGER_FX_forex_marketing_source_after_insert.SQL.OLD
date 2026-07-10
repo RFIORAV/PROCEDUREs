@@ -1,0 +1,59 @@
+/*
+***************************************************************
+** TRIGGER forex_marketing_source_after_insert
+**
+** 22.02.2022 Instalado en euroaffiliati_test/euroaffiliati2 Remota
+-- 14.09.2022 Adaptado forex_advertiser_account_after_insert a Forex
+** 02.11.2022 No crea registro si datos básicos (Deal_Valid_From,Deal_id) no vienen informados
+***************************************************************
+*/
+-- ---------------------------------------------------------------------
+DROP TRIGGER IF EXISTS forex_marketing_source_after_insert;
+DELIMITER $$
+--
+CREATE TRIGGER forex_marketing_source_after_insert
+AFTER INSERT
+ON forex_marketing_source FOR EACH ROW
+--
+BEGIN
+
+DECLARE `Trigger_Version` VARCHAR (20) DEFAULT '14.11.2022';
+--
+/************************************
+	TRATAMIENTO DEL DEAL
+*************************************/
+IF
+   NEW.`Deal_Valid_From` IS NOT NULL AND 
+   NEW.`Affiliate_id`    IS NOT NULL AND
+   NEW.`Deal_id`         IS NOT NULL
+--
+THEN 
+
+INSERT INTO forex_marketing_source_deal_date (
+    `MS_id`
+   ,`Deal_Valid_From`
+   ,`Affiliate_id`
+   ,`Channel_id`
+   ,`Deal_id`
+   ,`Code`
+   ,`Creation_Date`
+   ,`Last_Update`
+   ,`Operator`
+)
+VALUES (
+    NEW.`id`
+   ,NEW.`Deal_Valid_From`
+   ,NEW.`Affiliate_id`
+   ,NEW.`Channel_id`
+   ,NEW.`Deal_id`
+   ,''
+   ,NEW.`Creation_Date`
+   ,NEW.`Last_Update`
+   ,NEW.`Operator`
+);
+END IF;
+
+END$$
+--
+DELIMITER ;
+

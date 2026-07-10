@@ -1,0 +1,249 @@
+/*
+PROCEDURE_Affiliate_Monthly_Sources.sql - Detailed Reports Affiliate
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Affiliate_id     =[id de affiliate]
+Channel_id       =[ALL | id de Channel. OPCIONAL.] Default=ALL
+Product          =[ALL | Product. OPCIONAL.] Default=ALL
+Brand_id         =[ALL | id de Brand. OPCIONAL.] Default=ALL
+Tracker_id       =[ALL | Code_To_Affiliate. OPCIONAL.] Default=ALL
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Affiliate_Monthly_Sources('Affiliate_id=39,meta=yes');
+
+01.08.2023 V1     Karen. Primera versión operativa
+                  Cambios para mostrar Deal
+08.08.2023 V1.2   Agregado totales     
+11.10.2023 v1.3   Agregado filtro por Tracker_id (Code_To_Affiliate)
+*/
+
+DROP PROCEDURE IF EXISTS Affiliate_Monthly_Sources;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Affiliate_Monthly_Sources`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Detailed Reports - Affiliate'
+proc_label:BEGIN
+
+SET @Version      ='v1.3 11.10.2023';
+SET @Month        =LEFT(CURDATE(),7);
+SET @Affiliate_id ='';
+SET @Channel_id   ='ALL';
+SET @Product      ='ALL';
+SET @Brand_id     ='ALL';
+SET @Tracker_id   ='ALL';
+SET @Debug        ='NO';
+SET @Meta         ='NO';
+SET @Filters      ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      
+
+SET @InputCommLine=replace(@InputCommLine,'"','');  
+
+WHILE @InputCommLine>' ' DO
+
+   SET @e=INSTR(@InputCommLine,'=');    				   
+   SET @c=INSTR(@InputCommLine,','); 					   
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='Month'         THEN SET @Month        =UPPER(@v); END IF;
+   IF lower(@k)='affiliate_id'  THEN SET @Affiliate_id =UPPER(@v); END IF;
+	IF lower(@k)='channel_id'    THEN SET @Channel_id   =UPPER(@v); END IF;
+	IF lower(@k)='Tracker_id'    THEN SET @Tracker_id   =UPPER(@v); END IF;
+   IF lower(@k)='product'       THEN SET @Product      =UPPER(@v); END IF;
+	IF lower(@k)='brand_id'      THEN SET @Brand_id     =UPPER(@v); END IF;
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+   IF lower(@k)='filters'       THEN SET @Filters      =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+
+END WHILE;
+
+SET @Month_Report=@Month;
+
+IF   @Affiliate_id IN ("","ALL") THEN
+    Select 'data' as Meta,'Affiliate_id mandatory' as '' from dual;
+    LEAVE proc_label;
+END IF; 
+
+SET @WhereChannel_id ='';
+SET @WhereTracker_id ='';
+SET @WhereProduct ='';
+SET @WhereBrand_id ='';
+
+SET @WhereAffiliate_id=CONCAT(' Affiliate_id=',@Affiliate_id); 
+SET @WhereMonth=CONCAT(' AND LEFT(`Date`,7)="',@Month,'"'); 
+
+IF @Channel_id !="ALL" THEN SET @WhereChannel_id=CONCAT(' AND Channel_id=',@Channel_id); END IF;
+IF @Tracker_id !="ALL" THEN SET @WhereTracker_id=CONCAT(' AND Code_To_Affiliate="',@Tracker_id,'"'); END IF;
+IF @Product    !="ALL" THEN SET @WhereProduct   =CONCAT(' AND Product_Real="',@Product,'"'); END IF;
+IF @Brand_id   !="ALL" THEN SET @WhereBrand_id  =CONCAT(' AND Advertiser_id=',@Brand_id);  END IF;
+
+IF @Debug!="NO" THEN SELECT @WhereAffiliate_id,@WhereChannel_id,@WhereProduct,@WhereBrand_id,@WhereTracker_id; END IF;
+
+SET SESSION group_concat_max_len = 200000;
+      
+/* ------------------------------------------------------------------- */
+ 
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"width=100px" as              `Date`
+	,"width=100px,action=2" as     `Logo`
+   ,"width=120px" as              `Brand`
+   ,"width=120px" as              `Source`
+   ,"width=150px" as              `Product`
+   ,"width=250px" as              `Deal`
+   ,"width=090px,right=true" as   `CPA`
+	,"width=090px,right=true" as   `Total Commis.`
+   ,"width=080px,right=true" as   `FTD`
+   ,"width=080px,right=true" as   `Views`
+   ,"width=080px,right=true" as   `Clicks`
+   ,"width=090px,right=true" as   `Signups`
+   ,"width=090px,right=true" as   `Impress.`
+   ,"width=090px,right=true" as   `Deposit`
+   ,"width=080px" as              `Device`
+   ,"width=150px" as              `Channel`
+   ,"omit=yes"    as              `id`                                     
+FROM DUAL WHERE @Meta="YES")
+'
+);
+
+SET @SQLTable = CONCAT(
+' Snapshot_day_by_day_fact2 
+   WHERE '
+      ,@WhereAffiliate_id
+      ,@WhereMonth
+      ,@WhereChannel_id
+      ,@WhereTracker_id
+      ,@WhereProduct
+      ,@WhereBrand_id
+      ,' AND (`Signups`>0 OR `First_Time_Deposit`>0 
+          OR `Qualified_Players`<>0 OR (`CPA_Value_Affiliate`+`Revenue_Share_Affiliate`)<>0)'     
+);
+
+SET @SQLdetail=CONCAT(
+' UNION ALL (
+ SELECT
+   "data"  Meta
+   ,`Date`
+	,"" as logo
+   ,`Brand`
+   ,`Code_To_Affiliate`
+   ,`Product`
+   ,Deal_Aff
+   ,sum(`Qualified_Players`) as `CPA`
+   ,sum(`CPA_Value_Affiliate`+`Revenue_Share_Affiliate`) as `Tot_Comm`
+   ,sum(`First_Time_Deposit`) as `First_Time_Deposit`
+   ,sum(`Views`             ) as `Views`             
+   ,sum(`Clicks`            ) as `Clicks`            
+   ,sum(`Signups`           ) as `Signups`           
+   ,sum(`Impressions`       ) as `Impressions`       
+   ,sum(`Deposits`          ) as `Deposits`       
+   ,`Type`     
+   ,`Channel`
+	,`id` 
+	FROM'
+ ,@SQLTable,'
+ 	GROUP BY DATE,`Brand`,`Product`
+ ) 
+  UNION ALL (
+ SELECT
+   "data"  Meta
+   ," ~~~~~" as `Date`
+	,"~~"  	 as `logo`
+   ,"~~~~~"  as `Brand`
+   ,"~~~~~"  as `Code_To_Affiliate`
+   ,"~~~~~"  as `Product_Real`
+   ,"~~~~~"  as `Deal_Aff`
+   ,sum(`Qualified_Players`) as `CPA`
+   ,sum(`CPA_Value_Affiliate`+`Revenue_Share_Affiliate`) as `Tot_Comm`
+   ,sum(`First_Time_Deposit`) as `First_Time_Deposit`
+   ,sum(`Views`             ) as `Views`             
+   ,sum(`Clicks`            ) as `Clicks`            
+   ,sum(`Signups`           ) as `Signups`           
+   ,sum(`Impressions`       ) as `Impressions`       
+   ,sum(`Deposits`          ) as `Deposits`          
+   ,"~~~~~"  as `Type`     
+   ,"~~~~~"  as `Channel`
+	,"~~~~~"  as `id` 
+	FROM'
+ ,@SQLTable
+ ,')
+ ORDER BY `Date`,`Brand`,`Source` '
+);
+   
+SET @SQL = CONCAT(
+   @SQLmeta,
+   @SQLdetail
+,';');
+
+/* FILTERING -------------------------------------------------------*/
+
+SET @M0=left(date_sub(curdate(), interval 0 month),7);
+SET @M1=left(date_sub(curdate(), interval 1 month),7);
+SET @M2=left(date_sub(curdate(), interval 2 month),7);
+SET @M3=left(date_sub(curdate(), interval 3 month),7);
+SET @M4=left(date_sub(curdate(), interval 4 month),7);
+SET @M5=left(date_sub(curdate(), interval 5 month),7);
+SET @M6=left(date_sub(curdate(), interval 6 month),7);
+SET @M7=left(date_sub(curdate(), interval 7 month),7);
+
+SET @SQLfilters=CONCAT(
+'
+(SELECT "1" as "Korder","Month" AS "Key",@M0   AS "Value","Month"    AS `CallKey`,@M0   AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1" as "Korder","Month" AS "Key",@M1   AS "Value","Month"    AS `CallKey`,@M1   AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1" as "Korder","Month" AS "Key",@M2   AS "Value","Month"    AS `CallKey`,@M2   AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1" as "Korder","Month" AS "Key",@M3   AS "Value","Month"    AS `CallKey`,@M3   AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1" as "Korder","Month" AS "Key",@M4   AS "Value","Month"    AS `CallKey`,@M4   AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1" as "Korder","Month" AS "Key",@M5   AS "Value","Month"    AS `CallKey`,@M5   AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1" as "Korder","Month" AS "Key",@M6   AS "Value","Month"    AS `CallKey`,@M6   AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+(SELECT "1" as "Korder","Month" AS "Key",@M7   AS "Value","Month"    AS `CallKey`,@M7   AS "CallValue","" AS "Rows" FROM DUAL) UNION ALL
+
+(SELECT "2" as "Korder","Brand"   AS "Key",`Brand`        AS "Value" ,"Brand_id"    AS `CallKey`,`Advertiser_id`  AS "CallValue" ,COUNT(*) AS "Rows" FROM ',@SQLTable,' GROUP BY Advertiser_id) UNION ALL
+(SELECT "3" as "Korder","Product" AS "Key",`Product_Real` AS "Value" ,"Product"     AS `CallKey`,`Product_Real`   AS "CallValue" ,COUNT(*) AS "Rows" FROM ',@SQLTable,' and  IFNULL(Product_Real,"")>"" GROUP BY Product_Real) UNION ALL
+(SELECT "4" as "Korder","Channel" AS "Key",`Channel`      AS "Value" ,"Channel_id"  AS `CallKey`,`Channel_id`     AS "CallValue" ,COUNT(*) AS "Rows" FROM ',@SQLTable,' GROUP BY Channel_id) UNION ALL
+(SELECT "5" as "Korder","Tracker" AS "Key",`Code_To_Affiliate` AS "Value" ,"Tracker_id"  AS `CallKey`,`Code_To_Affiliate` AS "CallValue" ,COUNT(*) AS "Rows" FROM ',@SQLTable,' GROUP BY Code_To_Affiliate)
+ORDER BY 1,3 desc
+;');
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;   
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN 
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;   
+END IF;
+
+END$$
+DELIMITER ;
+
+/* Test
+
+CALL Affiliate_Monthly_Sources('Affiliate_id=29,month=2023-09,filters=ye,debug=ye');
+CALL Affiliate_Monthly_Sources('Affiliate_id=506,month=2023-09,filters=yes,debug=ye');
+CALL Affiliate_Monthly_Sources('Affiliate_id=540,month=2024-03,meta=yes,filters=ye,debug=ye');
+*/

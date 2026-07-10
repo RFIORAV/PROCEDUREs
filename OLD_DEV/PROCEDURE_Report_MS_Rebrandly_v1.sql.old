@@ -1,0 +1,166 @@
+/*
+PROCEDURE_Report_MS_Rebrandly.sql - Report tabla Rebrandly (campaign_mkt_source_url)
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Status          =[ALL | 1 | 0]. OPCIONAL. Default=ALL. 1=Active 0=Inactive
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [Yes]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Key no utilizadas:
+
+Mode            =[Affiliate | Gestor]. OPCIONAL. Default=affiliate
+Search          =[(dato a buscar]. OPCIONAL. Busca string en Tracker_ID/Tracker_Name/Code_To_Affiliate/MS_id/MS_id/affiliate/Channel
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL. tiene prioridad sobre el resto de parámetros, excepto la fecha
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Product         =[ALL | Product]. OPCIONAL. Default=ALL. Si tiene más de una palabra, separar con "!" en lugar de espacio
+Account_id      =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+DealbyProduct   =[No | Yes]. Devuelve último deal activo por cada Product. OPCIONAL. Default=no.
+
+Ejemplos:
+
+call Report_MS_Rebrandly('debug=yes'); -- Devuelve todas las MS
+call Report_MS_Rebrandly('debug=ye,filters=yes');
+call Report_MS_Rebrandly('debug=ye,filters=no,status=active');
+
+10.03.2023 V1     Karen. Primera versión operativa
+10.03.2023        RF. Agrega filtros
+
+*/
+
+
+
+
+DROP PROCEDURE IF EXISTS Report_MS_Rebrandly;
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_MS_Rebrandly`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Rebrandly Pending'
+proc_label:BEGIN
+
+
+SET @Version         ='v1.0 10.03.2023';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @Account_id      ='ALL';
+SET @Debug           ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      
+
+SET @InputCommLine=replace(@InputCommLine,'"','');  
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+
+WHILE @InputCommLine>' ' DO
+
+
+   SET @e=INSTR(@InputCommLine,'=');    				   
+   SET @c=INSTR(@InputCommLine,','); 					   
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='account_id'      THEN SET @Account_id    =     (@v); END IF;
+   
+   
+END WHILE;
+
+
+IF @Debug!="NO" THEN SELECT @Mode,@Month,@View,@Filters,@OWNER,@OnlyOverCap,@Brand_Group,@Advertiser_id,@Affiliate_id,@Account_id
+,@Channel_id,@Product,@DealbyProduct,@Platform,@Currency,@Total,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereAccount='';
+
+
+/*IF @Account_id    !="ALL" THEN SET @WhereAccount       =CONCAT(" AND T.Username_id =",@Account_id );        END IF;*/
+
+
+IF @Debug!="NO" THEN SELECT @WhereOwner,@WhereAdvertiser_id,@WhereAffiliate_id,@WhereAdv_Account_id,@WhereChannel_id,@WhereProduct,@WhereStatus,@WhereMS_id,@WhereSearch; END IF;
+
+SET @Count=0;
+
+
+SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT
+    T.`MS_id`             as `MS ID`
+   ,T.`Stat_effect`       as `Effective Status`
+	 ,A.`username`          as `Affiliate`
+	 ,T.`Tracker_ID`        as `Tracker ID`
+	 ,T.`Tracklink`         as `Tracklink`
+	 ,T.`Shortlink`         as `Shortlink`
+	 ,T.`Shortlink_id`      as `Shortlink ID`
+	 ,T.`Last_Update`       as `Last Update`
+   ,T.`Operator`          as `Operator`
+   ,T.`id`                                     
+FROM campaign_mkt_source_url T
+LEFT JOIN account_account A ON T.Affiliate_id=A.id
+WHERE Stat_Sent_to_API=0 '
+,')
+');
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"width=080px"          as `MS ID`
+   ,"width=150px"          as `Effective Status`
+   ,"width=150px"          as `Affiliate`
+   ,"width=100px"          as `Tracker ID`
+   ,"width=200px,tooltip=yes"          as `Tracklink`
+   ,"width=200px"          as `Shortlink`
+   ,"width=150px"          as `Shortlink ID`
+   ,"width=170px"          as `Last Update`
+   ,"width=100px"          as `Operator`    
+   ,"omit=yes"             as `id`  
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`
+	,MT.* 
+FROM Main_Table_Data MT
+order by `Last Update` desc
+;');
+
+
+
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;

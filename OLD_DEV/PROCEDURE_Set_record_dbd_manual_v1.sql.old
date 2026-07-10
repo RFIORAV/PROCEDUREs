@@ -1,0 +1,247 @@
+/**
+PROCEDURE_Set_record_dbd_manual_v1.sql **	Agrega/modifica record a tabla Snapshot_day_by_day_manual
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+DbD_id                     =[ '' | record id Snapshot_day_by_day_manual]. ''=Add record. OPCIONAL. Default=''
+MS_id                      =[id de MS]. OBLIGATORIO
+is_active                  =[ 0 | 1]. OPCIONAL. Default=0 (Paused)
+deal_to_apply              =[ 0 | 1 | 2]. 0=Deal Ges+Aff 1=Deal Aff 2=Deal Ges. OPCIONAL. Default=0
+Date                       =[AAAA-MM-DD]. OPCIONAL. Default=Current Day.
+Product                    =OPCIONAL. Default=''
+Qualified_Players          =OPCIONAL. Default='0'
+First_Time_Deposit         =OPCIONAL. Default='0'
+Views                      =OPCIONAL. Default='0'
+Clicks                     =OPCIONAL. Default='0'
+Signups                    =OPCIONAL. Default='0'
+Country                    =OPCIONAL. Default=''
+Deposits                   =OPCIONAL. Default='0'
+Depositing_Customers       =OPCIONAL. Default='0'
+Active_Customers           =OPCIONAL. Default='0'
+First_Time_Active_Customers=OPCIONAL. Default='0'
+Turnover                   =OPCIONAL. Default='0'
+Net_Revenue                =OPCIONAL. Default='0'
+
+Debug           =[No | Yes | Any ]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [Any] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+13.02.2023 v1
+14.02.2023        Procedure procesa Altas (DbD_id='') y Modificaciones (DbD_id=int)
+
+*/
+
+DROP PROCEDURE IF EXISTS Set_record_dbd_manual;
+-- -------------------------------------------------------------
+DELIMITER //
+
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Set_record_dbd_manual`(IN
+   InputCommLine    VARCHAR(500)
+   )
+    COMMENT 'Set_record_dbd_manual'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 14.02.2023';
+SET @CurrentDay      =curdate();
+SET @Month           =LEFT(CURDATE(),7);
+
+SET @DbD_id                     ='' ;
+SET @MS_id                      ='' ;
+SET @is_active                  ='0';
+SET @deal_to_apply              ='0';
+SET @Date                       =CURDATE();
+SET @Product                    ='' ;
+SET @Qualified_Players          ='0';
+SET @First_Time_Deposit         ='0';
+SET @Views                      ='0';
+SET @Clicks                     ='0';
+SET @Signups                    ='0';
+SET @Country                    ='' ;
+SET @Deposits                   ='0';
+SET @Depositing_Customers       ='0';
+SET @Active_Customers           ='0';
+SET @First_Time_Active_Customers='0';
+SET @Turnover                   ='0';
+SET @Net_Revenue                ='0';
+
+SET @Debug           ='NO';
+SET @Meta            ='YES';
+SET @Filters         ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   if lower(@k)='dbd_id'                      THEN SET @DbD_id                     =(@v); END IF;
+   if lower(@k)='ms_id'                       THEN SET @MS_id                      =(@v); END IF;
+   if lower(@k)='is_active'                   THEN SET @is_active                  =(@v); END IF;
+   if lower(@k)='deal_to_apply'               THEN SET @deal_to_apply              =(@v); END IF;
+   if lower(@k)='date'                        THEN SET @Date                       =(@v); END IF;
+   if lower(@k)='product'                     THEN SET @Product                    =(@v); END IF;
+   if lower(@k)='qualified_players'           THEN SET @Qualified_Players          =(@v); END IF;
+   if lower(@k)='first_time_deposit'          THEN SET @First_Time_Deposit         =(@v); END IF;
+   if lower(@k)='views'                       THEN SET @Views                      =(@v); END IF;
+   if lower(@k)='clicks'                      THEN SET @Clicks                     =(@v); END IF;
+   if lower(@k)='signups'                     THEN SET @Signups                    =(@v); END IF;
+   if lower(@k)='country'                     THEN SET @Country                    =(@v); END IF;
+   if lower(@k)='deposits'                    THEN SET @Deposits                   =(@v); END IF;
+   if lower(@k)='depositing_customers'        THEN SET @Depositing_Customers       =(@v); END IF;
+   if lower(@k)='active_customers'            THEN SET @Active_Customers           =(@v); END IF;
+   if lower(@k)='first_time_active_customers' THEN SET @First_Time_Active_Customers=(@v); END IF;
+   if lower(@k)='turnover'                    THEN SET @Turnover                   =(@v); END IF;
+   if lower(@k)='net_revenue'                 THEN SET @Net_Revenue                =(@v); END IF;
+
+   IF lower(@k)='debug'           THEN SET @Debug         =TRIM(@v); END IF;
+
+END WHILE;
+
+SET @DbD_id_INT=CAST(@DbD_id AS UNSIGNED);
+
+IF @DbD_id_INT>0 THEN SET @DbD_id=@DbD_id_INT; ELSE SET @DbD_id=''; END IF;
+ 
+-- ------------------------------------------------------------------------
+
+/*
+SELECT `id`,`is_active`,`deal_to_apply`,`MS_id`,`Area`,`Owner`,`Affiliate`,`Campaign`,`Deal`,`Deal_Aff`,`Hour_Update`
+,`Date`,`Username`,`Portal`,`Brand`,`Tracker_ID`,`Tracker_Name`,`Code_To_Affiliate`,`Product`,`Product_Real`
+,`Qualified_Players`,`Qualified_Players_Adjusted`,`Criteria_Type`,`Level_Reached`
+,`First_Time_Deposit`,`Views`,`Clicks`,`Signups`,`Impressions`,`Sign_Up_Offer`,`Type`,`Language`,`Country`,`Brand_Name`,`Registration_Date`
+,`Deposits`,`Depositing_Customers`,`Active_Customers`,`New_Depositing_Customers`,`New_Active_Customers`
+,`First_Time_Active_Customers`,`Turnover`,`Net_Revenue`,`Revenue_Share_Gestor`,`Revenue_Share_Affiliate`
+,`CPA_Value_Affiliate`,`CPA_Value_Gestor`
+FROM Snapshot_day_by_day_manual
+*/
+IF  @DbD_id='' 
+THEN
+   INSERT IGNORE INTO Snapshot_day_by_day_manual (
+      `MS_id`
+      ,`is_active`
+      ,`deal_to_apply`
+      ,`Date`
+      ,`Product`
+      ,`Qualified_Players`
+      ,`First_Time_Deposit`
+      ,`Views`
+      ,`Clicks`
+      ,`Signups`
+      ,`Country`
+      ,`Deposits`
+      ,`Depositing_Customers`
+      ,`Active_Customers`
+      ,`First_Time_Active_Customers`
+      ,`Turnover`
+      ,`Net_Revenue`
+      ,`Area`
+      ,`Username`
+      ,`Brand`
+      ,`Tracker_ID`
+      ,`Tracker_Name`
+      ,`Code_To_Affiliate`
+      ,`Product_Real`
+   )
+   SELECT
+      @MS_id                       AS `MS_id`
+      ,@is_active                   AS `is_active`
+      ,@deal_to_apply               AS `deal_to_apply`
+      ,@Date                        AS `Date`
+      ,@Product                     AS `Product`
+      ,@Qualified_Players           AS `Qualified_Players`
+      ,@First_Time_Deposit          AS `First_Time_Deposit`
+      ,@Views                       AS `Views`
+      ,@Clicks                      AS `Clicks`
+      ,@Signups                     AS `Signups`
+      ,@Country                     AS `Country`
+      ,@Deposits                    AS `Deposits`
+      ,@Depositing_Customers        AS `Depositing_Customers`
+      ,@Active_Customers            AS `Active_Customers`
+      ,@First_Time_Active_Customers AS `First_Time_Active_Customers`
+      ,@Turnover                    AS `Turnover`
+      ,@Net_Revenue                 AS `Net_Revenue`
+      ,CU.`Area`                    AS `Area`
+      ,M.`Username_id`              AS `Username`
+      ,AD.`Advertiser_Name`         AS `Brand`
+      ,M.`Tracker_ID`               AS `Tracker_ID`
+      ,M.`Tracker_Name`             AS `Tracker_Name`
+      ,M.`Code_To_Affiliate`        AS `Code_To_Affiliate`
+      ,M.`Product`                  AS `Product_Real`
+   FROM `campaign_marketing_source` `M`
+   LEFT JOIN `campaign_username` `CU`   ON `CU`.`id` = `M`.`Username_id`
+   LEFT JOIN `campaign_advertiser` `AD` ON `AD`.`id` = `CU`.`Advertiser_id`
+   WHERE `M`.`id` = @MS_id
+	;
+ELSE
+   UPDATE Snapshot_day_by_day_manual D
+   SET  `is_active`                   =@is_active                  
+       ,`deal_to_apply`               =@deal_to_apply              
+       ,`Date`                        =@Date                       
+       ,`Product`                     =@Product                    
+       ,`Qualified_Players`           =@Qualified_Players          
+       ,`First_Time_Deposit`          =@First_Time_Deposit         
+       ,`Views`                       =@Views                      
+       ,`Clicks`                      =@Clicks                     
+       ,`Signups`                     =@Signups                    
+       ,`Country`                     =@Country                    
+       ,`Deposits`                    =@Deposits                   
+       ,`Depositing_Customers`        =@Depositing_Customers       
+       ,`Active_Customers`            =@Active_Customers           
+       ,`First_Time_Active_Customers` =@First_Time_Active_Customers
+       ,`Turnover`                    =@Turnover                   
+       ,`Net_Revenue`                 =@Net_Revenue                 
+   WHERE D.id=@DbD_id
+   ;
+END IF;
+
+IF @Debug="YES" THEN SELECT @MS_id,@DbD_id_INT,@is_active,@Date,@Product,@Qualified_Players,@First_Time_Deposit,@Views,@Clicks,@Signups,@Country,@Deposits,@Depositing_Customers,@Active_Customers,@First_Time_Active_Customers,@Turnover,@Net_Revenue; END IF;
+
+END;
+//
+DELIMITER ;
+
+/*
+-- -----------------------------------------------------
+TRUNCATE TABLE Snapshot_day_by_day_manual;
+-- add Rec 1 a 3
+CALL Set_record_dbd_manual ('is_active=1,deal_to_apply=0,MS_id=568,date=2023-02-01,Product=Sport,Country=CO,Qualified_Players=1,Net_Revenue=1121.10,debug=yes');
+CALL Set_record_dbd_manual ('is_active=1,deal_to_apply=1,MS_id=568,date=2023-02-02,Product=Sport,Country=MX,Qualified_Players=2,Net_Revenue=2221.20,debug=yes');
+CALL Set_record_dbd_manual ('is_active=1,deal_to_apply=2,MS_id=568,date=2023-02-03,Product=Sport,Country=AR,Qualified_Players=3,Net_Revenue=3321.30,debug=yes');
+-- add Rec 4 a 6
+CALL Set_record_dbd_manual ('is_active=0,deal_to_apply=0,MS_id=568,date=2023-02-04,Product=Sport,Country=ES,Qualified_Players=4,Net_Revenue=4421.40,debug=yes');
+CALL Set_record_dbd_manual ('is_active=0,deal_to_apply=1,MS_id=568,date=2023-02-05,Product=Sport,Country=IT,Qualified_Players=5,Net_Revenue=5521.50,debug=yes');
+CALL Set_record_dbd_manual ('is_active=0,deal_to_apply=2,MS_id=568,date=2023-02-06,Product=Sport,Country=US,Qualified_Players=6,Net_Revenue=6621.60,debug=yes');
+-- add Rec 7 a 9
+CALL Set_record_dbd_manual ('is_active=0,deal_to_apply=0,MS_id=568,date=2023-02-04,Product=Sport,Country=ES,Qualified_Players=4,Net_Revenue=4421.40,debug=yes');
+CALL Set_record_dbd_manual ('is_active=0,deal_to_apply=1,MS_id=568,date=2023-02-05,Product=Sport,Country=IT,Qualified_Players=5,Net_Revenue=5521.50,debug=yes');
+CALL Set_record_dbd_manual ('is_active=0,deal_to_apply=2,MS_id=568,date=2023-02-06,Product=Sport,Country=US,Qualified_Players=6,Net_Revenue=6621.60,debug=yes');
+-- edit Rec 7 a 9
+CALL Set_record_dbd_manual ('dbd_id=7,is_active=0,deal_to_apply=0,MS_id=568,date=2023-02-14,Product=Sport,Country=ES,Qualified_Players=1,Net_Revenue=0421.40,debug=yes');
+CALL Set_record_dbd_manual ('dbd_id=8,is_active=0,deal_to_apply=1,MS_id=568,date=2023-02-15,Product=Sport,Country=IT,Qualified_Players=1,Net_Revenue=0521.50,debug=yes');
+CALL Set_record_dbd_manual ('dbd_id=9,is_active=0,deal_to_apply=2,MS_id=568,date=2023-02-16,Product=Sport,Country=US,Qualified_Players=1,Net_Revenue=0621.60,debug=yes');
+
+CALL Set_record_dbd_manual ('MS_id=2398, date=2023-01-24 ,Product=Sport, Country=MX, Qualified_Players=2, Net_Revenue=521.50, is_active=1, First_Time_Deposit=0, Views=0,Clicks=0, Signups=0');
+
+-- -----------------------------------------------------
+*/

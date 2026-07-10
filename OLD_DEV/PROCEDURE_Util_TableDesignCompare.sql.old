@@ -1,0 +1,54 @@
+/* PROCEDURE PROCEDURE Table_Design_Compare.sql
+   01.09.2022 V1 Compara el diseño de dos tablas en dos db distintas. 
+              Genera ALTER para que la TableName1 en DBbase1 quede igual que TableName2 en DBreference
+   Parametros (TableName1, DBbase1,TableName2, DBreference)
+   
+*/
+DROP PROCEDURE IF EXISTS Util_TableDesignCompare;
+DELIMITER $$
+CREATE PROCEDURE Util_TableDesignCompare(IN
+   TableName1   VARCHAR(50),
+   DBbase1      VARCHAR(50),
+   TableName2   VARCHAR(50),
+   DBreference  VARCHAR(50)
+   
+   )
+   COMMENT '01.09.2022 V1 Compara el diseño de dos tablas en dos db distintas.'
+   LANGUAGE SQL
+    
+BEGIN
+
+-- SINCRONIZACION CONTRA LA DB DE REFERENCIA --
+   
+   SELECT CONCAT('ALTER TABLE ',DBbase1,'.',TableName1,' DROP COLUMN `',A.COLUMN_NAME,'`;') AS ' '
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B ON B.TABLE_SCHEMA=DBreference AND B.TABLE_NAME = TableName2 AND B.COLUMN_NAME = A.COLUMN_NAME
+   WHERE A.TABLE_SCHEMA=DBbase1 AND A.TABLE_NAME = TableName1 AND B.COLUMN_NAME IS NULL
+   
+   UNION ALL
+   
+   SELECT CONCAT('ALTER TABLE ',DBbase1,'.',TableName1,' CHANGE COLUMN `',A.COLUMN_NAME,'` `',A.COLUMN_NAME,'` ',A.COLUMN_TYPE
+      ,IF(B.IS_NULLABLE="YES"," NULL","")
+      ,CASE WHEN IFNULL(B.COLUMN_DEFAULT,"NULL")='NULL' THEN ' DEFAULT NULL' ELSE CONCAT(' DEFAULT ',"'",B.COLUMN_DEFAULT,"'") END,';') AS ' '
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B ON B.TABLE_SCHEMA=DBreference AND B.TABLE_NAME = TableName2 AND A.COLUMN_NAME = B.COLUMN_NAME
+   WHERE A.TABLE_SCHEMA=DBbase1 AND A.TABLE_NAME = TableName1 AND B.COLUMN_NAME IS NOT NULL AND
+         (A.COLUMN_TYPE != B.COLUMN_TYPE OR A.COLUMN_DEFAULT != B.COLUMN_DEFAULT OR A.IS_NULLABLE != B.IS_NULLABLE)
+   
+   UNION ALL
+   
+   SELECT CONCAT('ALTER TABLE ',DBbase1,'.',TableName1,' ADD COLUMN `',A.COLUMN_NAME,'` ',A.COLUMN_TYPE
+      ,IF(A.IS_NULLABLE="YES"," NULL","")
+      ,CASE WHEN IFNULL(A.COLUMN_DEFAULT,"NULL")='NULL' THEN ' DEFAULT NULL' ELSE CONCAT(' DEFAULT ',"'",A.COLUMN_DEFAULT,"'") END,';') AS ' '
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B ON B.TABLE_SCHEMA=DBbase1 AND B.TABLE_NAME = TableName1 AND B.COLUMN_NAME = A.COLUMN_NAME
+   WHERE A.TABLE_SCHEMA=DBreference AND A.TABLE_NAME = TableName2 AND B.COLUMN_NAME IS NULL 
+;
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call Util_TableDesignCompare('Snapshot_day_by_day','betmedia','Snapshot_day_by_day','euroaffiliati2');
+-- call Util_TableDesignCompare('account_account','euroaffiliati2','account_account_history','euroaffiliati2');
+-- call Util_TableDesignCompare('account_account_history','euroaffiliati2','account_account','euroaffiliati2');
+

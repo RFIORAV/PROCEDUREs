@@ -1,0 +1,5 @@
+Crear procedure total_monthy_comm_ges_upd en file  
+D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_total_monthy_comm_ges_upd_v5.6.sql 
+en base a D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_total_monthy_comm_ges_upd_v5.sql
+para que reciba parámetro de entrada YYYY-MM y lo utilice para invocar monthly_comms_gestor.
+Si el parámetro de entrada es inválido o inexistente, que asuma el mes corriente

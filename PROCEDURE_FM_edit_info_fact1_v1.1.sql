@@ -1,0 +1,422 @@
+/*
+PROCEDURE_FM_edit_info_fact1_v1.sql - Grilla mensual Fact1 por Affiliate
+
+Descripción:
+  Permite editar la grilla mensual Fact1 por Affiliate generando movimientos en tabla Snapshot_day_by_day_manual.
+  También permite procesar las modificaciones realizadas en la grilla 
+  y setear en tabla util_settings la fecha de último proceso de datos para el filtro de fecha de Fact2.
+
+Observaciones:
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada
+
+Keys:
+Month         =[AAAA-MM]. OPCIONAL. Default=Current Month.
+SET_Last_Processed_Date =[AAAA-MM-DD]. OPCIONAL. Default=CURDATE().
+Affiliate_id  =[ALL | id del Affiliate]. OPCIONAL. Default=ALL
+Brand         =[ALL | Brand]. OPCIONAL. Default=ALL
+Advertiser_id =[ALL | Advertiser_id]. OPCIONAL. Default=ALL
+Username_id   =[ALL | Username_id]. OPCIONAL. Default=ALL
+MS_id         =[ALL | id de la MS]. OPCIONAL. Default=ALL
+Tracker_ID    =[ALL | Tracker_ID]. OPCIONAL. Default=ALL
+Tracker_Name  =[ALL | Tracker_Name]. OPCIONAL. Default=ALL
+Code_to_affiliate=[ALL | Code_to_affiliate]. OPCIONAL. Default=ALL
+Filters       =[Yes | No]. OPCIONAL. Default=No
+Meta          =[No | Yes]. OPCIONAL. Default=Yes
+Debug         =[No | Yes]. OPCIONAL. Default=No
+InputCommLine = [valor]. Parámetro de entrada.
+
+Ejemplos:
+call FM_edit_info_fact1('filters=yes,debug=ye');
+call FM_edit_info_fact1('filters=yes,set_last_processed_date=2026-02-20,debug=ye');
+call FM_edit_info_fact1('month=2026-02,affiliate_id=1059,debug=ye');
+call FM_edit_info_fact1('month=2026-01,affiliate_id=39,brand=GoldBet,debug=ye');
+call FM_edit_info_fact1('month=2026-01,affiliate_id=450,debug=ye');
+
+23.01.2026 v1   Primera versión
+12.02.2026      Agregada columna Status (Unprocessed/Pending) y límite de fecha para datos no procesados
+27.04.2026 v1.1 Agregado procesamiento de modificaciones realizadas en la grilla y seteo de fecha de último proceso de datos para el filtro de fecha de Fact2
+
+*/
+
+DROP PROCEDURE IF EXISTS FM_edit_info_fact1;
+-- DROP PROCEDURE IF EXISTS FM_edit_info_fact1_dev;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `FM_edit_info_fact1`(IN
+   InputCommLine    VARCHAR(250)
+   )
+   COMMENT 'v1.1 27.04.2026 - Grilla editable Fact1 - genera movimientos y ajustes'
+BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version            ='v1.1 27.04.2026';
+SET @Month              =LEFT(CURDATE(),7);
+SET @DateFrom           =CONCAT(@Month,'-01');
+SET @SET_Last_Processed_Date ='';
+SET @Affiliate_id       ='';
+SET @OptionCPA0         ='NO';
+SET @Brand              ='';
+SET @Username_id        ='';
+SET @Advertiser_id      ='';
+SET @MS_id              ='';
+SET @Tracker_ID         ='';
+SET @Tracker_Name       ='';
+SET @Code_to_affiliate  ='';
+SET @Filters            ='NO';
+SET @Meta               ='YES';
+SET @Debug              ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+-- Procesamiento de parámetros de entrada
+-- Los parámetros multivalor se indican con ^ al inicio del nombre del parámetro
+-- y los valores se separan con ^
+WHILE @InputCommLine>' ' DO
+   -- Extracción de key=value
+   SET @e=INSTR(@InputCommLine,'=');
+   SET @c=INSTR(@InputCommLine,',');
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1);
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1));
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   -- Tratamiento de month monovalor como multivalor
+   -- IF lower(@k)='month' THEN SET @k=CONCAT("^",@k); END IF;
+
+   -- Procesamiento de parámetros multivalor
+   -- Input ex: ^affiliate_id=39^84 -> affiliate_id IN ("39","84")
+   -- IF LEFT(@k,1)='^' THEN
+   --    -- Formatear valor para cláusula IN
+   --    SET @v=CONCAT('("',@v,'")');
+   --    SET @v=REPLACE(@v,'^','","');
+   --    SET @v=REPLACE(@v,'"",',''); -- elimina elemento vacío
+   --    -- Remover el indicador de multivalor del nombre
+   --    SET @k=SUBSTRING(@k,2);
+   -- END IF;
+
+   -- Asignación de valores a variables según el parámetro
+   IF lower(@k)='month'         THEN SET @Month        =UPPER(@v); END IF;
+   IF lower(@k)='set_last_processed_date' THEN SET @SET_Last_Processed_Date = @v; END IF;
+   IF lower(@k)='datefrom'      THEN SET @DateFrom     =UPPER(@v); END IF;
+   IF lower(@k)='affiliate_id'  THEN SET @Affiliate_id =UPPER(@v); END IF;
+   IF lower(@k)='optioncpa0'    THEN SET @OptionCPA0   =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id' THEN SET @Advertiser_id=      @v; END IF;
+   IF lower(@k)='brand'         THEN SET @Brand        =UPPER(@v); END IF;
+   IF lower(@k)='username_id'   THEN SET @Username_id  =      @v; END IF;
+   IF lower(@k)='ms_id'         THEN SET @MS_id        =UPPER(@v); END IF;
+   IF lower(@k)='tracker_id'    THEN SET @Tracker_ID   =UPPER(@v); END IF;
+   IF lower(@k)='tracker_name'  THEN SET @Tracker_Name =UPPER(@v); END IF;
+   IF lower(@k)='code_to_affiliate' THEN SET @Code_to_affiliate =UPPER(@v); END IF;
+   IF lower(@k)='filters'       THEN SET @Filters      =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+END WHILE;
+
+-- Obtiene Límite de proceso para datos afiliado
+SET @Fact2_Date_Switch=(SELECT COALESCE(`Value_01`,'NO')      FROM `util_settings` WHERE Setting='Fact2_Date_Limit');
+SET @Fact2_Date_Limit =(SELECT COALESCE(`Value_02`,CURDATE()) FROM `util_settings` WHERE Setting='Fact2_Date_Limit');
+SET @Fact2_Date_Limit_recid =(SELECT id FROM `util_settings` WHERE Setting='Fact2_Date_Limit');
+
+-- SET @DateFrom=@Fact2_Date_Limit;
+
+IF @Debug!="NO" THEN SELECT @Month,@DateFrom,@Affiliate_id,@Advertiser_id,@Brand,@Username_id,@MS_id,@Tracker_ID,@Tracker_Name
+                           ,@Code_to_affiliate,@Fact2_Date_Switch,@Fact2_Date_Limit,@SET_Last_Processed_Date
+                           ,@Filters,@Meta,@Debug,InputCommLine; END IF;
+
+IF @Fact2_Date_Switch="YES" THEN
+   IF @SET_Last_Processed_Date!="" AND @SET_Last_Processed_Date>@Fact2_Date_Limit THEN
+      --  CALL Report_Util_Settings_Update('id=1,Value_01=A,Value_02=B,Value_03=C,User=admin,Debug=Yes');
+      -- CALL Report_Util_Settings_Update(CONCAT('id=',@Fact2_Date_Limit_recid,',Value_01=YES,Value_02=',@SET_Last_Processed_Date));
+      UPDATE util_settings SET Value_02=@SET_Last_Processed_Date WHERE id=@Fact2_Date_Limit_recid;
+      SET @Fact2_Date_Limit =(SELECT COALESCE(`Value_02`,CURDATE()) FROM `util_settings` WHERE Setting='Fact2_Date_Limit');
+      CALL Update_auto_from_dbd_manual('NO');
+      CALL Snapshot_day_by_day_fact2_upd_cm;
+   END IF;
+END IF;
+
+SET @WhereAffiliate_id='';
+SET @WhereAdvertiser_id='';
+SET @WhereBrand='';
+SET @WhereUsername_id='';
+SET @WhereMS_id='';
+SET @WhereTracker_ID='';
+SET @WhereTracker_Name='';
+SET @WhereCode_to_affiliate='';
+SET @WhereDateFrom='';
+SET @WhereOptionCPA0='';
+
+IF @Affiliate_id!="" THEN SET @WhereAffiliate_id=CONCAT(" AND D.Affiliate_id = ",@Affiliate_id); END IF;
+IF @Advertiser_id!="" THEN SET @WhereAdvertiser_id=CONCAT(" AND D.Advertiser_id = ",@Advertiser_id); END IF;
+IF @Brand!="" THEN SET @WhereBrand=CONCAT(' AND D.Brand = "',@Brand,'" '); END IF;
+IF @Username_id!="" THEN SET @WhereUsername_id=CONCAT(' AND D.Username_id = ',@Username_id); END IF;
+IF @MS_id!="" THEN SET @WhereMS_id=CONCAT(" AND D.MS_id = ",@MS_id); END IF;
+IF @Tracker_ID!="" THEN SET @WhereTracker_ID=CONCAT(' AND D.Tracker_ID = "',@Tracker_ID,'" '); END IF;
+IF @Tracker_Name!="" THEN SET @WhereTracker_Name=CONCAT(' AND D.Tracker_Name = "',@Tracker_Name,'" '); END IF;
+IF @Code_to_affiliate!="" THEN SET @WhereCode_to_affiliate=CONCAT(' AND D.Code_To_Affiliate = "',@Code_to_affiliate,'" '); END IF;
+IF @DateFrom!="" THEN SET @WhereDateFrom=CONCAT(' AND D.Date >= "',@DateFrom,'" '); END IF;
+IF @OptionCPA0="NO" THEN SET @WhereOptionCPA0=CONCAT(' AND (Qualified_Players<>0 or Qualified_Players_Adjusted<>0) '); END IF;
+
+SET @SQLbase=concat('
+WITH MainDataDetail AS (
+SELECT
+    ',IF(@Meta="YES","'data' as `Meta`,",""),'
+    ""                                 AS `id`
+   ,LEFT(D.Date,7)                     AS `Month`
+   ,D.Date                             AS `Date`
+   ,D.Affiliate_id                     AS `Affiliate_id`
+   ,D.Affiliate                        AS `Affiliate`
+   ,D.Brand                            AS `Brand`
+   ,D.Username                         AS `Username`
+   ,D.Username_id                      AS `Username_id`
+   ,IFNULL(D.MS_id,"missing")          AS `MS_id`
+   ,D.Tracker_ID                       AS `Tracker_ID`
+   ,D.Tracker_Name                     AS `Tracker_Name`
+   ,D.Code_To_Affiliate                AS `Code_to_affiliate`
+   ,case when @Fact2_Date_Switch="YES" and D.Date >@Fact2_Date_Limit 
+         then "Unprocessed"
+         else "" end as `Status`
+   ,sum(ifnull(D.Qualified_Players,0))       AS `CPA`
+   ,sum(ifnull(D.Qualified_Players_Adjusted,0)) AS `CPAadj`
+   ,sum(ifnull(D.First_Time_Deposit,0))      AS `FTD`
+   ,sum(ifnull(D.Signups,0))                 AS `Signups`
+   ,sum(ifnull(D.Clicks,0))                  AS `Clicks`
+   ,sum(ifnull(D.Net_Revenue,0))             AS `NR`
+   ,sum(ifnull(D.Deposits,0))                AS `Deposits`
+   ,sum(ifnull(D.CPA_Value_Gestor,0))        AS `CPA_Value_Gestor`
+   ,sum(ifnull(D.CPA_Value_Affiliate,0))     AS `CPA_Value_Affiliate`
+   ,sum(ifnull(D.Revenue_Share_Gestor,0))    AS `Revenue_Share_Gestor`
+   ,sum(ifnull(D.Revenue_Share_Affiliate,0)) AS `Revenue_Share_Affiliate`
+
+FROM Snapshot_day_by_day_fact1 D
+WHERE LEFT(D.Date,7) = "',@Month,'"'
+   -- ,@WhereDateFrom
+   ,@WhereOptionCPA0
+   ,@WhereAffiliate_id
+   ,@WhereAdvertiser_id
+   ,@WhereBrand
+   ,@WhereUsername_id
+   ,@WhereMS_id
+   ,@WhereTracker_ID
+   ,@WhereTracker_Name
+   ,@WhereCode_to_affiliate,
+' GROUP BY D.Date,D.Affiliate_id,D.Username_id,D.MS_id
+UNION ALL
+SELECT
+    ',IF(@Meta="YES","'data' as `Meta`,",""),'
+    D.id
+   ,LEFT(D.Date,7)                     AS `Month`
+   ,D.Date                             AS `Date`
+   ,C.Affiliate_id                     AS `Affiliate_id`
+   ,A.username                         AS `Affiliate`
+   ,D.Brand                            AS `Brand`
+   ,U.Username                         AS `Username`
+   ,C.Username_id                      AS `Username_id`
+   ,IFNULL(D.MS_id,"missing")          AS `MS_id`
+   ,D.Tracker_ID                       AS `Tracker_ID`
+   ,D.Tracker_Name                     AS `Tracker_Name`
+   ,D.Code_To_Affiliate                AS `Code_to_affiliate`
+   ,"Pending"                          AS `Status`
+   ,ifnull(D.Qualified_Players_Adjusted,0) AS `CPAadj`  -- campo invertido de posición con respecto a fact1
+   ,ifnull(D.Qualified_Players,0)       AS `CPA`     -- campo invertido de posición con respecto a fact1
+   ,ifnull(D.First_Time_Deposit,0)      AS `FTD`
+   ,ifnull(D.Signups,0)                 AS `Signups`
+   ,ifnull(D.Clicks,0)                  AS `Clicks`
+   ,ifnull(D.Net_Revenue,0)             AS `NR`
+   ,ifnull(D.Deposits,0)                AS `Deposits`
+   ,ifnull(D.CPA_Value_Gestor,0)        AS `CPA_Value_Gestor`
+   ,ifnull(D.CPA_Value_Affiliate,0)     AS `CPA_Value_Affiliate`
+   ,ifnull(D.Revenue_Share_Gestor,0)    AS `Revenue_Share_Gestor`
+   ,ifnull(D.Revenue_Share_Affiliate,0) AS `Revenue_Share_Affiliate`
+FROM Snapshot_day_by_day_manual D
+INNER JOIN campaign_marketing_source C ON D.MS_id = C.id
+INNER JOIN campaign_username U ON C.Username_id = U.id
+INNER JOIN account_account A ON C.Affiliate_id = A.id
+WHERE LEFT(D.Date,7) = "',@Month,'" AND D.is_active=2 and D.is_proccessed=0 '
+   -- ,@WhereDateFrom
+   -- ,@WhereOptionCPA0
+   ,replace(@WhereAffiliate_id,'D.Affiliate_id','C.Affiliate_id')
+   ,replace(@WhereAdvertiser_id,'D.Advertiser_id','C.Advertiser_id')
+   ,@WhereBrand
+   ,replace(@WhereUsername_id,'D.Username_id','C.Username_id')
+   ,@WhereMS_id
+   ,@WhereTracker_ID
+   ,@WhereTracker_Name
+   ,@WhereCode_to_affiliate
+,'
+),
+MainDataTotal AS (
+SELECT
+    ',IF(@Meta="YES","'total' as `Meta`,",""),'
+    ""
+   ,""          AS `Month`
+   ,""          AS `Date`
+   ,""          AS `Affiliate_id`
+   ,""          AS `Affiliate`
+   ,""          AS `Brand`
+   ,""          AS `Username`
+   ,""          AS `Username_id`
+   ,""          AS `MS_id`
+   ,"Total Month" AS `Tracker_ID`
+   ,""          AS `Tracker_Name`
+   ,""          AS `Code_to_affiliate`
+   ,""                                 AS `Status`
+   ,""                                 AS `Marca`
+   ,sum(D.CPA)                         AS `CPA`
+   ,sum(D.CPAadj)                      AS `CPAadj`
+   ,sum(D.FTD)                         AS `FTD`
+   ,sum(D.Signups)                     AS `Signups`
+   ,sum(D.Clicks)                      AS `Clicks`
+   ,sum(D.NR)                          AS `NR`
+   ,sum(D.Deposits)                    AS `Deposits`
+   ,sum(D.CPA_Value_Gestor)            AS `CPA_Value_Gestor`
+   ,sum(D.CPA_Value_Affiliate)         AS `CPA_Value_Affiliate`
+   ,sum(D.Revenue_Share_Gestor)        AS `Revenue_Share_Gestor`
+   ,sum(D.Revenue_Share_Affiliate)     AS `Revenue_Share_Affiliate`
+FROM MainDataDetail D
+)
+SELECT
+   "setting" as Meta
+   ,"omit=true"  as `id`
+   ,"width=90px,omit=true"    as `Month`
+   ,"width=100px,editkey=HandleEditOperation:Date" as `Date`
+   ,"width=90px,omit=true"    as `Affiliate_id`
+   ,if(@Affiliate_id="","width=140px","omit=true") as `Affiliate`
+   ,if(@Brand="","width=140px","omit=true")        as `Brand`
+   ,if(@Username_id="","width=140px","omit=true")  as `Account`
+   ,"width=90px,omit=true"   as `Username_id`
+   ,"width=080px,editkey=HandleEditOperation:MS_id"   as `MS_id`
+   ,"width=120px,omit=true"   as `Tracker ID`
+   ,"width=200px,tooltip=true"   as `Tracker Name`
+   ,"omit=true"     as `Code to affiliate`
+   -- ,"width=120px"   as `Status`
+   ,"width=120px,colorBg=[Pending:red;Unprocessed:orange]" AS Status
+   ,"width=070px" as `Mod`
+   ,"width=100px" as `CPA`
+   ,"width=100px,edit=HandleEditOperation:Qualified_Players_Adjusted"  as `CPAadj`
+   ,"width=100px,edit=HandleEditOperation:First_Time_Deposit"  as `FTD`
+   ,"width=100px,edit=HandleEditOperation:Signups"      as `Sign ups`
+   ,"width=100px,edit=HandleEditOperation:Clicks"       as `Clicks`
+   ,"width=100px,right=true" as `NR`
+   ,"width=100px,right=true" as `Deposits`
+   ,"width=90px,right=true"  as `CPA Val Gestor`
+   ,"width=90px,right=true"  as `CPA Value Aff`
+   ,"width=90px,right=true"  as `RS Gestor`
+   ,"width=90px,right=true"  as `RS Affiliate`
+
+FROM DUAL WHERE @Meta="YES"
+UNION ALL
+SELECT Meta,
+       id,
+       Month, 
+       Date, 
+       Affiliate_id, 
+       Affiliate, 
+       Brand, 
+       Username, 
+       Username_id, 
+       MS_id, 
+       Tracker_ID, 
+       Tracker_Name, 
+       Code_to_affiliate, 
+       Status,
+       Case when CPA=CPAadj then " " else "**" end as Marca,
+       CPA, 
+       CPAadj, 
+       FTD, 
+       Signups, 
+       Clicks, 
+       NR, 
+       Deposits, 
+       CPA_Value_Gestor, 
+       CPA_Value_Affiliate, 
+       Revenue_Share_Gestor, 
+       Revenue_Share_Affiliate
+FROM MainDataDetail
+UNION ALL
+SELECT * FROM MainDataTotal
+ORDER BY `Date`,`Affiliate`,`Brand`,`Account`,`MS_id`,`Tracker ID`,`CPA` desc;');
+
+/**************************************************************************************************************/
+
+SET @SQL=@SQLbase; 
+
+-- -------------FILTERS----------------------------------------------
+SET @SQLfilters=CONCAT('
+WITH RECURSIVE MonthFilter AS (
+  SELECT  CURDATE() AS date
+  UNION ALL
+  SELECT DATE_SUB(date, INTERVAL 1 MONTH) FROM MonthFilter
+  WHERE DATE_SUB(date, INTERVAL 1 MONTH) >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+),
+DateFilter AS (
+  SELECT DATE_ADD(DATE(@Fact2_Date_limit), INTERVAL 1 DAY) AS date
+  UNION ALL
+  SELECT DATE_ADD(date, INTERVAL 1 DAY)
+  FROM DateFilter
+  WHERE DATE_ADD(date, INTERVAL 1 DAY) <= CURDATE()
+),
+BaseCount AS (
+SELECT
+    LEFT(D.Date,7)                     AS `Month`
+   ,D.Date                             AS `Date`
+   ,D.Affiliate_id
+   ,D.Affiliate
+   ,D.Brand
+   ,D.Advertiser_id
+   ,D.Username
+   ,D.Username_id
+   ,IFNULL(D.MS_id,"missing")   AS `MS_id`
+   ,lower(D.Tracker_ID)         AS `Tracker_ID`
+   ,lower(D.Tracker_Name)       AS `Tracker_Name`
+   ,D.Code_To_Affiliate         AS `Code_to_affiliate`
+FROM Snapshot_day_by_day_fact1 D
+WHERE LEFT(D.Date,7) = "',@Month,'" '
+   ,@WhereDateFrom
+   ,@WhereOptionCPA0
+   ,@WhereAffiliate_id
+   ,@WhereAdvertiser_id
+   ,@WhereBrand
+   ,@WhereUsername_id
+   ,@WhereMS_id
+   ,@WhereTracker_ID
+   ,@WhereTracker_Name
+   ,@WhereCode_to_affiliate,'
+-- GROUP BY LEFT(D.Date,7),D.Affiliate_id,D.Brand,D.Username,IFNULL(D.MS_id,"missing")
+--         ,D.Tracker_ID,D.Tracker_Name,D.Code_To_Affiliate
+)
+(SELECT "01" as "Korder","Month" AS "Key",LEFT(`Date`,7) AS "Value","Month" AS `CallKey`,LEFT(`Date`,7) AS `CallValue`,"" AS "Rows","no" AS "TypeAction","" AS "MsgAction"  FROM MonthFilter) UNION ALL
+(SELECT "00","Last Processed Date",@Fact2_Date_limit,"dummy","dummy","" AS K ,"no" AS "TypeAction","" AS "MsgAction" FROM DUAL where @Fact2_Date_Switch="YES") UNION ALL
+(SELECT "14","Affiliate",`Affiliate`,"Affiliate_id",`Affiliate_id`,COUNT(*) AS K ,"no" AS "TypeAction","" AS "MsgAction" FROM BaseCount WHERE `Affiliate_id` > 0 GROUP BY `Affiliate_id`) UNION ALL
+(SELECT "15","Brand",`Brand`,"Advertiser_id",Advertiser_id,COUNT(*) AS K ,"no" AS "TypeAction","" AS "MsgAction" FROM BaseCount WHERE `Brand` > " " GROUP BY `Brand`) UNION ALL
+(SELECT "23","Username",`Username`,"Username_id",`Username_id`,COUNT(*) AS K ,"no" AS "TypeAction","" AS "MsgAction" FROM BaseCount GROUP BY `Username_id`) UNION ALL
+(SELECT "36","Tracker_Name",`Tracker_Name`,"Tracker_Name",`Tracker_Name`,COUNT(*) AS K ,"no" AS "TypeAction","" AS "MsgAction" FROM BaseCount WHERE `Tracker_Name` > " " GROUP BY `Tracker_Name`)  UNION ALL
+(SELECT "40","SET Last Processed Date",`Date`, "SET_Last_Processed_Date",`Date`,"" AS K ,"yes" AS "TypeAction","SET Last Processed Date OK" AS "MsgAction" 
+    FROM DateFilter where @Fact2_Date_Switch="YES") 
+ORDER BY 1, case when `CallKey`="Month" then `CallValue` else "" end desc, 3 ASC
+;');
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug != "YES" THEN
+   PREPARE stmt1 FROM @SQL;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call FM_edit_info_fact1('');
+call FM_edit_info_fact1('month=2026-02,affiliate_id=348,brand=sisal,debug=ye');
+call FM_edit_info_fact1('month=2025-122026-01,affiliate_id=39450');
+*/

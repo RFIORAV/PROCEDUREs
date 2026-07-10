@@ -1,0 +1,135 @@
+Crea el stored procedure `Report_Cashflow` en:
+`D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_Report_Cashflow_v2.x.sql`
+
+Usa estilo compatible con:
+- `PROCEDURE_Check_Bot_Status_v2.sql`
+- `PROCEDURE_InvoiceToPubliser_v1.x.sql`
+
+Objetivo funcional
+- Reporte tabular de cashflow por vencimiento (`Due_date_resolved`) con pivote mensual de 12 meses.
+- Fuente principal: `campaign_publisher_invoice` + `campaign_publisher`.
+- Incluir ajuste por deuda de proveedores usando `tmp_balance_by_affiliate` (obtenida desde `Report_balance_by_affiliate`).
+
+Parametro de entrada
+- Un único parámetro: `InputCommLine` estilo `Key=Value` separado por comas.
+- Keys soportadas:
+  - `Meta` = `Yes|No` (default `Yes`)
+  - `Filters` = `Yes|No` (default `No`)
+  - `Debug` = `Yes|No|KeyValues` (default `No`)
+  - `FromMonth` = `AAAA-MM` (default `DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 6 MONTH), '%Y-%m')`)
+  - `Owner` = `ALL | Owner | Owner_id` (default `ALL`)
+  - `DebtSide` = `ALL | OnlyClients | OnlyAffilates` (default `ALL`)
+
+Ventana temporal y pivote
+- Si `FromMonth` cumple formato `AAAA-MM`, usarlo como mes inicial.
+- Si no, fallback a `DATE_SUB(CURDATE(), INTERVAL 6 MONTH)`.
+- Construir 12 columnas mensuales (`YYYY-MM`) desde `v_StartMonth`.
+- Cada fila suma `Ammount` en la columna del mes de `Due_date_resolved`.
+
+Reglas de datos de invoices
+- Excluir filas pagadas: `Paymt_Date IS NULL`.
+- Si para mismo `Publisher_id` + `Invoiced_Month` existen `Invoice` y `Proforma`, considerar solo `Invoice` (descartar `Proforma`).
+- Resolver `Due_date_resolved`:
+  - usar `Due_Date` si existe;
+  - si no, calcular con:
+    `DATE_ADD(LAST_DAY(CONCAT(Invoiced_Month,'-01')), INTERVAL CAST(SUBSTRING_INDEX(Pay_Day, '+', -1) AS UNSIGNED) DAY)`.
+
+Datos de proveedores (deuda a pagar)
+- Ejecutar: `CALL Report_balance_by_affiliate('tmptable=yes,debug=no');`
+- Leer totales de `tmp_balance_by_affiliate`:
+  - `Estimated` total
+  - exigible actual (`v_AffPayable`):
+    - si `DAY(CURDATE()) >= 20` usar `Confirmed`
+    - si `< 20` usar `Confirmed21`
+- Insertar líneas sintéticas negativas en `Filtered`:
+  - Mes corriente: `Owner='~Affiliate Payables'`, `Publisher='Payables Due (Current Month)'`, `Ammount = -v_AffPayable`
+  - Mes siguiente: `Owner='~Affiliate Payables'`, `Publisher='Payables Due (Next Month)'`, `Ammount = -(Estimated - v_AffPayable)`
+- Insertar cada línea solo si su importe es distinto de 0.
+
+Salida del reporte
+- Columnas base:
+  - `Meta`, `Owner`, `Owner_id`, `Publisher`, `Publisher_id`, `Pay_Day`, `Client Exposure`
+  - + 12 columnas mensuales del pivote.
+- Agregación con:
+  - `GROUP BY B.Owner, B.Publisher WITH ROLLUP`
+- Etiquetas:
+  - subtotal por owner: `Publisher='Total Owner'`
+  - total general: `Owner='Expected Collections'` y `Publisher='Expected Collections'`
+- Orden:
+  - owners normales
+  - `~Affiliate Payables`
+  - `Expected Collections`
+
+Bloque metadata (`Meta=Yes`)
+- Debe devolver fila `setting` con configuración de columnas.
+- Columna de mes actual con estilo resaltado (fondo verde).
+- Incluir metadata de `Client Exposure` alineada a la derecha.
+
+Bloque filtros (`Filters=Yes`)
+- Devolver lista de meses seleccionables con CTE recursiva de 6 meses (mes actual y 5 anteriores):
+  - `Key = "Mes inicial"`
+  - `CallKey = "FromMonth"`
+  - `CallValue = Mes (AAAA-MM)`
+- Devolver opciones dinamicas de `Owner`:
+  - `Key = "Owner"`
+  - `CallKey = "Owner"`
+  - `CallValue = Owner u Owner_id`
+- Devolver opciones de lado de deuda:
+  - `Key = "Debt Side"`
+  - `CallKey = "DebtSide"`
+  - `CallValue = ALL | OnlyClients | OnlyAffilates`
+- Restriccion de formato para parser:
+  - `CallKey` y `CallValue` NO deben contener espacios.
+
+Filtro de lado de deuda (`DebtSide`)
+- `OnlyClients`: mostrar solo deuda a favor (excluir `~Affiliate Payables`).
+- `OnlyAffilates`: mostrar solo deuda en contra (solo `~Affiliate Payables`).
+- `ALL`: mostrar ambos lados.
+
+Observaciones de implementación
+- Mantener SQL dinámico con `PREPARE/EXECUTE/DEALLOCATE`.
+- En `Debug != 'NO'`, devolver variables y SQL generado.
+- Compatible con MySQL 8.0.37.
+
+Versión Compacta del prompt
+
+Crea el SP `Report_Cashflow` en `PROCEDURE_Report_Cashflow_v2.x.sql` con estilo de los SPs del repo y soporte `InputCommLine`.
+
+Keys:
+- `Meta=Yes|No` (default `Yes`)
+- `Filters=Yes|No` (default `No`)
+- `Debug=Yes|No|KeyValues` (default `No`)
+- `FromMonth=AAAA-MM` (default `CM-6`)
+- `Owner=ALL|Owner|Owner_id` (default `ALL`)
+- `DebtSide=ALL|OnlyClients|OnlyAffilates` (default `ALL`)
+
+Lógica principal:
+- Base: `campaign_publisher_invoice` + `campaign_publisher`.
+- Excluir `Paymt_Date` informado.
+- Si coexisten `Invoice` y `Proforma` para mismo `Publisher_id+Invoiced_Month`, usar solo `Invoice`.
+- Resolver `Due_date_resolved` con `Due_Date` o cálculo por `Pay_Day`.
+- Ventana: 12 meses desde `FromMonth`.
+- Pivote dinámico: una columna por mes.
+
+Deuda de proveedores:
+- Ejecutar `CALL Report_balance_by_affiliate('tmptable=yes,debug=no')`.
+- Tomar de `tmp_balance_by_affiliate`:
+  - `Estimated` total
+  - exigible actual = `Confirmed` (si día >= 20) o `Confirmed21` (si día < 20)
+- Insertar líneas negativas:
+  - `~Affiliate Payables / Payables Due (Current Month)` = `-exigible actual`
+  - `~Affiliate Payables / Payables Due (Next Month)` = `-(Estimated - exigible actual)`
+
+Salida:
+- Columnas: `Meta, Owner, Owner_id, Publisher, Publisher_id, Pay_Day, Client Exposure` + 12 meses.
+- `Client Exposure = SUM(Ammount)` por fila.
+- Totales con `GROUP BY B.Owner, B.Publisher WITH ROLLUP`:
+  - `Total Owner`
+  - `Expected Collections` (total general)
+- Orden: owners normales, `~Affiliate Payables`, `Expected Collections`.
+
+Filters:
+- `Mes inicial` (últimos 6 meses),
+- `Owner` (dinámico),
+- `Debt Side` (`ALL|OnlyClients|OnlyAffilates`).
+- Regla: `CallKey` y `CallValue` sin espacios.

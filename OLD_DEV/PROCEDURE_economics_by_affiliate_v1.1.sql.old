@@ -1,0 +1,204 @@
+/*
+PROCEDURE_economics_by_affiliate_v1.1.sql - GENERACION DE RESUMEN ECONOMICS
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call economics_by_affiliate(''); -- Devuelve todas las MS
+call economics_by_affiliate('debug=yes,MS_ID=859,filters=no'); 
+
+01.03.2002 v1.0 Mov "Accepted" el día 20
+09.05.2022 v1.0 Optimización
+02.09.2022 v1.0 Prueba y deploy
+17.11.2022 v1.1 Refactoring
+
+*/	
+-- -----------------------------------------------------
+DROP PROCEDURE IF EXISTS economics_by_affiliate1;
+-- -----------------------------------------------------
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `economics_by_affiliate1`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'RESUMEN [Affiliate_id] de Comisiones, Pagos, Ajustes desde el inicio, en forma de cuadro contabilidad'
+
+ProcedureBody: BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.1 17.11.2022 ';
+SET @CurrentDay      =curdate();
+SET @Affiliate_id    ='0';
+SET @Meta            ='NO';
+SET @Month           =left(curdate(),7);
+
+SET @MS_id           ='ALL';
+SET @Owner           ='ALL';
+SET @Advertiser_id   ='ALL';
+SET @Account_id      ='ALL';
+SET @Channel_id      ='ALL';
+SET @Product         ='ALL';
+SET @DealbyProduct   ='NO';
+SET @STATUS          ='ALL';
+SET @Platform        ='ALL';
+SET @Brand_Group     ='ALL';
+SET @Currency        ='EUR';
+SET @Total           ='YES';
+SET @Filters         ='NO';
+SET @TotLine         ='FIRST';
+SET @Debug           ='NO';
+SET @View            ='VIEWGES';
+SET @Mode            ='AFFILIATE';
+SET @GroupByMS       ='NO';
+SET @OnlyOverCap     ='NO';
+SET @Search          ='';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='month'           THEN SET @Month         =UPPER(@v); END IF;
+   IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='ms_id'           THEN SET @MS_id         =UPPER(@v); END IF;
+   IF lower(@k)='owner'           THEN SET @Owner         =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id'   THEN SET @Advertiser_id =UPPER(@v); END IF;
+   IF lower(@k)='account_id'      THEN SET @Account_id    =UPPER(@v); END IF;
+   IF lower(@k)='channel_id'      THEN SET @Channel_id    =UPPER(@v); END IF;
+   IF lower(@k)='currency'        THEN SET @Currency      =UPPER(@v); END IF;
+   IF lower(@k)='total'           THEN SET @Total         =UPPER(@v); END IF;
+   IF lower(@k)='totline'         THEN SET @TotLine       =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='view'            THEN SET @View          =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='groupbyms'       THEN SET @GroupByMS     =UPPER(@v); END IF;
+   IF lower(@k)='product'         THEN SET @Product       =      @v;  END IF;
+   IF lower(@k)='platform'        THEN SET @Platform      =      @v;  END IF;
+   IF lower(@k)='status'          THEN SET @Status        =      @v;  END IF;
+   IF lower(@k)='onlyovercap'     THEN SET @OnlyOverCap   =UPPER(@v); END IF;
+   IF lower(@k)='dealbyproduct'   THEN SET @DealbyProduct =UPPER(@v); END IF;
+   IF lower(@k)='search'          THEN SET @Search        =     (@v); END IF;
+
+END WHILE;
+
+/**************************************************************************************************************/
+               IF  IFNULL(@Affiliate_id,0)<=0 THEN LEAVE ProcedureBody; END IF;
+/**************************************************************************************************************/
+
+SET @SQLmeta=concat(
+' UNION ALL (
+SELECT
+   "setting" as Meta
+   ,"width=90px" `Month`
+   ,"width=90px" `Date`
+   ,"width=90px" `Descr`
+   ,"width=90px" `Op`
+   ,"width=90px" `Amount`
+   ,"width=90px" `Status`
+   ,"width=120px" Est_bal
+   ,"width=100px" Conf_Bal
+	FROM DUAL WHERE @Meta="YES")'
+);
+
+SET @bal_est=0;
+SET @bal_cnf=0;
+SET @row_num=0;
+SET @CMonthFirst=CONCAT(LEFT(CURDATE(),7),"-01");   	
+SET @LMonthFirst=DATE_SUB(@CMonthFirst, INTERVAL 1 MONTH);   	
+SET @Date_confirm=IF(DAY(CURDATE())>20,@CMonthFirst,@LMonthFirst);
+-- CONCAT(LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7),"-20");  -- Fecha 20 del mes anterior
+
+IF @Debug!="NO" THEN SELECT @CMonthFirst,@LMonthFirst,@Date_confirm; END IF;
+
+-- WHEN CONCAT(LEFT(DATE_ADD(DATE, INTERVAL 1 MONTH),7),'-20')<=CURDATE()
+--                           2022-10-31
+--                  2022-11-30
+--             2022-11-                                  -20
+
+SET @SQL=concat('
+(SELECT ',
+    IF(@Meta="YES","'data' as `Meta`,",""),'
+    LEFT(date,7) as Month,Date,Description,Op_type,Amount,StatusText
+	,ROUND(balance_est,2) AS Bal_Estimated,ROUND(balance_conf,2) AS Bal_Confirmed
+FROM (
+SELECT Date,Description,Op_type,Amount,StatusText
+	,CASE WHEN Status in (0,1,2) THEN @bal_est:=@bal_est+Amount ELSE @bal_est END AS balance_est
+   ,CASE WHEN Status in (1,2)   THEN @bal_cnf:=@bal_cnf+Amount ELSE @bal_cnf END AS balance_conf
+	,@row_num:=@row_num+1 as RowNum
+from (
+SELECT Affiliate_id,DATE,"CPA" AS Op_type,CONCAT_WS(" ",Brand,Product_Real,"-",Channel) AS Description,(CPA_Val_AJ_RS) AS Amount
+	,CASE WHEN DATE<@Date_confirm THEN "1" 		  ELSE 0 END AS Status
+	,CASE WHEN DATE<@Date_confirm THEN "Confirmed" ELSE "Provisional" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+FROM view_monthly_fact_aff2 F WHERE F.Affiliate_id=@Affiliate_id AND (CPA_Val_AJ_RS)<>0
+-- ) x
+UNION
+SELECT Affiliate_id,DATE,"RShare" AS Op_type,CONCAT_WS(" ",Brand,Product_Real,"-",Channel) AS Description,(RS_AJUST) AS Amount
+	,CASE WHEN DATE<@Date_confirm THEN "1" 		  ELSE 0 END AS Status
+	,CASE WHEN DATE<@Date_confirm THEN "Confirmed" ELSE "Provisional" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+FROM view_monthly_fact_aff2 F WHERE F.Affiliate_id=@Affiliate_id AND (RS_AJUST)<>0
+UNION
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,Amount_Debit*-1 AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est, 0 as balance_conf
+FROM account_financial_movement F WHERE F.Affiliate_id=@Affiliate_id AND ifnull(F.Status,0)<>3
+UNION
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,Amount_Credit AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" 
+									WHEN 3 THEN "Denied" WHEN 5 THEN "INFO" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+FROM account_manual_adjustments F WHERE F.Affiliate_id=@Affiliate_id AND ifnull(F.Status,0)<>3
+ORDER BY DATE ASC
+) AS x ) as xx ORDER BY RowNum DESC LIMIT 200) '
+,IF(@Meta="YES",@SQLmeta,""),'
+;');
+
+IF @Debug!="NO" THEN SELECT @Meta,@Affiliate_id; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+
+END;
+$$
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- -----------------------------------------------------
+-- CALL  economics_by_affiliate1('Affiliate_id=328,Meta=no,debug=ye');
+-- CALL  economics_by_affiliate1('Affiliate_id=39,Meta=yes,debug=ye');
+

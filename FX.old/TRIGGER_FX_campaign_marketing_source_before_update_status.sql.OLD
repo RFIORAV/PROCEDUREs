@@ -1,0 +1,60 @@
+/***************************************************************************************/
+-- TRIGGER forex_marketing_source_before_update
+-- TRATAMIENTO DEL STATUS EFECTIVO Marketing source
+-- 20.04.2022
+-- 12.07.2022 Agregado NEW.`Status_Acct_id`
+-- 09.09.2022 Agregada notificación cambio status MS
+-- 19.09.2022 Paulo modifica datos del trigger de MS Status
+-- 04.11.2022 Campo Product_Deal en lugar de Product
+-- 09.11.2022 Notificación por Cambio Status: Descripc ahora muestra Advertiser_Name
+-- 16.11.2022 Incluye user del Afiliado
+-- 16.12.2022 Deal pasado a trigger AFTER UPDATE
+/***************************************************************************************/
+--
+DROP TRIGGER IF EXISTS forex_marketing_source_before_update;
+DROP TRIGGER IF EXISTS forex_marketing_source_before_update_status;
+DELIMITER $$
+--
+CREATE TRIGGER forex_marketing_source_before_update_status
+BEFORE UPDATE
+ON forex_marketing_source FOR EACH ROW
+--
+BEGIN
+--
+SET @Version='16.12.2022';
+
+IF
+	NEW.`Status_id`			='1' AND
+	NEW.`Status_Adv_id`		='1' AND
+	NEW.`Status_Acct_id`    ='1' AND
+	NEW.`Status_Aff_id`		='1' AND
+	NEW.`Status_Channel_id`	='1'
+THEN
+	SET NEW.`Status`='Active';
+ELSE
+	SET NEW.`Status`='Paused';
+END IF;
+
+/* GENERA NOTIFICACION de cambio de Status para el Afiliado - 09.09.2022 */
+
+IF NEW.`Status`!= OLD.`Status` THEN
+   INSERT INTO account_notifications (Affiliate_id,Extra_id_1,Testo,FromUser,TYPE, Status,Status_id, Read_Status) 
+	VALUES (NEW.`Affiliate_id`,NEW.`id`
+	,CONCAT((SELECT username FROM account_account AC WHERE AC.id=NEW.`Affiliate_id`)
+   ,' - TRACKER ',NEW.Code_To_Affiliate
+	,' of ',(SELECT Advertiser_Name FROM forex_advertiser AD WHERE AD.id=NEW.`Advertiser_id`)
+	,' ',NEW.Product,': now ',NEW.`Status`)
+	,'System','MS Status Change','Pending',0,0);
+END IF;
+
+END$$
+--
+DELIMITER ;
+
+/** RECONSTRUCCION DE STATUS DE TODA LA TABLA **/
+
+-- UPDATE forex_marketing_source
+-- SET `Status`=(CASE WHEN `Status_id`='1' AND `Status_Adv_id`='1' AND `Status_Aff_id`='1' AND `Status_Channel_id`='1'
+--					THEN 'Active' ELSE 'Paused' END)
+-- ;
+

@@ -1,0 +1,58 @@
+/** 
+	VIEW `Snapshot_monthly_fact`
+	rf 05.03.2022 Apunta contra forex_day_by_day_fact1_2 en lugar de forex_day_by_day_2_fact
+**/
+
+CREATE OR REPLACE
+    -- ALGORITHM = UNDEFINED 
+    -- DEFINER = `b3w1nn3r`@`%` 
+    -- SQL SECURITY DEFINER
+VIEW `Snapshot_monthly_fact` AS
+    SELECT 
+        `Owner` AS `Owner`,
+        MAX(`Affiliate`) AS `Affiliate`,
+--         MAX(`Campaign`) AS `Campaign`,
+        MAX(`Deal`) AS `Deal`,
+        MAX(`Deal_Aff`) AS `Deal_Aff`,
+        MAX(`Hour_Update`) AS `Hour_Update`,
+        LEFT(`Date`,
+            7) AS `Date`,
+        MAX(`Username`) AS `Username`,
+        MAX(`Username_id`) AS `Username_id`,			-- 10.03.2022
+        MAX(`Portal`) AS `Portal`,
+        `Brand` AS `Brand`,
+        `Tracker_ID` AS `Tracker_ID`,
+        MAX(`Tracker_Name`) AS `Tracker_Name`,
+        MAX(`Code_To_Affiliate`) AS `Code_To_Affiliate`,
+        MAX(`Product`) AS `Product`,
+        `Product_Real` AS `Product_Real`,
+        SUM(`Qualified_Players`) AS `Qualified_Players`,
+        SUM(`Qualified_Players_Adjusted`) AS `Qualified_Players_Adjusted`,
+        SUM(`First_Time_Deposit`) AS `First_Time_Deposit`,
+        SUM(`Views`) AS `Views`,
+        SUM(`Clicks`) AS `Clicks`,
+        SUM(`Signups`) AS `Signups`,
+        SUM(`Impressions`) AS `Impressions`,
+        ' ' AS `Sign_Up_Offer`,
+        ' ' AS `Type`,
+        ' ' AS `Language`,
+        ' ' AS `Registration_Date`,
+        MAX(`Deposits`) AS `Deposits`,
+        SUM(`Depositing_Customers`) AS `Depositing_Customers`,
+        SUM(`Active_Customers`) AS `Active_Customers`,
+        SUM(`New_Depositing_Customers`) AS `New_Depositing_Customers`,
+        SUM(`New_Active_Customers`) AS `New_Active_Customers`,
+        SUM(`First_Time_Active_Customers`) AS `First_Time_Active_Customers`,
+        SUM(`Turnover`) AS `Turnover`,
+        SUM(`Net_Revenue`) AS `Net_Revenue`,
+        SUM(`Revenue_Share_Gestor`) AS `Revenue_Share_Gestor`,
+        SUM(`Revenue_Share_Affiliate`) AS `Revenue_Share_Affiliate`,
+        SUM(`CPA_Value_Affiliate`) AS `CPA_Value_Affiliate`,
+        SUM(`CPA_Value_Gestor`) AS `CPA_Value_Gestor`,
+        MAX(`Shortlink`) AS `Shortlink`
+    FROM
+        -- `forex_day_by_day_2_fact`
+        `forex_day_by_day_fact1_2`
+    GROUP BY `Owner` , LEFT(`Date`,
+        7) , `Brand` , `Tracker_ID` , `Product`
+		  ;

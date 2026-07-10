@@ -1,0 +1,111 @@
+/***************************************************************************************/
+-- TRIGGER forex_marketing_source_before_update
+-- TRATAMIENTO DEL STATUS EFECTIVO Marketing source
+-- 20.04.2022
+-- 12.07.2022 Agregado NEW.`Status_Acct_id`
+-- 09.09.2022 Agregada notificación cambio status MS
+-- 14.09.2022 Adaptado forex_advertiser_account_before_update a Forex
+-- 09.11.2022 Notificación por Cambio Status: Descripc ahora muestra Advertiser_Name
+/***************************************************************************************/
+--
+DROP TRIGGER IF EXISTS forex_marketing_source_before_update;
+DELIMITER $$
+--
+CREATE TRIGGER forex_marketing_source_before_update
+BEFORE UPDATE
+ON forex_marketing_source FOR EACH ROW
+--
+BEGIN
+
+DECLARE `Trigger_Version` VARCHAR (20) DEFAULT '10.11.2022';
+-- 
+/*
+	`Status`             VARCHAR(30) NULL DEFAULT NULL,
+	`Status_id`          VARCHAR(2)  NULL DEFAULT NULL,
+	`Status_Adv_id`      VARCHAR(2)  NULL DEFAULT NULL,
+	`Status_Acct_id`     VARCHAR(2)  NULL DEFAULT NULL,
+	`Status_Aff_id`      VARCHAR(2)  NULL DEFAULT NULL,
+	`Status_Channel_id`  VARCHAR(2)  NULL DEFAULT NULL,
+*/
+IF
+	NEW.`Status_id`			='1' AND
+	NEW.`Status_Adv_id`		='1' AND
+	NEW.`Status_Acct_id`    ='1' AND
+	NEW.`Status_Aff_id`		='1' AND
+	NEW.`Status_Channel_id`	='1'
+THEN
+	SET NEW.`Status`='Active';
+ELSE
+	SET NEW.`Status`='Paused';
+END IF;
+
+/* GENERA NOTIFICACION de cambio de Status para el Afiliado - 09.09.2022 */
+
+IF NEW.`Status`!= OLD.`Status` THEN
+   INSERT INTO account_notifications (Affiliate_id,Extra_id_1,Testo,FromUser,TYPE, Status,Status_id, Read_Status) 
+	VALUES (NEW.`Affiliate_id`,NEW.`id`
+	,CONCAT('TRACKER ',NEW.Code_To_Affiliate
+	,' of ',(SELECT Advertiser_Name FROM forex_advertiser AD WHERE AD.id=NEW.`Advertiser_id`)
+	,': Status is now ',NEW.`Status`)
+	,'System','MS Status Change','Pending',0,0);
+END IF;
+
+/*
+*************************************************************
+** TRIGGER forex_marketing_source_after_update
+** Va al final del Trigger standard para crear info en
+** forex_marketing_source_deal_date cuando cambia Deal_Valid_From,Affiliate_id,Channel_id
+**
+** 02.06.2022 Agregado Product
+** 30.07.2022 Quitado Channel_id
+** 16.08.2022 Agregado a trigger composicion status
+** 02.11.2022 No crea registro si datos básicos (Deal_Valid_From,Deal_id/Affiliate_id) no vienen informados
+*************************************************************
+*/
+
+/************************************
+-- TRATAMIENTO DEL CAMBIO DE DEAL
+*************************************/
+IF
+   (
+      OLD.`Deal_id`        !=NEW.`Deal_id`
+   OR OLD.`Product`        !=NEW.`Product`
+   OR OLD.`Deal_Valid_From`!=NEW.`Deal_Valid_From`
+   OR OLD.`Affiliate_id`   !=NEW.`Affiliate_id`
+   )  
+   AND NEW.`Deal_Valid_From` IS NOT NULL
+   AND NEW.`Affiliate_id`    IS NOT NULL
+   AND (NEW.`Deal_id`        IS NOT NULL 
+    OR  NEW.`Affiliate_id` !=OLD.`Affiliate_id`) -- No acepta Deal_id=null excepto en cambio de afiliado
+--
+THEN
+
+INSERT INTO forex_marketing_source_deal_date (
+    `MS_id`
+   ,`Deal_Valid_From`
+   ,`Product`
+   ,`Affiliate_id`
+   ,`Channel_id`
+   ,`Deal_id`
+   ,`Code`
+   ,`Creation_Date`
+   ,`Last_Update`
+   ,`Operator`
+)
+VALUES (
+    NEW.`id`
+   ,NEW.`Deal_Valid_From`
+   ,NEW.`Product`
+   ,NEW.`Affiliate_id`
+   ,NEW.`Channel_id`
+   ,NEW.`Deal_id`
+   ,''
+   ,NEW.`Creation_Date`
+   ,NEW.`Last_Update`
+   ,NEW.`Operator`
+);
+END IF;
+
+END$$
+--
+DELIMITER ;

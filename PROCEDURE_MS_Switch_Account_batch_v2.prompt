@@ -1,0 +1,57 @@
+
+
+Escribir un procedure mysql 8 de nombre `PROCEDURE_MS_Switch_Account_batch_v2.sql` que, dada la tabla `campaign_marketing_source`, haga lo siguiente:
+1) Leer registros de la tabla  `campaign_marketing_source` as A, cuyo valor Username_id=@Account_origen, y además Status_id=1 y Product=@Product
+2) Por cada registro seleccionado de `campaign_marketing_source` as A:
+   actualizar `campaign_marketing_source` as B que sea Username_id=@Account_destino, Affiliate_id=84, Product=@Product, Stat_aggreg=1, Channel_id=531
+   Los campos a actualizar en B (que reciben el valor desde cada registro de A), son:
+
+      `Code_To_Affiliate`
+      `Product`          
+      `Status`           
+      `Status_id`        
+      `Affiliate_id`     
+      `Channel_id`       
+      `Deal_id`          
+      `Country_Deal`     
+      `Product_Deal`     
+      `Deal_Valid_From`  
+      `Shortlink`        
+      `Shortlink_id`     
+
+3) El procedure recibe paramentros de entrada como pares key=value (de la misma forma que se utiliza en D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_Report_players_netrefer_v2.3.sql) 
+los siguientes valores obligatorios: 
+- @Day_from,@Day_to ( en formato YYYY-MM-DD) que es el período la suma de de `Qualified_Players` en la tabla `Snapshot_day_by_day_fact1`
+- @CPA_Min Suma de `Qualified_Players` mínima
+- @Accounts_origen (string de valores numericos separados por coma) que son id de la tabla `campaign_username`
+- @Account_destino  que es una id de la tabla `campaign_username`
+- @Product, string que correspone al campo `Product` de la tabla `campaign_marketing_source`
+
+4) Utilizar el método de recibir parámtros key=value y multivalor de D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_Report_MarketingSources1_v2.5_MAF_multipar.sql
+5) Utilizar tablas temporales en lugar de CURSOR
+
+
+CREATE TABLE `campaign_marketing_source` (
+   `id` INT NOT NULL AUTO_INCREMENT,
+   `Code` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Code_To_Affiliate` VARCHAR(50) NULL DEFAULT '0' COLLATE 'utf8mb4_0900_ai_ci',
+   `Product` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_id` VARCHAR(2) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Description` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Affiliate_id` INT NULL DEFAULT NULL,
+   `Username_id` INT NULL DEFAULT NULL,
+   `Channel_id` INT NULL DEFAULT NULL,
+   `Deal_id` INT NULL DEFAULT NULL,
+   `Country_Deal` VARCHAR(2) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Product_Deal` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Deal_Valid_From` DATE NULL DEFAULT NULL,
+   `Shortlink` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Shortlink_id` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   PRIMARY KEY (`id`) USING BTREE,
+   UNIQUE INDEX `ms_Tracker_ID` (`Tracker_ID`, `Username_id`) USING BTREE,
+   INDEX `ms_Code_id` (`Code`, `Username_id`) USING BTREE,
+   INDEX `ms_Tracker_Name_ID` (`Tracker_Name`, `Username_id`) USING BTREE,
+)
+;
+*/

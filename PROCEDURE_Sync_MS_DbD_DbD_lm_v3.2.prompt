@@ -1,0 +1,324 @@
+# Especificación: `Sync_MS_DbD_DbD_lm_dev` (archivo fuente `PROCEDURE_Sync_MS_DbD_DbD_lm_v3.2.sql`)
+
+Objetivo: definir el stored procedure con **la misma funcionalidad** que la versión **v3.2 (12.05.2026)**. Compatibilidad objetivo: **MySQL 8.0.37** (sintaxis admitida en 8.0; sin requisitos exclusivos de 8.4).
+
+---
+
+## 1. Identidad del objeto
+
+| Elemento | Valor |
+|----------|--------|
+| Nombre del procedure en servidor | `Sync_MS_DbD_DbD_lm_dev` |
+| Parámetro IN | `p_InputCommLine VARCHAR(500)` — cadena única con pares `Clave=Valor` separados por **comas**; valores **sin comillas** en la cadena; el `CALL` envuelve todo entre comillas simples. |
+| `DEFINER` | `` `b3w1nn3r`@`%` `` |
+| `SQL SECURITY` | `DEFINER` |
+| `LANGUAGE SQL` | Sí |
+| `COMMENT` del `CREATE` | Texto fijo que indique v3.2, fecha 12.05.2026 y propósito: comprobar/sincronizar datos raw LM comparando almacenado vs descargado (DbD vs DbD_lm). |
+| Etiqueta del bloque principal | `proc_label: BEGIN` … `END` |
+| Etiqueta del bucle de parseo | `parse_loop: WHILE` … `END WHILE parse_loop` |
+
+Antes del `CREATE`: `DROP PROCEDURE IF EXISTS Sync_MS_DbD_DbD_lm_dev;` y `DELIMITER` estándar (`$$` / restaurar `;`).
+
+---
+
+## 2. Parámetros parseados (Key=Value)
+
+Normalización previa al bucle:
+
+- `v_input_comm_line = IFNULL(p_InputCommLine, '')`
+- Añadir coma final: `CONCAT(..., ',')`
+- Eliminar comillas dobles: `REPLACE(..., '"', '')`
+
+Bucle tipo estándar del proyecto: localizar `=` y primera `,`; extraer `v_k`, `v_v`; avanzar el string. Si `v_e = 0` o `v_c = 0`, `LEAVE parse_loop`.
+
+Mapeo **case-insensitive** en clave (`LOWER(v_k)`), guardar valores según corresponda:
+
+| Clave (LOWER) | Variable | Tratamiento del valor |
+|----------------|----------|------------------------|
+| `mode` | `v_mode` | `UPPER(TRIM(v_v))` |
+| `brand` | `v_brand` | `TRIM(v_v)` tal cual (sin UPPER forzado) |
+| `filters` | `v_filters` | `UPPER` |
+| `meta` | `v_meta` | `UPPER` |
+| `debug` | `v_debug` | `UPPER` |
+
+**Defaults** (asignar con `SET` tras todos los `DECLARE`, según convención del proyecto):
+
+- `v_version = 'v3.2 12.05.2026'`
+- `v_mode = 'VIEW'`
+- `v_brand = ''`
+- `v_filters = 'NO'`
+- `v_meta = 'YES'`
+- `v_debug = 'NO'`
+- `v_where_not_in_acct = ''`, `v_where_not_in_acct_view = ''`, `v_where_brand = ''`
+- `v_step = 'INIT'`
+
+**Regla especial:** si tras el parseo `v_mode = 'DEBUG'`, entonces `v_mode = 'VIEW'` y `v_debug = 'YES'` (DEBUG = vista + trazas).
+
+**Modos finales relevantes:** `VIEW`, `RUN`, `FACT1` (tras mapeo DEBUG→VIEW).
+
+---
+
+## 3. Variables y tipos (lista mínima)
+
+Incluir al menos: `v_version` (VARCHAR(30)), `v_mode` (20), `v_brand` (100), `v_filters`/`v_meta`/`v_debug` (3), `v_last_month` CHAR(7), `v_indirect_accounts` LONGTEXT, `v_where_not_in_acct` / `v_where_not_in_acct_view` / `v_where_brand` TEXT, todos los `v_sql*` y `v_cte_*` como LONGTEXT donde aplique, `v_step` VARCHAR(64), auxiliares de parseo `v_e`, `v_c`, `v_k`, `v_v`, `v_input_comm_line`, `v_sql_check_run` LONGTEXT.
+
+**Sesión:** `SET SESSION group_concat_max_len = 10000;`
+
+**Mes LM:** `SET v_last_month = LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), 7);`
+
+---
+
+## 4. Exclusión de cuentas indirectas
+
+Consulta a `campaign_username u`:
+
+- Condición: `u.is_indirect = '1' AND IFNULL(u.db_indirect, '') > ''`
+- Construir: `v_indirect_accounts = '(' || GROUP_CONCAT(u.id SEPARATOR ', ') || ')'` vía subquery escalar.
+
+Si `v_indirect_accounts IS NOT NULL`:
+
+- `v_where_not_in_acct = CONCAT(' AND D.Username NOT IN ', v_indirect_accounts)`
+- `v_where_not_in_acct_view = REPLACE(v_where_not_in_acct, 'NOT', '')` (queda ` AND D.Username  IN (...)` — puede quedar doble espacio; reproducir tal cual el comportamiento actual)
+
+Si es NULL: ambas cadenas vacías.
+
+**Filtro Brand:** si `v_brand != ''`:
+
+- `v_where_brand = CONCAT(' AND AD.Advertiser_Name = ', QUOTE(v_brand))`
+
+Si no: `v_where_brand` permanece vacío (no resetear explícitamente si ya está en default).
+
+---
+
+## 5. CTEs dinámicos (texto concatenado en variables)
+
+Todos los CTE van embebidos en SQL dinámico; el alias de tabla en los `FROM` internos es **`D`**. Filtro de mes: `LEFT(Date, 7) = ` + `QUOTE(v_last_month)` (usar comillas SQL generadas, no el literal del mes en código estático salvo donde el SP ya usa `LEFT(DATE_SUB(...),7)` en DELETE/INSERT global).
+
+### 5.1 `v_cte_dbd_agg` — CTE `DbD_agg`
+
+- `FROM Snapshot_day_by_day D`
+- `LEFT JOIN campaign_username U ON U.id = D.Username`
+- `LEFT JOIN campaign_advertiser AD ON AD.id = U.Advertiser_id`
+- `WHERE LEFT(Date, 7) = quoted_last_month` + `v_where_not_in_acct` + `v_where_brand`
+- `SELECT`: `AD.Advertiser_Name AS Brand`, `D.Username`, `D.Tracker_ID`, `D.Tracker_name AS Tracker_name`, `D.Product`, `SUM(IFNULL(D.Qualified_players,0)) AS CPA_DbD`, `SUM(IFNULL(D.Net_Revenue,0)) AS NR_DbD`
+- `GROUP BY Brand, D.Username, D.Tracker_ID, D.Tracker_name` (mismo orden que en el archivo)
+
+### 5.2 `v_cte_lm_agg` — CTE `LM_agg`
+
+Idéntico a `DbD_agg` pero:
+
+- Tabla: `Snapshot_day_by_day_lm D`
+- Sumas: `CPA_LM`, `NR_LM`
+- Mismo WHERE y joins.
+
+**Importante:** no usar CTEs separados `DbD_attr` / `LM_attr`; `Tracker_name` y `Product` van en el `GROUP BY` del agregado.
+
+### 5.3 `v_cte_lm_minus_dbd` — CTE `LM_minus_Dbd` (fragmento fijo, no depende del mes en concatenación del CTE salvo vía CTEs previos)
+
+Definición literal (salvo comillas internas del string SQL):
+
+- `FROM LM_agg L`
+- `LEFT JOIN DbD_agg D ON L.Brand <=> D.Brand AND L.Username = D.Username AND L.Tracker_ID <=> D.Tracker_ID`
+- `LEFT JOIN campaign_username U ON U.id = L.Username`
+- Columnas de salida del CTE:
+  - `"" AS Meta`
+  - `L.Brand`
+  - `L.Username AS "Username_id"` (en el SQL fuente van comillas dobles alrededor del alias — reproducir)
+  - `U.Username`
+  - `L.Tracker_ID`
+  - `COALESCE(L.Tracker_name, D.Tracker_name) AS Tracker_name`
+  - `COALESCE(L.Product, D.Product) AS Product`
+  - `IFNULL(D.CPA_DbD,0)`, `IFNULL(L.CPA_LM,0)`, `IFNULL(L.CPA_LM,0)-IFNULL(D.CPA_DbD,0) AS DIFF`
+  - `IFNULL(D.NR_DbD,0)`, `IFNULL(L.NR_LM,0)`
+- `WHERE` (filas con discrepancia):  
+  `(IFNULL(L.CPA_LM,0)-IFNULL(D.CPA_DbD,0) <> 0) OR (IFNULL(D.NR_DbD,0) <> IFNULL(L.NR_LM,0))`
+
+---
+
+## 6. Conteo previo: `@v_Count_DbD_diff`
+
+Antes de ramas Filters/Run/Fact1:
+
+1. `SET @v_Count_DbD_diff = 0;`
+2. Construir `v_sql_check_run` = sentencia dinámica que ejecuta:  
+   `SET @v_Count_DbD_diff = ( WITH DbD_agg..., LM_agg..., LM_minus_Dbd... SELECT COUNT(*) FROM LM_minus_Dbd );`
+3. `PREPARE stmt2` / `EXECUTE` / `DEALLOCATE`; poner `@stmt_sql = NULL` después.
+
+Este conteo alimenta la UI de filtros y la decisión de RUN.
+
+---
+
+## 7. Modo `Filters=YES` (`v_filters = 'YES'`)
+
+Si activo:
+
+1. Construir `v_sqlfilters` = `WITH` + los tres CTEs + cuerpo:
+
+   - **Orden exacto del UNION** (tres partes):
+     1. **Korder 01:** marcas con diferencias — `FROM LM_minus_Dbd GROUP BY Brand` (TypeAction `"no"`, MsgAction vacío).
+     2. **Korder 98:** texto "Transfer selected LM data to daily data (DbD)" / valor "CONFIRM UPDATE daily data" / CallKey `Mode` / CallValue `RUN` — **`FROM DUAL WHERE @v_Count_DbD_diff > 0`** (solo visible si hay diferencias).
+     3. **Korder 99:** texto "Recalc Master with new data (takes a few seconds)" / "CONFIRM UPDATE LM Master data" / CallKey `Mode` / CallValue `FACT1` — **`FROM DUAL`** (sin filtro por count).
+   - Cierre: `ORDER BY 1, 3`
+
+2. Si `v_debug != 'NO'`: `SELECT` de versión/modo/brand/lastmonth/input y `SELECT v_sqlfilters AS SQL_Filters`.
+
+3. Ejecutar `v_sqlfilters` con PREPARE/EXECUTE.
+
+4. **No** ejecutar en la misma invocación el flujo principal de vista/run (el archivo comenta un LEAVE implícito: tras Filters termina la rama; no debe caer en la ejecución de `v_sqlview` al final si Filters=YES — ver sección 10).
+
+Nombres de columnas del resultset de filters: usar backticks en el SQL generado como en el archivo (`Korder`, `Key`, `Value`, `CallKey`, `CallValue`, `Rows`, `TypeAction`, `MsgAction`).
+
+---
+
+## 8. SQL de escritura: `RUN` (`v_filters = 'NO'` y `v_mode = 'RUN'`)
+
+### 8.1 Construcción `v_sql_delete` / `v_sql_insert`
+
+**Si `v_brand != ''`:**
+
+- DELETE: `DELETE D FROM Snapshot_day_by_day D INNER JOIN campaign_username U ... INNER JOIN campaign_advertiser AD ... WHERE AD.Advertiser_Name = QUOTE(brand) AND LEFT(D.Date,7)=QUOTE(v_last_month)` + `v_where_not_in_acct`
+- INSERT: `INSERT IGNORE INTO Snapshot_day_by_day SELECT D.* FROM Snapshot_day_by_day_lm D` con los mismos JOINs y mismos filtros Brand + mes + indirectos.
+
+**Si `v_brand = ''` (sync completo LM):**
+
+- DELETE: `DELETE FROM Snapshot_day_by_day D WHERE LEFT(Date,7) = LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), 7)` + `v_where_not_in_acct` (nota: usar expresión de fecha inline en DELETE/INSERT global, no solo `v_last_month`, para coincidir con el archivo)
+- INSERT: `INSERT IGNORE INTO Snapshot_day_by_day SELECT * FROM Snapshot_day_by_day_lm D WHERE LEFT(Date,7) = LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), 7)` + `v_where_not_in_acct`
+
+### 8.2 Regla v3.2 — sin diferencias no escribir
+
+Después de construir SQL y antes de ejecutar RUN:
+
+- Si `v_mode = 'RUN'` y `@v_Count_DbD_diff = 0`, forzar `v_mode = 'VIEW'` (no ejecutar DELETE/INSERT en esa llamada).
+
+### 8.3 Transacción y manejo de errores
+
+- `DECLARE EXIT HANDLER FOR SQLEXCEPTION`: si `v_step LIKE 'RUN%'` entonces `ROLLBACK`; siempre `RESIGNAL`.
+- En ejecución RUN (cuando aplique): `SET v_step = 'RUN_DELETE'` → `START TRANSACTION` → PREPARE/EXECUTE delete → `SET v_step = 'RUN_INSERT'` → PREPARE/EXECUTE insert → `COMMIT` → `SET v_step = 'RUN_DONE'`.
+
+Usar variables de sesión **solo** para `PREPARE` (`@stmt_sql`) y el contador `@v_Count_DbD_diff`, como en el archivo.
+
+---
+
+## 9. Modo `FACT1`
+
+Si `v_mode = 'FACT1'` (y `v_filters = 'NO'`):
+
+- `SET v_step = 'FACT1'`
+- `CALL Snapshot_day_by_day_fact1_upd_from_dbd('LM');`
+- `SET v_step = 'FACT1_DONE'`
+
+No envolver en transacción explícita en el archivo actual (solo RUN usa transacción).
+
+---
+
+## 10. Vista comparativa (`v_sqlview`) — cuando `v_filters = 'NO'`
+
+Ensamblar:
+
+`WITH` + `v_cte_dbd_agg` + `,` + `v_cte_lm_agg` + `,` + `v_cte_lm_minus_dbd` + `v_sqlmeta` + `v_sqldetail` + `v_sqltotal`
+
+### 10.1 `v_sqlmeta`
+
+Primera parte del UNION: fila `setting` desde `DUAL` **solo si** meta activada:
+
+- Condición en el `FROM DUAL`: `QUOTE(v_meta) = "YES"` (reproducir comillas del archivo)
+- Columnas y aliases exactos (anchos) para grid:
+
+`Meta`, `Brand`, `Acct id`, `Account`, `MS id`, `Tracker ID`, `Tracker name`, `Product`, `Affiliate`, `CPA our database`, `CPA in Brand`, `Difference`, `NR our database`, `NR in Brand`
+
+Valores: `"setting"` y strings `width=...` como en el código fuente.
+
+### 10.2 `v_sqldetail`
+
+Segundo SELECT del UNION (sin `CONCAT` externo en el archivo — string multilínea fijo):
+
+- Desde `LM_minus_Dbd D`
+- Columnas: Meta, Brand, `Username_id` como **`Acct id`**, `D.Username`, `M.id` como **`MS_id`**, Tracker_ID, Tracker_name, Product, afiliado `IFNULL(A.username,'_Unassigned')` como `Affiliate`, CPA_DbD, CPA_LM, DIFF, NR_DbD, NR_LM
+
+**LATERAL 1 — Marketing Source** (`campaign_marketing_source` alias `M`):
+
+- `WHERE M.Username_id = D.Username_id` (columna del CTE con alias Username_id)
+- Y `(D.Tracker_ID IN (M.Tracker_ID, M.Tracker_Name))`
+- Subquery selecciona `MatchValue` con CASE: 4 si coinciden ID y Name, 3 si solo Tracker_ID, 2 si solo Tracker_Name, 1 else; `ORDER BY MatchValue DESC LIMIT 1`
+
+**LATERAL 2 — Deal activo** (`campaign_mkt_source_deal`):
+
+- `ROW_NUMBER() OVER (PARTITION BY MS_id ORDER BY Deal_Valid_From DESC) AS RowNr`
+- `WHERE MS_id = M.id AND is_active = 1`
+- `ORDER BY RowNr LIMIT 1` en la subconsulta lateral
+
+**JOIN** `account_account A ON A.id = M2.Affiliate_id`
+
+### 10.3 `v_sqltotal`
+
+- `UNION ALL` fila de totales: primer campo vacío; Brand = `CONCAT(' Total Diff ', quoted_last_month)`; varios campos placeholder `'~~~~~'`; sumas `SUM(CPA_DbD)`, `SUM(CPA_LM)`, `SUM(DIFF)`, `SUM(NR_DbD)`, `SUM(NR_LM)` desde `LM_minus_Dbd`
+- `ORDER BY`:  
+  `CASE WHEN \`Difference\` = 0 THEN 0 ELSE 1 END DESC`, luego `Brand`, `Account`, `\`Difference\` DESC`  
+  (reproducir backticks como en el archivo; el nombre de columna expuesto para la diferencia en la fila datos es el alias del SELECT intermedio — el archivo usa `DIFF` en el detalle pero ordena por `Difference` según nombres del primer SELECT del UNION)
+
+---
+
+## 11. Debug (`v_debug != 'NO'`)
+
+Mostrar **antes** de la ejecución condicional final (según archivo):
+
+- Panel de variables: `Version`, `Mode`, `Brand`, `LastMonth`, `ExclIndirect`, `BrandFilter`, `InputParams`
+- `SQL_Delete`, `SQL_Insert`, `SQL_View`
+- `v_sql_check_run` y `@v_Count_DbD_diff`
+
+---
+
+## 12. Flujo de ejecución final (resumen)
+
+Dentro de `proc_label`:
+
+1. Parseo, DEBUG→VIEW, `v_last_month`, indirectos, Brand.
+2. Armar CTEs en variables.
+3. Siempre ejecutar conteo `@v_Count_DbD_diff`.
+4. Si `v_filters='YES'`: ejecutar solo filters (+ debug si aplica) y **no** entrar al bloque `IF v_filters='NO'` del final.
+5. Si `v_filters='NO'`:
+   - Ajustar RUN si count=0.
+   - Si `RUN`: transacción DELETE+INSERT.
+   - Si no RUN pero `FACT1`: llamada al SP de fact1.
+   - Tras RUN o FACT1 o solo VIEW: `SET v_step = 'VIEW'` y ejecutar `v_sqlview` con PREPARE/EXECUTE.
+
+Es decir: con `Filters=NO`, **siempre** se ejecuta la vista al final (incluido después de RUN o FACT1).
+
+---
+
+## 13. Lo que **no** debe incluirse (diferencias respecto a especificaciones antiguas)
+
+- No existe control `v_warning_cpa` ni bloqueo del RUN por el 10 % de CPA.
+- No existen CTE `DbD_attr` / `LM_attr` ni `HAVING` en LM que excluya ceros a nivel agregado.
+- El parámetro de entrada **no** es un único `View_OR_run`; es siempre la línea `Key=Value`.
+- El procedure desplegable en el script actual es **`Sync_MS_DbD_DbD_lm_dev`** (no `Sync_MS_DbD_DbD_lm`), salvo que el proyecto renombre explícitamente en otro ticket.
+
+---
+
+## 14. Ejemplos de `CALL` (deben coincidir con el bloque comentado al pie del `.sql`)
+
+```sql
+CALL Sync_MS_DbD_DbD_lm_dev('Mode=View');
+CALL Sync_MS_DbD_DbD_lm_dev('Mode=View,Brand=Betsson');
+CALL Sync_MS_DbD_DbD_lm_dev('Mode=Debug');
+CALL Sync_MS_DbD_DbD_lm_dev('Mode=Debug,Brand=Betsson');
+CALL Sync_MS_DbD_DbD_lm_dev('Mode=Run');
+CALL Sync_MS_DbD_DbD_lm_dev('Mode=Run,Brand=Betsson');
+CALL Sync_MS_DbD_DbD_lm_dev('Mode=Fact1');
+CALL Sync_MS_DbD_DbD_lm_dev('Filters=Yes');
+CALL Sync_MS_DbD_DbD_lm_dev('Filters=Yes,Debug=Yes');
+```
+
+Claves admitidas en documentación: `Mode`, `Brand`, `Filters`, `Meta`, `Debug` (aceptar variantes de mayúsculas en entrada; el parseo usa `LOWER` en la clave).
+
+---
+
+## 15. Checklist de regeneración
+
+- [ ] Misma firma, mismos defaults, mismo mapeo DEBUG.
+- [ ] Mismas tablas, mismos JOINs, mismas expresiones de agregación y mismo `LM_minus_Dbd`.
+- [ ] Mismo uso de `@v_Count_DbD_diff`, misma condición para fila 98 en Filters y mismo bypass de RUN si count=0.
+- [ ] Mismos textos de acciones en Filters (inglés, mismas cadenas).
+- [ ] Misma fila `setting`, mismos anchos, mismo ORDER BY final.
+- [ ] `EXIT HANDLER` + `ROLLBACK` condicionado a `v_step LIKE 'RUN%'`.
+- [ ] Comentario de historial en cabecera del `.sql` no forma parte del prompt salvo que se pida copiarlo literalmente; la variable `v_version` debe alinearse con la versión entregada.

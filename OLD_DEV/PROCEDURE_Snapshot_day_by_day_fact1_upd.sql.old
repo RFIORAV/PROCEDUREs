@@ -1,0 +1,54 @@
+/**
+	PROCEDURE_Snapshot_day_by_day_fact1_upd
+	**	Actualiza tabla Snapshot_day_by_day_fact1 desde view Snapshot_day_by_day_fact
+	**	Se lanza desde los Triggers que modifican comisiones y por EVENT
+	05.05.2022 Actualiza tabla completa. 
+				  No actualiza si DateLast es el mismo minuto
+	10.05.2022 Actualiza solo mes corriente por performance
+	14.05.2022 Primeros dias del mes actualiza mes corriente y anterior antes de las 07:00
+	14.05.2022 Snapshot_day_by_day_fact1_upd_lm Actualiza mes corriente y anterior
+	14.05.2022 EVENT Snapshot_day_by_day_fact1_event lanza Procedure Snapshot_day_by_day_fact1_upd cada 30 minutos
+   05.09.2022 Preparado para la actualización automática junto con el resto de los PROCEDURES
+*/
+
+DROP PROCEDURE IF EXISTS Snapshot_day_by_day_fact1_upd;
+-- -----------------------------------------------------
+DELIMITER //
+
+CREATE PROCEDURE Snapshot_day_by_day_fact1_upd()
+COMMENT 'Actualiza FACT1 desde FACT - MES CORRIENTE. Considera Mes Cte hasta dia 5 del mes sigte'
+DETERMINISTIC
+MODIFIES SQL DATA
+-- SQL SECURITY INVOKER
+
+BEGIN
+	DECLARE DateNow VARCHAR(16) DEFAULT LEFT(NOW(),16);
+	DECLARE DateLast VARCHAR(16);
+	
+	DECLARE DateFrom VARCHAR(7) DEFAULT LEFT(CURDATE(),7);
+	DECLARE Table_exist INT;
+	
+	SET DateLast=(select TimeGen from Snapshot_day_by_day_fact1 ORDER BY TimeGen DESC limit 1);
+	SET DateLast=IFNULL(DateLast,DateFrom);
+	
+	IF DAY(DateNow) <= 5 -- AND CURTIME()<='07:00:00'
+	THEN
+		SET DateFrom=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+	END IF;
+	
+	IF DateNow!=DateLast
+	THEN
+		DELETE FROM Snapshot_day_by_day_fact1 WHERE LEFT(DATE,7)>=DateFrom;
+		INSERT IGNORE INTO Snapshot_day_by_day_fact1
+			SELECT F.*,left(NOW(),16) as 'TimeGen' from Snapshot_day_by_day_fact F WHERE LEFT(DATE,7)>=DateFrom;
+	END IF;
+END;
+//
+DELIMITER ;
+	
+-- -----------------------------------------------------
+-- CALL Snapshot_day_by_day_fact1_upd();
+-- CALL Snapshot_day_by_day_fact1_upd_lm();
+-- CALL Snapshot_day_by_day_fact1_upd_all();
+-- -----------------------------------------------------
+

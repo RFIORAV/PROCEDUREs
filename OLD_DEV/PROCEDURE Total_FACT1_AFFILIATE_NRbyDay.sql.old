@@ -1,0 +1,61 @@
+/* 
+Total_FACT1_AFFILIATE_NRbyDay() - Sobre FACT1-Matriz de un mes de las NR por Brand y por Día. 
+
+   Observaciones: 
+      Columnas Brands variables. 
+      Doble columna de Totales
+      NO EJECUTAR EN VIEWS DEL AFILIADO
+   
+   Parámetros (AffiliateID/ALL,Month)
+   
+   Ejemplos:
+      call Total_FACT1_AFFILIATE_NRbyDay('ALL','2022-09');
+      call Total_FACT1_AFFILIATE_NRbyDay('ALL','2022-06');
+      call Total_FACT1_AFFILIATE_NRbyDay('39','2022-08');
+      call Total_FACT1_AFFILIATE_NRbyDay('100','2022-07');
+
+   04.09.2022 V1
+*/
+DROP PROCEDURE Total_FACT1_AFFILIATE_NRbyDay;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Total_FACT1_AFFILIATE_NRbyDay`(IN
+   AffiliateID VARCHAR(50),
+   Month VARCHAR(7)
+   )
+    COMMENT '04.09.2022 Sobre FACT1-Matriz de un mes de las NR por Brand y por Dia. Brands variables'
+BEGIN
+
+	IF LOWER(AffiliateID)!='all' THEN
+   	SET @AffiliateID_from=CAST(AffiliateID AS UNSIGNED INTEGER);
+      SET @AffiliateID_until=CAST(AffiliateID AS UNSIGNED INTEGER);
+   ELSE
+   	SET @AffiliateID_from='0';
+      SET @AffiliateID_until='9999999999999';
+	END IF;
+
+	IF Month is not null THEN
+      SET @Month_Report=CONCAT("'",Month,"'");
+   ELSE
+      SET @Month_Report=CONCAT("'",LEFT(curdate(),7),"'");
+	END IF;
+   
+   SET SESSION group_concat_max_len = 100000;
+   
+   SET @SQL = CONCAT('SELECT Date,',IF(@AffiliateID_from="0","'All'","Affiliate"),' as Affiliate,SUM(Net_Revenue) AS `Total`,',
+   (SELECT GROUP_CONCAT(CONCAT("\r\nSUM(CASE WHEN Brand='", Brand,"' THEN `Net_Revenue` ELSE 0 END) AS '",Brand,"'")
+   ORDER BY Brand)
+   FROM (select distinct Brand from Snapshot_day_by_day_fact1
+         where LEFT(DATE,7)=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7) AND Qualified_Players<>0
+   ) AS xx),'
+,SUM(Net_Revenue) AS `Total`
+FROM Snapshot_day_by_day_fact1
+WHERE LEFT(DATE,7)=',@Month_Report,' and Affiliate_id BETWEEN ',@AffiliateID_from,' AND ',@AffiliateID_until,'
+GROUP BY Date WITH ROLLUP HAVING SUM(Net_Revenue)<>0;');
+   -- SELECT @SQL;
+   PREPARE stmt1 FROM @SQL;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+
+END$$
+DELIMITER ;

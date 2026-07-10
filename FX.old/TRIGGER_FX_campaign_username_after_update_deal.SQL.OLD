@@ -1,0 +1,63 @@
+/*
+***************************************************************
+** TRIGGER forex_advertiser_account_after_update
+**
+** 25.02.2022 Instalado en euroaffiliati_test/euroaffiliati2 Remota
+** 17.07.2022 NEW.`Product`!=OLD.`Product`
+** 16.08.2022 Cambia de _after_update a _before_update para evitar conflicto con _history
+** 16.08.2022 Inserta directamente en forex_deal_gestor_prod_date
+** 29.09.2022 Desactivado tratamiento de fecha
+** 11.11.2022 No crea registro si datos básicos (Deal_Valid_From,Advertiser_id/Username_id) no vienen informados
+-- 16.12.2022 Cambio a AFTER UPDATE
+***************************************************************
+*/
+-- ---------------------------------------------------------------------
+DROP TRIGGER IF EXISTS forex_advertiser_account_before_update;
+DROP TRIGGER IF EXISTS forex_advertiser_account_after_update_deal;
+DELIMITER $$
+--
+CREATE TRIGGER forex_advertiser_account_after_update_deal
+AFTER UPDATE
+ON forex_advertiser_account FOR EACH ROW
+--
+BEGIN
+
+DECLARE `Trigger_Version` VARCHAR (20) DEFAULT '16.12.2022';
+--
+/************************************
+	TRATAMIENTO DEL DEAL GESTOR
+*************************************/
+IF 
+   NEW.`Valid_From`        IS NOT NULL AND
+   NEW.`Deal_Main_id`      IS NOT NULL AND
+	(
+      IFNULL(OLD.`Deal_Main_id`,0)          !=NEW.`Deal_Main_id`
+   OR IFNULL(OLD.`Product`,'')              !=IFNULL(NEW.`Product`,'') 
+   OR IFNULL(OLD.`Valid_From`,'2020-01-01') !=NEW.`Valid_From`
+   ) 
+THEN
+
+INSERT ignore INTO forex_deal_gestor_prod_date (
+    `Advertiser_id`
+   ,`Username_id`
+   ,`Product`
+   ,`Valid_From`
+   ,`Deal_id`
+   ,`is_active`
+   ,`Operator`
+)
+VALUES (
+    NEW.`Advertiser_id`
+   ,NEW.`id`
+   ,NEW.`Product`
+   -- ,IFNULL(NEW.Valid_From,concat(left(curdate(),7),'-01'))  -- Desactivada 29.09.2022
+   ,NEW.`Valid_From`
+   ,NEW.`Deal_Main_id`
+   ,'1'
+   ,NEW.`Operator`
+);
+END IF;
+
+END$$
+--
+DELIMITER ;

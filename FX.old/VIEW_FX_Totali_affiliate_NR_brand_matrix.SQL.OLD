@@ -1,0 +1,41 @@
+/*** Monthly_NR_Aff_Brand_matrix
+	(ex Totali_affiliate_NR_brand_matrix)
+	15.12.2021 First version
+	21.01.2022 VideoSlot added
+	26.02.2022 BetFair added
+	16.08.2022 23 Brands. Suma sobre forex_day_by_day_fact1_2
+*/
+
+CREATE OR REPLACE VIEW `Totali_affiliate_NR_brand_matrix` AS
+ 
+SELECT 
+     Owner,Affiliate,LEFT(Date,7) as `Date`
+    ,SUM(Net_Revenue) AS Total
+    ,SUM(CASE WHEN Brand='BetClic'       THEN Net_Revenue ELSE 0 END) AS 'BetClic'        
+    ,SUM(CASE WHEN Brand='BetFair'       THEN Net_Revenue ELSE 0 END) AS 'BetFair'        
+    ,SUM(CASE WHEN Brand='BetWay'        THEN Net_Revenue ELSE 0 END) AS 'BetWay'         
+    ,SUM(CASE WHEN Brand='BoaBoa'        THEN Net_Revenue ELSE 0 END) AS 'BoaBoa'         
+    ,SUM(CASE WHEN Brand='BuranCasino'   THEN Net_Revenue ELSE 0 END) AS 'BuranCasino'    
+    ,SUM(CASE WHEN Brand='Bwin'          THEN Net_Revenue ELSE 0 END) AS 'Bwin'           
+    ,SUM(CASE WHEN Brand='Codere'        THEN Net_Revenue ELSE 0 END) AS 'Codere'         
+    ,SUM(CASE WHEN Brand='EuroBet'       THEN Net_Revenue ELSE 0 END) AS 'EuroBet'        
+    ,SUM(CASE WHEN Brand='GiocoDigitale' THEN Net_Revenue ELSE 0 END) AS 'GiocoDigitale'  
+    ,SUM(CASE WHEN Brand='GoldBet'       THEN Net_Revenue ELSE 0 END) AS 'GoldBet'        
+    ,SUM(CASE WHEN Brand='LeoVegas'      THEN Net_Revenue ELSE 0 END) AS 'LeoVegas'       
+    ,SUM(CASE WHEN Brand='LibraBet'      THEN Net_Revenue ELSE 0 END) AS 'LibraBet'       
+    ,SUM(CASE WHEN Brand='Lottomatica'   THEN Net_Revenue ELSE 0 END) AS 'Lottomatica'    
+    ,SUM(CASE WHEN Brand='Luckia'        THEN Net_Revenue ELSE 0 END) AS 'Luckia'         
+    ,SUM(CASE WHEN Brand='NetBet'        THEN Net_Revenue ELSE 0 END) AS 'NetBet'         
+    ,SUM(CASE WHEN Brand='PlanetWin365'  THEN Net_Revenue ELSE 0 END) AS 'PlanetWin365'   
+    ,SUM(CASE WHEN Brand='PokerStars'    THEN Net_Revenue ELSE 0 END) AS 'PokerStars'     
+    ,SUM(CASE WHEN Brand='Rabona'        THEN Net_Revenue ELSE 0 END) AS 'Rabona'         
+    ,SUM(CASE WHEN Brand='Sisal'         THEN Net_Revenue ELSE 0 END) AS 'Sisal'          
+    ,SUM(CASE WHEN Brand='Snai'          THEN Net_Revenue ELSE 0 END) AS 'Snai'           
+    ,SUM(CASE WHEN Brand='VideoSlot'     THEN Net_Revenue ELSE 0 END) AS 'VideoSlot'      
+    ,SUM(CASE WHEN Brand='Wazamba'       THEN Net_Revenue ELSE 0 END) AS 'Wazamba'        
+    ,SUM(CASE WHEN Brand='WilliamHill'   THEN Net_Revenue ELSE 0 END) AS 'WilliamHill'     
+FROM forex_day_by_day_fact1_2
+WHERE Net_Revenue<>0 -- AND LEFT(DATE,7)='2022-08'
+GROUP BY Owner,Affiliate,LEFT(Date,7) -- WITH ROLLUP 
+ORDER BY `Total`,Affiliate,LEFT(Date,7)
+;

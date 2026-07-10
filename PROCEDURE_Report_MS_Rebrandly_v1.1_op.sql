@@ -1,0 +1,244 @@
+/*
+PROCEDURE_Report_MS_Rebrandly.sql - Report tabla Rebrandly (campaign_mkt_source_url)
+
+Descripción:
+  Procedimiento Report_MS_Rebrandly.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Account_id      =[ALL | id del Adv_Account]. OPCIONAL. Default=ALL
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+MS_Status       =[ALL | X ]. OPCIONAL. Default=ALL.
+API_Status      =[ALL | 1 | 0]. OPCIONAL. Default=ALL. 1=Active 0=Inactive
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [Yes]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Key no utilizadas:
+
+Mode            =[Affiliate | Gestor]. OPCIONAL. Default=affiliate
+Search          =[(dato a buscar]. OPCIONAL. Busca string en Tracker_ID/Tracker_Name/Code_To_Affiliate/MS_id/MS_id/affiliate/Channel
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL. tiene prioridad sobre el resto de parámetros, excepto la fecha
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Product         =[ALL | Product]. OPCIONAL. Default=ALL. Si tiene más de una palabra, separar con "!" en lugar de espacio
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+DealbyProduct   =[No | Yes]. Devuelve último deal activo por cada Product. OPCIONAL. Default=no.
+
+Ejemplos:
+
+call Report_MS_Rebrandly('debug=yes'); -- Devuelve todas las MS
+call Report_MS_Rebrandly('debug=ye,filters=yes');
+call Report_MS_Rebrandly('debug=ye,filters=no,status=active');
+
+10.03.2023 v1     Karen. Primera versión operativa
+10.03.2023 v1.1   RF. Agrega filtros
+10.04.2026 v1.2   Meta/filtros: publisher (nombre) -> Operator; usuario -> User
+
+*/
+
+DROP PROCEDURE IF EXISTS Report_MS_Rebrandly;
+
+DELIMITER $$
+
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_MS_Rebrandly`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Rebrandly Pending'
+
+proc_label:BEGIN
+-- Defaults
+SET @Version         ='v1.2 10.04.2026';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @Publisher_id    ='ALL';
+SET @Advertiser_id   ='ALL';
+SET @Account_id      ='ALL';
+SET @Affiliate_id    ='ALL';
+SET @API_Status      ='ALL';
+SET @MS_Status       ='ALL';
+SET @Debug           ='NO';
+SET @Meta            ='YES';
+SET @Filters         ='no';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v); 
+
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='publisher_id'    THEN SET @Publisher_id  =     (@v); END IF;
+   IF lower(@k)='advertiser_id'   THEN SET @Advertiser_id =     (@v); END IF;
+   IF lower(@k)='account_id'      THEN SET @Account_id    =     (@v); END IF;
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =     (@v); END IF;
+   IF lower(@k)='api_status'      THEN SET @API_Status    =UPPER(@v); END IF;
+   IF lower(@k)='ms_status'       THEN SET @MS_Status     =UPPER(@v); END IF;
+
+END WHILE;
+
+
+IF @Debug!="NO" THEN SELECT @Month,@Meta,@Filters,@Advertiser_id,@Affiliate_id,@Account_id
+									,@API_Status,@MS_Status,@Debug; END IF;
+
+SET @WherePublisher_id  ='';
+SET @WhereAdvertiser_id ='';
+SET @WhereAccount_id    ='';
+SET @WhereAffiliate_id  ='';
+SET @WhereAPIStatus     ='';
+SET @WhereMSStatus      ='';
+
+IF @Publisher_id  !="ALL" THEN SET @WherePublisher_id  =CONCAT(" AND CU.Publisher_id=",@Publisher_id );     END IF;
+IF @Advertiser_id !="ALL" THEN SET @WhereAdvertiser_id =CONCAT(" AND CU.Advertiser_id=",@Advertiser_id );   END IF;
+IF @Account_id    !="ALL" THEN SET @WhereAccount_id    =CONCAT(" AND T.Account_id=",@Account_id );          END IF;
+IF @Affiliate_id  !="ALL" THEN SET @WhereAffiliate_id  =CONCAT(" AND T.Affiliate_id=",@Affiliate_id );      END IF;
+IF @API_Status    !="ALL" THEN SET @WhereAPIStatus     =CONCAT(" AND T.`Stat_Sent_to_API`=",@API_Status);  	END IF;
+IF @MS_Status     !="ALL" THEN SET @WhereMSStatus      =CONCAT(" AND T.`Stat_aggreg`=",@MS_Status);  	   	END IF;
+
+IF @Debug!="NO" THEN SELECT @WherePublisher_id,@WhereAdvertiser_id,@WhereAccount_id,@WhereAffiliate_id,@WhereAPIStatus
+									,@WhereMSStatus; END IF;
+
+SET @Count=0;
+
+SET SESSION group_concat_max_len = 200000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT
+    if(T.`Stat_Sent_to_API`=1,"yes","not yet")  as `Sent to API`
+   ,T.`MS_id`              as `MS ID`
+   ,T.`Stat_effect`        as `Stat_effect`
+   ,`P`.`Advertiser_Name`  as `Operator`
+   ,`AD`.`Advertiser_Name` as `Brand`
+   ,`CU`.`Username`        as `Account`
+	,A.`username`           as `Affiliate`
+	,T.`Tracker_ID`         as `Tracker ID`
+	,T.`Tracklink`          as `Tracklink`
+	,T.`Tracklink_to_API`   as `Tracklink_to_API`
+	,T.`Shortlink`          as `Shortlink`
+	,T.`Shortlink_id`       as `Shortlink ID`
+	,T.`Last_Update`        as `Last Update`
+   ,T.`Operator`           as `User`
+   ,T.`id`
+   ,T.`Affiliate_id`
+   ,`M`.`Username_id`
+   ,`CU`.`Advertiser_id`
+   ,`CU`.`Publisher_id`
+   ,T.`Stat_Sent_to_API`
+   ,T.`Stat_aggreg`
+FROM campaign_mkt_source_url T
+LEFT JOIN `campaign_marketing_source` `M` ON `M`.`id`  = `T`.`MS_id`
+LEFT JOIN `account_account` `A`           ON `A`.`id`  =  T.`Affiliate_id`
+LEFT JOIN `campaign_username` `CU`        ON `CU`.`id` = `M`.`Username_id`
+LEFT JOIN `campaign_advertiser` `AD`      ON `AD`.`id` = `CU`.`Advertiser_id`
+LEFT JOIN `campaign_publisher` `P`        ON `P`.`id`  = `CU`.`Publisher_id`
+WHERE 1=1 '
+   ,@WhereAdvertiser_id
+   ,@WhereAffiliate_id
+   ,@WherePublisher_id
+   ,@WhereAccount_id
+   ,@WhereAPIStatus
+   ,@WhereMSStatus 
+,')
+');
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"width=100px,center=yes"  as `Rebrandly Updated`
+   ,"width=080px"             as `MS ID`
+   ,"width=100px"             as `Effect MS Status`
+   ,"width=100px"             as `Operator`
+   ,"width=100px"             as `Brand`
+   ,"width=100px"             as `Username`
+   ,"width=120px"             as `Affiliate`
+   ,"width=100px"             as `Tracker ID`
+   ,"width=150px,tooltip=yes" as `Tracklink`
+   ,"width=150px,tooltip=yes" as `URL a Rebrandly`
+   ,"width=150px,action=1"    as `Shortlink`
+   ,"width=100px,tooltip=yes" as `Shortlink ID`
+   ,"width=170px"             as `Last Update`
+   ,"width=100px"             as `User`
+   ,"omit=yes"                as `id`
+   ,"omit=yes"                as `Affiliate_id`
+   ,"omit=yes"                as `Username_id`
+   ,"omit=yes"                as `Advertiser_id`
+   ,"omit=yes"                as `Publisher_id`
+   ,"omit=yes"                as `Stat_Sent_to_API`
+   ,"omit=yes"                as `Stat_aggreg`
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`
+	,MT.*
+FROM Main_Table_Data MT
+order by `Affiliate`
+;');
+
+-- ------------------------------------------------------------
+SET @SQLfilters=CONCAT(
+@CTE,'
+(SELECT "01" as "Korder","MS Status" AS "Key",`Stat_effect` AS "Value","MS_Status" AS `CallKey`,`Stat_aggreg` AS "CallValue",COUNT(*) AS "Rows"
+                                                                                       FROM Main_Table_Data GROUP BY `Stat_aggreg`) UNION ALL
+(SELECT "03","Update Rebrandly",if(`Stat_Sent_to_API`=1,"Updated","Pending"),"API_Status",`Stat_Sent_to_API` ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Stat_Sent_to_API` ,"0")) union all
+(SELECT "05","Affiliate"  ,`Affiliate`  ,"Affiliate_id" ,`Affiliate_id`  ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Affiliate` ,"")) UNION ALL
+(SELECT "07","Operator"  ,`Operator`  ,"Publisher_id" ,`Publisher_id`  ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Operator`,"")) UNION ALL
+(SELECT "09","Brand"      ,`Brand`      ,"Advertiser_id",`Advertiser_id` ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Brand` ,"")) UNION ALL
+(SELECT "11","Account"    ,concat(`Account`," [",left(`Brand`,3),"]")
+												    ,"Account_id"   ,`Username_id`  ,COUNT(*) AS K FROM Main_Table_Data GROUP BY IFNULL(`Username_id`,"") order by `Account`)
+ORDER BY 1,3
+;');
+
+IF @Filters!="NO" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @CTE; END IF;
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END
+
+$$
+DELIMITER ;
+
+/*
+call Report_MS_Rebrandly('debug=yes'); -- Devuelve todas las MS
+call Report_MS_Rebrandly('debug=ye,filters=yes');
+call Report_MS_Rebrandly('debug=ye,filters=no,api_status=1');
+*/

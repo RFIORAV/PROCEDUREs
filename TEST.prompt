@@ -1,0 +1,256 @@
+CREATE TABLE `account_account` (
+   `id` INT NOT NULL AUTO_INCREMENT,
+   `username` VARCHAR(100) NOT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `password` VARCHAR(128) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `email` VARCHAR(60) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `date_joined` DATETIME(6) NULL DEFAULT (CURRENT_TIMESTAMP(6)),
+   `last_login` DATETIME(6) NULL DEFAULT (CURRENT_TIMESTAMP(6)),
+   `is_admin` TINYINT(1) NULL DEFAULT '0',
+   `is_active` TINYINT(1) NULL DEFAULT '1',
+   `is_staff` TINYINT(1) NULL DEFAULT '0',
+   `is_superuser` TINYINT(1) NULL DEFAULT '0',
+   `first_name` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `last_name` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `phone` VARCHAR(17) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `language` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `address` VARCHAR(60) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `skype` VARCHAR(60) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `fiscal_code` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `iva` VARCHAR(60) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `company_fiscal_name` VARCHAR(60) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `company_address` VARCHAR(60) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `nation` VARCHAR(2) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `city` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `birthday` DATE NULL DEFAULT NULL,
+   `first_level` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `second_level` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `third_level` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `fourth_level` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `url` VARCHAR(300) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `terms` TINYINT(1) NULL DEFAULT NULL,
+   `budget` VARCHAR(10) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_id` VARCHAR(2) NULL DEFAULT '1' COLLATE 'utf8mb4_0900_ai_ci',
+   `Status` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `profile_pic` LONGTEXT NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `referral` TINYINT(1) NULL DEFAULT NULL,
+   `email_report` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `telegram_report` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `referral_id` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `referral_id_origin` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `CPA_Limit` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `document_id_back` LONGTEXT NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `document_id_front` LONGTEXT NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `id_alias` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `username_alias` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `id_default` INT NULL DEFAULT NULL,
+   `username_default` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `period_default` DATE NULL DEFAULT NULL,
+   `is_forex` TINYINT(1) NULL DEFAULT '0',
+   `is_gambling` TINYINT(1) NULL DEFAULT '1',
+   `registration_completed` TINYINT NULL DEFAULT NULL,
+   `user_document_url` LONGTEXT NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `company_document_url` LONGTEXT NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `traffic_source` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Creation_Date` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP),
+   `Last_Update` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP,
+   `Operator` VARCHAR(30) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',
+   PRIMARY KEY (`id`) USING BTREE,
+   UNIQUE INDEX `username` (`username`) USING BTREE
+)
+COLLATE='utf8mb4_0900_ai_ci'
+ENGINE=InnoDB
+AUTO_INCREMENT=967
+;
+
+CREATE TABLE `jqe_fm20aff_users_info` (
+   `id` INT NOT NULL AUTO_INCREMENT,
+   `userid` INT NOT NULL,
+   `firstname` VARCHAR(255) NOT NULL COLLATE 'latin1_swedish_ci',
+   `lastname` VARCHAR(255) NOT NULL COLLATE 'latin1_swedish_ci',
+   `email` VARCHAR(255) NOT NULL COLLATE 'latin1_swedish_ci',
+   `gender` VARCHAR(10) NOT NULL COLLATE 'latin1_swedish_ci',
+   `birthdate` VARCHAR(11) NOT NULL COLLATE 'latin1_swedish_ci',
+   `birthcountry` VARCHAR(10) NOT NULL COLLATE 'latin1_swedish_ci',
+   `phonenumber` VARCHAR(30) NOT NULL COLLATE 'latin1_swedish_ci',
+   `pivafiscalcode` VARCHAR(30) NOT NULL COLLATE 'latin1_swedish_ci',
+   `linkpromotion` VARCHAR(255) NOT NULL COLLATE 'latin1_swedish_ci',
+   `linkpromotion2` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `username` VARCHAR(255) NOT NULL COLLATE 'latin1_swedish_ci',
+   `password` VARCHAR(255) NOT NULL COLLATE 'latin1_swedish_ci',
+   `rulesaccepted0` INT NOT NULL,
+   `rulesaccepted1` INT NOT NULL,
+   `dateregistration` VARCHAR(11) NOT NULL COLLATE 'latin1_swedish_ci',
+   `usernameforreport` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `address` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `city` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `fiscalcode` VARCHAR(30) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `pivasino` INT NULL DEFAULT NULL,
+   `pivacode` VARCHAR(30) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `bankwireaccountowner` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `bankwirebankname` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `bankwireaddress` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `bankwirecap` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `bankwirecity` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `bankwireprovince` VARCHAR(255) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `bankwireiban` VARCHAR(28) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `bankwireswift` VARCHAR(12) NULL DEFAULT NULL COLLATE 'latin1_swedish_ci',
+   `referralparentuserid` INT NULL DEFAULT NULL,
+   `referralpermitted` INT NOT NULL DEFAULT '1',
+   `commissionrate` INT NULL DEFAULT NULL,
+   PRIMARY KEY (`id`) USING BTREE
+)
+COLLATE='latin1_swedish_ci'
+ENGINE=InnoDB
+AUTO_INCREMENT=1096
+;
+
+-- INSERT de los datos de la tabla `jqe_fm20aff_users_info` en la tabla `account_account`
+INSERT INTO `account_account` (
+   `id`,
+    `username`,
+    `password`,
+    `email`,
+    `date_joined`,
+    `last_login`,
+    `is_admin`,
+    `is_active`,
+    `is_staff`,
+    `is_superuser`,
+    `first_name`,
+    `last_name`,
+    `phone`,
+    `language`,
+    `address`,
+    `skype`,
+    `fiscal_code`,
+    `iva`,
+    `company_fiscal_name`,
+    `company_address`,
+    `nation`,
+    `city`,
+    `birthday`,
+    `first_level`,
+    `second_level`,
+    `third_level`,
+    `fourth_level`,
+    `url`,
+    `terms`,
+    `budget`,
+    `Status_id`,
+    `Status`,
+    `profile_pic`,
+    `referral`,
+    `email_report`,
+    `telegram_report`,
+    `referral_id`,
+    `referral_id_origin`,
+    `CPA_Limit`,
+    `document_id_back`,
+    `document_id_front`,
+    `id_alias`,
+    `username_alias`,
+    `id_default`,
+    `username_default`,
+    `period_default`,
+    `is_forex`,
+    `is_gambling`,
+    `registration_completed`,
+    `user_document_url`,
+    `company_document_url`,
+    `traffic_source`,
+    `Creation_Date`,
+    `Last_Update`,
+    `Operator`
+)
+SELECT 
+    (userid+20) as newid,
+    SUBSTRING(`username`, 1, 100) AS `username`,
+    SUBSTRING(`password`, 1, 128) AS `password`,
+    SUBSTRING(`email`, 1, 60) AS `email`,
+--     CASE 
+--         WHEN `dateregistration` IS NOT NULL AND `dateregistration` != '' 
+--         THEN STR_TO_DATE(`dateregistration`, '%d/%m/%Y')
+--         ELSE 
+    CURRENT_TIMESTAMP(6)
+     AS `date_joined`,
+    CURRENT_TIMESTAMP(6) AS `last_login`,
+    0 AS `is_admin`,
+    1 AS `is_active`,
+    0 AS `is_staff`,
+    0 AS `is_superuser`,
+    SUBSTRING(`firstname`, 1, 30) AS `first_name`,
+    SUBSTRING(`lastname`, 1, 30) AS `last_name`,
+    SUBSTRING(`phonenumber`, 1, 17) AS `phone`,
+    NULL AS `language`,
+    SUBSTRING(`address`, 1, 60) AS `address`,
+    NULL AS `skype`,
+    SUBSTRING(COALESCE(`fiscalcode`, `pivafiscalcode`), 1, 30) AS `fiscal_code`,
+    SUBSTRING(COALESCE(`pivacode`, `pivafiscalcode`), 1, 60) AS `iva`,
+    NULL AS `company_fiscal_name`,
+    NULL AS `company_address`,
+    SUBSTRING(`birthcountry`, 1, 2) AS `nation`,
+    SUBSTRING(`city`, 1, 30) AS `city`,
+    CASE 
+        WHEN `birthdate` IS NOT NULL AND `birthdate` != '' 
+        THEN STR_TO_DATE(`birthdate`, '%d/%m/%Y')
+        ELSE NULL
+    END AS `birthday`,
+    NULL AS `first_level`,
+    NULL AS `second_level`,
+    NULL AS `third_level`,
+    NULL AS `fourth_level`,
+    SUBSTRING(`linkpromotion`, 1, 300) AS `url`,
+    CASE 
+        WHEN `rulesaccepted0` = 1 AND `rulesaccepted1` = 1 THEN 1
+        ELSE 0
+    END AS `terms`,
+    NULL AS `budget`,
+    '1' AS `Status_id`,
+    NULL AS `Status`,
+    NULL AS `profile_pic`,
+    CASE 
+        WHEN `referralpermitted` = 1 THEN 1
+        ELSE 0
+    END AS `referral`,
+    SUBSTRING(`usernameforreport`, 1, 30) AS `email_report`,
+    NULL AS `telegram_report`,
+    CASE 
+        WHEN `referralparentuserid` IS NOT NULL 
+        THEN CAST(`referralparentuserid` AS CHAR(50))
+        ELSE NULL
+    END AS `referral_id`,
+    NULL AS `referral_id_origin`,
+    NULL AS `CPA_Limit`,
+    NULL AS `document_id_back`,
+    NULL AS `document_id_front`,
+   (userid+20) AS `id_alias`,
+    `username` AS `username_alias`,
+    (userid+20) AS `id_default`,
+    `username` AS `username_default`,
+    NULL AS `period_default`,
+    0 AS `is_forex`,
+    1 AS `is_gambling`,
+    CASE 
+        WHEN `fiscalcode` IS NOT NULL AND `address` IS NOT NULL AND `city` IS NOT NULL 
+        THEN 1
+        ELSE NULL
+    END AS `registration_completed`,
+    NULL AS `user_document_url`,
+    NULL AS `company_document_url`,
+    NULL AS `traffic_source`,
+--     CASE 
+--         WHEN `dateregistration` IS NOT NULL AND `dateregistration` != '' 
+--         THEN STR_TO_DATE(`dateregistration`, '%d/%m/%Y')
+--         ELSE 
+        CURRENT_TIMESTAMP
+    AS `Creation_Date`,
+    CURRENT_TIMESTAMP AS `Last_Update`,
+    ' ' AS `Operator`
+FROM `jqe_fm20aff_users_info` B
+WHERE `username` IS NOT NULL 
+  AND `username` != ''
+  AND NOT EXISTS (
+      SELECT 1 
+      FROM `account_account_test` A
+      WHERE A.`username` = B.`username`
+  );

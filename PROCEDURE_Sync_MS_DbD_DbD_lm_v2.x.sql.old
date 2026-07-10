@@ -1,0 +1,324 @@
+/* PROCEDURE_Sync_MS_DbD_DbD_lm.sql - Check Last Month Raw data: Stored data Vs New downloaded data (DbD vs DbD_lm)
+   
+
+Descripción:
+  Procedimiento Sync_MS_DbD_DbD_lm_dev.
+Parámetros: [ view | run ]
+   view=Muestra las diferencias pero no las aplica
+   run=Reemplaza contenido de DbD por DbD_LM para el Last Month
+
+Keys:
+View_OR_run = [valor]. Parámetro de entrada.
+
+Ejemplos:   
+   
+call Sync_MS_DbD_DbD_lm('view');
+call Sync_MS_DbD_DbD_lm_dev('view');
+call Sync_MS_DbD_DbD_lm_dev('DEBUG');
+call Sync_MS_DbD_DbD_lm_dev('run');   
+
+Modificaciones:
+   21.09.2022 V1     Sincroniza una Marketing Source entre Snapshot_day_by_day y Snapshot_day_by_day_lm
+   22.09.2022 V1.1   Sincroniza todo entre Snapshot_day_by_day y Snapshot_day_by_day_lm
+   05.10.2022        Muestra diferencias también de NR, además de CPA
+   19.10.2022 V1.2   Columna Meta
+   02.11.2022 V1.4   Línea de totales
+   08.11.2022        Se invierte el cálculo de las DIFFerencias
+   06.01.2023 v1.5   Identifica afiliado de cada movimiento
+   17.09.2023 v1.6   Fix order by Diff
+   27.09.2023 v1.7   Fix DELETE from DbD (Utilizaba el campo Area)
+   10.01.2024 v1.7.1 Quita Tracker_name de factor de comparación para determinar MS
+   18.01.2024 v1.8   Renombra de columnas grid para hacerla más comprensible
+   01.02.2024 v1.9   En view no hace comparación si LM no tiene datos
+   17.03.2024 v2     Completa Brand en DbD/LM
+   01.10.2024        Elimina control de si hay datos en DbD para mes anterior
+   14.04.2025 v2.1   Excluye datos obtenidos de cuentas indirectas por procedure PseudoBOT_Indirect_account
+   03.03.2026 v2.2   Refactorización procedimiento con variables locales
+   
+*/
+-- DROP PROCEDURE IF EXISTS Sync_MS_DbD_DbD_lm;
+DROP PROCEDURE IF EXISTS Sync_MS_DbD_DbD_lm_dev;
+
+DELIMITER $$
+CREATE PROCEDURE Sync_MS_DbD_DbD_lm_dev(IN View_OR_run varchar (20))
+   
+   COMMENT 'Check Last Month Raw data: Stored data Vs New downloaded data (DbD vs DbD_lm)'
+   LANGUAGE SQL
+
+BEGIN
+
+DECLARE v_version               VARCHAR(30) DEFAULT 'v2.2 03.03.2026';
+DECLARE v_meta                  VARCHAR(3)  DEFAULT 'YES';
+DECLARE v_debug                 VARCHAR(3)  DEFAULT 'NO';
+DECLARE v_last_month            CHAR(7);
+DECLARE v_cpa_dbd               DECIMAL(20,2);
+DECLARE v_cpa_lm                DECIMAL(20,2);
+DECLARE v_warning_cpa           VARCHAR(3)  DEFAULT 'NO';
+DECLARE v_indirect_accounts     LONGTEXT;
+DECLARE v_where_not_in_acct     TEXT        DEFAULT '';
+DECLARE v_where_not_in_acct_view TEXT       DEFAULT '';
+DECLARE v_sql                   LONGTEXT;
+DECLARE v_sql1                  LONGTEXT;
+DECLARE v_sqlview               LONGTEXT;
+
+IF UPPER(View_OR_run)='DEBUG' THEN SET v_debug='YES'; END IF;
+
+SET v_last_month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+SET v_cpa_dbd  =(SELECT SUM(Qualified_players) FROM Snapshot_day_by_day    WHERE LEFT(DATE,7)=v_last_month);
+SET v_cpa_lm   =(SELECT SUM(Qualified_players) FROM Snapshot_day_by_day_lm WHERE LEFT(DATE,7)=v_last_month);
+
+/*-- Compara DbD vs LM solo cuando LM tenga contenido. Si no tiene compara con mes anterior                    -- 01.10.2024
+IF IFNULL(@CPA_LM,0)=0 AND upper(View_OR_run)!='RUN'THEN                                                       -- 01.10.2024
+   SET @LastMonth=LEFT(DATE_SUB(CURDATE(), INTERVAL 2 MONTH),7);                                               -- 01.10.2024
+   SET @CPA_DbD  =(SELECT SUM(Qualified_players) FROM Snapshot_day_by_day    WHERE LEFT(DATE,7)=@LastMonth);   -- 01.10.2024
+   SET @CPA_LM   =(SELECT SUM(Qualified_players) FROM Snapshot_day_by_day_lm WHERE LEFT(DATE,7)=@LastMonth);   -- 01.10.2024
+END IF;                                                                                                        -- 01.10.2024
+*/                                                                                                             -- 01.10.2024
+IF (v_cpa_lm*1.10)<v_cpa_dbd THEN          -- Admite que LM tenga hasta 10% menos CPA
+   SET v_warning_cpa='YES';
+   SET v_debug='YES';
+ELSE
+   SET v_warning_cpa='NO';  
+END IF; 
+
+SET SESSION group_concat_max_len = 10000;
+
+-- Obtiene cuentas indirectas para excluir de la sincronización de datos de Bots
+-- -------------------------------------------------------------------------------
+SET v_indirect_accounts=(
+  SELECT CONCAT("(",GROUP_CONCAT(u.id SEPARATOR ", "),")") AS IndirectAccounts
+  FROM campaign_username u
+  WHERE u.is_indirect = "1" AND IFNULL(u.db_indirect  ,"")>""
+);
+
+IF v_indirect_accounts IS NOT NULL 
+THEN SET v_where_not_in_acct=CONCAT(" AND D.Username NOT IN ",v_indirect_accounts);
+ELSE SET v_where_not_in_acct='';
+END IF;
+
+SET v_where_not_in_acct_view=REPLACE(v_where_not_in_acct,'NOT','');
+
+-- -------------------------------------------------------------------------------
+-- -- -----------------------------------------------------------------------------
+
+-- DELETE FROM Snapshot_day_by_day WHERE Area="gaming" and LEFT(Date,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7);'
+SET v_sql=CONCAT('
+DELETE FROM Snapshot_day_by_day D
+       WHERE LEFT(Date,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7)
+       ',v_where_not_in_acct,'
+       ;'
+);
+SET v_sql1=CONCAT('
+INSERT IGNORE INTO Snapshot_day_by_day 
+   SELECT * FROM Snapshot_day_by_day_lm D
+            WHERE LEFT(Date,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7)
+            ',v_where_not_in_acct,'
+            ;'
+);
+
+-- IF @warning_CPA="YES" then
+	-- PREPARE stmt1 FROM @warning_SQL;
+	-- EXECUTE stmt1;
+	-- DEALLOCATE PREPARE stmt1;
+-- end if;
+
+-- IF upper(View_OR_run)!='RUN' THEN
+SET v_sqlview=CONCAT('
+WITH DbD_agg as (
+   SELECT
+      AD.Advertiser_Name AS Brand
+      ,D.Username
+      ,D.Tracker_ID
+      ,SUM(IFNULL(D.Qualified_players,0)) AS CPA_DbD
+      ,SUM(IFNULL(D.Net_Revenue,0))       AS NR_DbD
+   FROM Snapshot_day_by_day D
+   LEFT JOIN campaign_username U ON U.id=D.Username
+   LEFT JOIN `campaign_advertiser` AD ON AD.id = U.Advertiser_id
+   WHERE LEFT(DATE,7)=',QUOTE(v_last_month),'
+    ',v_where_not_in_acct,'
+   GROUP BY Brand,D.Username,D.Tracker_ID
+),
+LM_agg as (
+   SELECT
+      AD.Advertiser_Name AS Brand
+      ,D.Username
+      ,D.Tracker_ID
+      ,SUM(IFNULL(D.Qualified_players,0)) AS CPA_LM
+      ,SUM(IFNULL(D.Net_Revenue,0))       AS NR_LM
+   FROM Snapshot_day_by_day_lm D
+   LEFT JOIN campaign_username U ON U.id=D.Username
+   LEFT JOIN `campaign_advertiser` AD ON AD.id = U.Advertiser_id
+   WHERE LEFT(DATE,7)=',QUOTE(v_last_month),'
+    ',v_where_not_in_acct,'
+   GROUP BY Brand,D.Username,D.Tracker_ID
+   HAVING SUM(IFNULL(D.Qualified_players,0))<>0
+       OR SUM(IFNULL(D.Net_Revenue,0))<>0
+),
+DbD_attr as (
+   SELECT
+      AD.Advertiser_Name AS Brand
+      ,D.Username
+      ,D.Tracker_ID
+      ,ANY_VALUE(D.Tracker_name) AS Tracker_name
+      ,ANY_VALUE(D.Product) AS Product
+   FROM Snapshot_day_by_day D
+   LEFT JOIN campaign_username U ON U.id=D.Username
+   LEFT JOIN `campaign_advertiser` AD ON AD.id = U.Advertiser_id
+   WHERE LEFT(DATE,7)=',QUOTE(v_last_month),'
+    ',v_where_not_in_acct,'
+   GROUP BY Brand,D.Username,D.Tracker_ID
+),
+LM_attr as (
+   SELECT
+      AD.Advertiser_Name AS Brand
+      ,D.Username
+      ,D.Tracker_ID
+      ,ANY_VALUE(D.Tracker_name) AS Tracker_name
+      ,ANY_VALUE(D.Product) AS Product
+   FROM Snapshot_day_by_day_lm D
+   LEFT JOIN campaign_username U ON U.id=D.Username
+   LEFT JOIN `campaign_advertiser` AD ON AD.id = U.Advertiser_id
+   WHERE LEFT(DATE,7)=',QUOTE(v_last_month),'
+    ',v_where_not_in_acct,'
+   GROUP BY Brand,D.Username,D.Tracker_ID
+   HAVING SUM(IFNULL(D.Qualified_players,0))<>0
+       OR SUM(IFNULL(D.Net_Revenue,0))<>0
+),
+LM_minus_Dbd as (
+   SELECT
+      "" as Meta
+      ,L.Brand
+      ,L.Username AS "Username_id"
+      ,U.Username
+      ,L.Tracker_ID
+      ,COALESCE(LA.Tracker_name,DA.Tracker_name) AS Tracker_name
+      ,COALESCE(LA.Product,DA.Product) AS Product
+      ,IFNULL(D.CPA_DbD,0) AS CPA_DbD
+      ,IFNULL(L.CPA_LM,0)  AS CPA_LM
+      ,IFNULL(L.CPA_LM,0)-IFNULL(D.CPA_DbD,0) AS DIFF
+      ,IFNULL(D.NR_DbD,0) AS NR_DbD
+      ,IFNULL(L.NR_LM,0)  AS NR_LM
+   FROM LM_agg L
+   LEFT JOIN DbD_agg D ON L.Brand <=> D.Brand
+      AND L.Username = D.Username
+      AND L.Tracker_ID <=> D.Tracker_ID
+   LEFT JOIN DbD_attr DA ON L.Brand <=> DA.Brand
+      AND L.Username = DA.Username
+      AND L.Tracker_ID <=> DA.Tracker_ID
+   LEFT JOIN LM_attr LA ON L.Brand <=> LA.Brand
+      AND L.Username = LA.Username
+      AND L.Tracker_ID <=> LA.Tracker_ID
+   LEFT JOIN campaign_username U ON U.id=L.Username
+   WHERE IFNULL(L.CPA_LM,0)-IFNULL(D.CPA_DbD,0)<>0
+      OR IFNULL(D.NR_DbD,0)<>IFNULL(L.NR_LM,0)
+)
+   SELECT
+   "setting" as Meta
+   ,"width=150px" as `Brand`
+   ,"width=80px"  as `Acct id`
+   ,"width=150px" as `Account`
+   ,"width=90px"  as `MS id`
+   ,"width=100px" as `Tracker ID`
+
+   ,"width=200px" as `Tracker name`
+   ,"width=100px" as `Product`
+   ,"width=150px" as `Affiliate`
+
+   ,"width=100px" as `CPA our database`
+   ,"width=100px" as `CPA in Brand`
+   ,"width=100px" as `Difference`
+   ,"width=100px" as `NR our database`
+   ,"width=100px" as `NR in Brand`
+   FROM DUAL WHERE ',QUOTE(v_meta),'="YES"
+
+   UNION ALL
+
+   SELECT 
+    D.Meta
+   ,D.Brand
+   ,D.Username_id AS `Acct id`
+   ,D.Username
+   ,M.id as `MS_id`
+   ,D.Tracker_ID
+   ,D.Tracker_name
+   ,D.Product
+   ,IFNULL(`A`.`username`, "_Unassigned") AS `Affiliate`
+   ,CPA_DbD
+   ,CPA_LM
+   ,DIFF
+   ,NR_DbD
+   ,NR_LM
+   FROM LM_minus_Dbd D
+   -- ----------------------------Seleccion MS----------------------------------------------
+   LEFT JOIN LATERAL (                                                                        
+      SELECT                                                                                  
+         CASE  WHEN M.Tracker_ID = D.Tracker_ID and M.Tracker_Name = D.Tracker_Name then 4    
+               WHEN M.Tracker_ID = D.Tracker_ID then 3                                        
+               WHEN M.Tracker_Name = D.Tracker_Name then 2                                    
+               ELSE 1 END AS MatchValue                                                       
+         ,M.* FROM campaign_marketing_source M                                                
+      WHERE M.Username_id = D.Username_id AND                                                    
+         (D.Tracker_ID IN (M.Tracker_ID,M.Tracker_Name)                                       
+      -- OR  D.Tracker_Name IN (M.Tracker_ID,M.Tracker_Name) -- 10.01.2024
+      )                                    
+      ORDER BY MatchValue DESC LIMIT 1                                                        
+      ) AS M ON true                                                                          
+   -- ----------------------------Seleccion de Affiliate------------------------------------
+   LEFT JOIN LATERAL (                                                                        
+      SELECT *,ROW_NUMBER() OVER(PARTITION BY MS_id ORDER BY Deal_Valid_From DESC) AS RowNr   
+      FROM `campaign_mkt_source_deal` WHERE `MS_id` = M.id AND `is_active` = 1                
+                                       -- AND `Deal_Valid_From` <= `D`.`Date`                   
+      ORDER BY RowNr LIMIT 1                                                                  
+   ) AS M2 ON TRUE                                                                            
+   -- ----------------------------Seleccion de producto-------------------------------------  
+   LEFT JOIN `account_account` `A` ON `A`.`id` = `M2`.`Affiliate_id`                                                                          
+   -- --------------------------------------------------------------------------------------
+
+   UNION ALL
+   SELECT "",CONCAT(" Total Diff ",',QUOTE(v_last_month),'),"~~~~~","~~~~~","~~~~~","~~~~~","~~~~~","~~~~~","~~~~~",SUM(CPA_DbD),SUM(CPA_LM),sum(DIFF),SUM(NR_DbD),SUM(NR_LM)
+	from LM_minus_Dbd 
+  
+   ORDER BY 
+       CASE WHEN `Difference`=0 THEN 0 ELSE 1 END DESC
+      ,Brand,Account,`Difference` DESC;
+');      
+
+IF v_debug!='NO' THEN SELECT View_OR_run,v_where_not_in_acct,v_where_not_in_acct_view,v_debug,v_last_month,v_cpa_dbd,v_cpa_lm,v_version; END IF;  
+
+IF v_debug!='NO' THEN SELECT v_sql; END IF;
+IF v_debug!='NO' THEN SELECT v_sql1; END IF;
+IF v_debug!='NO' THEN SELECT v_sqlview; END IF;
+
+IF UPPER(View_OR_run)='RUN' AND v_warning_cpa='NO' THEN 
+
+   SET @stmt_sql = v_sql;
+	PREPARE stmt1 FROM @stmt_sql;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+
+   SET @stmt_sql = v_sql1;
+   PREPARE stmt2 FROM @stmt_sql;
+	EXECUTE stmt2;
+	DEALLOCATE PREPARE stmt2;
+
+END IF;
+
+IF UPPER(View_OR_run)!='RUN' THEN
+
+   SET @stmt_sql = v_sqlview;
+   PREPARE stmt2 FROM @stmt_sql;
+	EXECUTE stmt2;
+	DEALLOCATE PREPARE stmt2;
+
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+
+call Sync_MS_DbD_DbD_lm('view');
+call Sync_MS_DbD_DbD_lm('DEBUG');
+call Sync_MS_DbD_DbD_lm('run');
+
+*/

@@ -1,0 +1,371 @@
+/*
+PROCEDURE_InvoiceToPubliser_v1.sql - Report: Invoicing to Publisher
+
+Descripción:
+  Procedimiento InvoiceToPubliser.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Month           =[AAAA-MM].            OPCIONAL. Default=Current Month.
+Area            =[ALL | forex | gaming ]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | Publisher_id]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Brand           =[ALL | NOMBRE de Brand]. OPCIONAL. Default=ALL
+Currency        =[EUR | Original].     Moneda a la que se convierten los resultados. Original  No hace conversiones. El Profit NO SE CALCULARÁ cuando sean monedas distintas. OPCIONAL. Default=EUR.
+HideDetails     =[No | Yes]. OPCIONAL. Default=No
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query. [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call InvoiceToPubliser(' '); -- Asumirá todos los defaults
+call InvoiceToPubliser('meta=yes'); -- Asumirá todos los defaults
+
+call InvoiceToPubliser('Debug=KeyValues');
+call InvoiceToPubliser('Debug=yes');
+call InvoiceToPubliser('Currency=original,Debug=KeyValues');
+
+23.05.2024 V1
+29.05.2024 v1.1   Bonus/fee
+09.01.2025 V1.2   Filtro por todos los meses (RS)
+10.04.2026 v1.3   Meta/filtros: etiqueta Publisher -> Operator; ORDER BY alinea nombre de columna
+
+*/
+DROP PROCEDURE IF EXISTS InvoiceToPubliser;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `InvoiceToPubliser`(IN
+   InputCommLine    VARCHAR(250)
+   )
+
+COMMENT 'Report: Invoicing to Publisher'
+
+BEGIN
+
+-- Defaults
+SET @Version      ='v1.3 10.04.2026';
+SET @Owner        ='all';
+SET @Month        =LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+SET @Advertiser_id='ALL';
+SET @Brand        ='ALL';
+SET @Area         ='ALL';
+SET @Publisher_id ='ALL';
+SET @Currency     ='EUR';
+SET @HideDetails  ='NO';
+SET @Debug        ='NO';
+SET @Meta         ='YES';
+SET @Filters      ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@HideDetails,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,HideDetails=yes,OrderBy=Profit
+-- @InputCommLine: ----5----0----5----0----5----0----5----0--
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='owner'         THEN SET @Owner        =UPPER(@v); END IF;
+   IF lower(@k)='month'         THEN SET @Month        =UPPER(@v); END IF;
+   IF lower(@k)='area'          THEN SET @Area         =UPPER(@v); END IF;
+   IF lower(@k)='publisher_id'  THEN SET @Publisher_id =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id' THEN SET @Advertiser_id=UPPER(@v); END IF;
+   IF lower(@k)='brand'         THEN SET @Brand        =UPPER(@v); END IF;
+   IF lower(@k)='currency'      THEN SET @Currency     =UPPER(@v); END IF;
+   IF lower(@k)='hidedetails'   THEN SET @HideDetails  =UPPER(@v); END IF;
+   IF lower(@k)='filters'       THEN SET @Filters      =UPPER(@v); END IF;
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Owner,@Month,@Publisher_id,@Currency,@Advertiser_id,@Brand,@HideDetails,@Filters,@Debug,@Meta,InputCommLine; END IF;
+
+/**************************************************************************************************************/
+
+-- -------------------------------------------------------
+SET @WherePublisher_id='';
+SET @WhereAdvertiserID='';
+SET @WhereBrand='';
+SET @WhereOwner='';
+SET @WhereArea='';
+
+IF @Owner        !="ALL" THEN SET @WhereOwner=CONCAT(" AND G.Owner='",@Owner,"'");                        END IF;
+IF @Area         !="ALL" THEN SET @WhereArea=CONCAT(" AND G.Area='",@Area,"'");                           END IF;
+IF @Publisher_id !="ALL" THEN SET @WherePublisher_id=CONCAT(" AND G.Publisher_id='",@Publisher_id,"'");   END IF;
+IF @Advertiser_id!="ALL" THEN SET @WhereAdvertiserID=CONCAT(" AND G.Advertiser_id='",@Advertiser_id,"'"); END IF;
+IF @Brand        !="ALL" THEN SET @WhereBrand=CONCAT(" AND G.Brand='",@Brand,"'");                        END IF;
+
+IF lower(@Currency)='original' THEN SET @Currency_result='ALL'; ELSE SET @Currency_result=UPPER(@Currency); END IF;
+
+SET @Month_Report=@Month;
+IF  @Month = "CM" THEN SET @Month_Report=LEFT(CURDATE(),7); END IF;                             -- K 16.03.2023
+IF  @Month = "LM" THEN SET @Month_Report=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF; -- K 16.03.2023
+
+SET @Kforex=(
+   SELECT COUNT(*) FROM `campaign_marketing_source` `M`
+   LEFT JOIN `campaign_username` `CU` ON `CU`.`id` = `M`.`Username_id`
+   WHERE CU.Area="forex"
+);
+IF @Debug!="NO" THEN SELECT @Kforex FROM DUAL; END IF;
+
+-- -----------------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `campaign_deal_gestor_bonus` (
+   `id`                 INT(10)    NOT NULL AUTO_INCREMENT,
+   `Publisher_id`       INT(10)        NULL DEFAULT NULL,
+   `Username_id`        INT(10)        NULL DEFAULT NULL,
+   `Description`        VARCHAR(50)    NULL DEFAULT '',
+   `Month_Valid_From`   VARCHAR(7)     NULL DEFAULT '',         
+   `Month_Valid_to`     VARCHAR(7)     NULL DEFAULT NULL,
+   `Bonus_Value`        DECIMAL(10,0)  NULL DEFAULT '0',
+   `Conditions`         VARCHAR(30)    NULL DEFAULT 'ANY',
+   `CPA_min`            INT(10)        NULL DEFAULT '0',
+   `NR_min`             INT(10)        NULL DEFAULT '0',
+   `FTD_min`            INT(10)        NULL DEFAULT '0',
+   `Status_id`          SMALLINT(5)    NULL DEFAULT '1',
+   `Status`             VARCHAR(30)    NULL DEFAULT 'Active',
+   `Currency`           VARCHAR(5)     NULL DEFAULT 'EUR',
+   `Creation_Date`      DATETIME       NULL DEFAULT CURRENT_TIMESTAMP,
+   `Last_Update`        DATETIME       NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   `Operator`           VARCHAR(30)    NULL DEFAULT 'SysOp',
+   PRIMARY KEY (`id`) USING BTREE
+)
+;
+-- -----------------------------------------------------------------------------------------------------
+
+-- SET SESSION group_concat_max_len = 200000;
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" `Meta`
+   ,"width=100px"                         `Date`
+   ,"width=100px,omit=true"               `Owner_id`
+   ,"width=100px"                         `Owner`
+   ,"width=80px,right=true,omit=true"     `Area`
+   ,"width=110px,sortable=yes"            `Operator`
+   ,"width=100px,omit=true"               `Publisher_id`
+   ,"width=110px,sortable=yes"            `Brand`
+   ,"width=100px,omit=true"               `Advertiser_id`
+   ,"width=200px,sortable=yes"            `Account`
+   ,"width=100px,omit=true"               `Username_id`
+   ,"width=060px"                         `Curr`
+   ,"width=080px,right=true"              `CPA`
+   ,"width=100px,right=true"              `CPA Value`
+   ,"width=100px,right=true"              `Net Revenue`
+   ,"width=100px,right=true"              `RS Value`
+   ,"width=120px,right=true"              `Total Commission`
+   ,"width=130px"                         `Commission type`
+   ,"width=100px,right=true"              `Carry Over`
+   ,"width=100px"                         `RS Base`
+   ,"width=100px"                         `Product`
+   ,"width=100px,right=true"              `RS Carry Over Pend`
+   ,"width=100px,right=true"              `RS before CO`
+   ,"width=100px,omit=true"               `RateExch`
+
+	FROM DUAL WHERE @Meta="YES")'
+);
+-- -------------------------------
+SET @SQL=CONCAT('
+WITH
+SetConverted as (
+   SELECT
+       G.Month          AS Date
+      ,G.Owner          as Owner_id
+      ,AC.username      as `Owner`
+      ,G.Area
+      ,G.Publisher
+      ,G.Publisher_id
+      ,G.Brand          as `Brand`
+      ,G.Advertiser_id
+      ,G.`Username`
+      ,G.Username_id
+      ,',IF(@Currency_result="ALL","G.Data_Currency",CONCAT("'",@Currency_result,"'")),' as `Data_Currency`
+      ,sum(G.CPA)                              as `CPA`
+      ,round(sum(net_CPA_Val     )/xx.Coef,2)  as `CPA_Value`
+      ,round(sum(Net_Revenue     )/xx.Coef,2)  as `Net_Revenue`
+      ,round(sum(net_RS_Val      )/xx.Coef,2)  as `net_RS_Val`
+      ,round(sum(net_Total_comm  )/xx.Coef,2)  as `Total_Commission`
+      ,G.`Comm_type`
+      ,case when G.CarryOver="1" then "Yes"   ELSE "" END AS `CarryOver`
+      ,case when G.CarryOver="1" then RS_Base ELSE "" END AS `RS_Base`
+      ,case when G.CarryOver="1" then Product ELSE "" END AS `Product`
+      ,case when G.CarryOver="1" then round(sum(RS_CarryOver_Pend)/xx.Coef,2) ELSE "" END as `Pending CO`
+      ,case when G.CarryOver="1" then round(sum(gross_RS_Val)/xx.Coef,2)      ELSE "" END as `RS before CO`
+      ,xx.Coef as `RateExch`
+      FROM monthly_comms_gestor_v5 G
+         LEFT JOIN LATERAL
+            (SELECT
+               (SELECT Rate FROM exchange_rate x WHERE x.Currency=G.Data_Currency) /
+               (SELECT Rate FROM exchange_rate x WHERE x.Currency='
+               ,IF(@Currency_result="ALL","G.Data_Currency",CONCAT("'",@Currency_result,"'")),') as Coef
+            ) AS xx ON TRUE
+      LEFT JOIN account_account     AC    ON AC.id=G.Owner
+      WHERE G.Month =',CONCAT("'",@Month_Report,"' ")
+         ,@WhereAdvertiserID
+         ,@WhereBrand
+         ,@WherePublisher_id
+         ,@WhereArea
+         ,@WhereOwner,'
+      GROUP BY G.Owner,G.Data_Currency,Publisher_id,Brand,Username_id,CarryOver,RS_Base,Product,`Comm_type`
+         having `Total_Commission`<>0 or `Pending CO`<>0
+),
+SetConverted_total_parcial as (
+   SELECT
+       if(@HideDetails="YES","data","total") as `Meta`,
+       Date
+      ,Owner_id
+      ,`Owner`
+      ,"z_tot" as Area -- Para orden de presentacion en grid
+      ,Publisher
+      ,Publisher_id
+      ,"~~~~~"   as Brand
+      ,Advertiser_id
+      ,"~~~~~"   as `Username`
+      ,Username_id
+      ,`Data_Currency`
+      ,sum(CPA)                         as `CPA`
+      ,round(sum(`CPA_Value`),2)        as `CPA_Value`
+      ,round(sum(`Net_Revenue`),2)      as `Net_Revenue`
+      ,round(sum(`net_RS_Val`),2)       as `net_RS_Val`
+      ,round(sum(`Total_Commission`),2) as `Total_Commission`
+      ,"~~~~~"     as `a18`
+      ,"~~~~~"     as `a12`
+      ,"~~~~~"     as `a13`
+      ,"~~~~~"     as `a14`
+      ,"~~~~~"     as `a15`
+      ,"~~~~~"     as `a16`
+      ,"~~~~~"     as `a17`
+      FROM SetConverted G
+      GROUP BY G.Owner,G.Data_Currency,Publisher_id -- ,Brand,Username_id,CarryOver,RS_Base,Product,`Comm_type`
+         -- having `Total_Commission`<>0 or `Pending CO`<>0
+)
+,
+SetConverted_total_global as (
+   SELECT
+       "total" as `Meta`,
+       "~~~~~"   as `a02`
+      ,"~~~~~"   as `a03`
+      ,"~~TOTAL~~"   as `a04`
+      ,"~~~~~"   as `a05`
+      ,"~~~~~"   as `a06`
+      ,"~~~~~"   as `a07`
+      ,"~~~~~"   as `a08`
+      ,Advertiser_id
+      ,"~~~~~"   as `a09`
+      ,Username_id
+      ,`Data_Currency`
+      ,sum(CPA)                         as `CPA`
+      ,round(sum(`CPA_Value`),2)        as `CPA_Value`
+      ,round(sum(`Net_Revenue`),2)      as `Net_Revenue`
+      ,round(sum(`net_RS_Val`),2)       as `net_RS_Val`
+      ,round(sum(`Total_Commission`),2) as `Total_Commission`
+      ,"~~~~~"     as `a18`
+      ,"~~~~~"     as `a12`
+      ,"~~~~~"     as `a13`
+      ,"~~~~~"     as `a14`
+      ,"~~~~~"     as `a15`
+      ,"~~~~~"     as `a16`
+      ,"~~~~~"     as `a17`
+      FROM SetConverted G '
+      ,IF(@Currency_result="ALL","GROUP BY `Data_Currency`",""),'
+)
+',@SQLmeta,
+'
+UNION ALL
+(SELECT
+   "data" as `Meta`,
+   S.*
+   FROM SetConverted S
+   WHERE @HideDetails!="YES"
+   )
+UNION ALL (SELECT * FROM SetConverted_total_parcial)
+UNION ALL (SELECT * FROM SetConverted_total_global)
+ORDER BY `Operator`, Area , Brand, `Account`, Date, `Carry Over`,`RS Base`,Product;'
+);
+/*
+-- Filtros------------------------------------------------------------------------------------
+*/
+SET @SQLfilters=CONCAT('
+WITH RECURSIVE MonthFilter AS (
+  SELECT  CURDATE() AS date
+  UNION ALL
+  SELECT DATE_SUB(date, INTERVAL 1 MONTH) FROM MonthFilter
+  WHERE DATE_SUB(date, INTERVAL 1 MONTH) >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
+),
+MonthFilterAll AS (
+  SELECT  G.Month AS date
+   FROM monthly_comms_gestor_v5 G
+   GROUP BY G.Month
+   ORDER BY G.Month DESC
+),  
+BaseCount AS (
+   SELECT G.*,AC.username AS `Owner_name`
+   FROM monthly_comms_gestor_v5 G
+   LEFT JOIN account_account     AC    ON AC.id=G.Owner
+      WHERE G.Month =',CONCAT("'",@Month_Report,"' ")
+         ,@WhereAdvertiserID
+         ,@WhereBrand
+         ,@WherePublisher_id
+         ,@WhereArea
+         ,@WhereOwner,'
+      GROUP BY G.Owner,G.Data_Currency,Publisher_id,Brand,Username_id,CarryOver,RS_Base,Product
+         having `net_Total_comm`<>0 or `RS_CarryOver_Pend`<>0
+)
+
+(SELECT "01" as "Korder","Date" AS "Key",LEFT(`Date`,7) AS `Value`
+                                       ,"Month" AS `CallKey`,LEFT(`Date`,7) AS `CallValue`
+                                                                         ,"" AS "Rows" FROM MonthFilterAll) UNION ALL
+(SELECT "02","Criteria"   ,"Original Currency" ,"Currency","original"    ,"" AS K       FROM DUAL) UNION ALL
+(SELECT "03","Criteria"   ,"Hide Accounts","HideDetails","yes"           ,"" AS K       FROM DUAL) UNION ALL
+(SELECT "09","Operator"  ,`Publisher`  ,"Publisher_id" ,`Publisher_id`  ,COUNT(*) AS K FROM BaseCount WHERE `Publisher`  >" " GROUP BY IFNULL(`Publisher`  ,"")) UNION ALL
+(SELECT "13","Brand" 	  ,`Brand` 	    ,"Advertiser_id",`Advertiser_id` ,COUNT(*) AS K FROM BaseCount WHERE `Brand` >" "      GROUP BY IFNULL(`Brand` ,""))      UNION ALL
+(SELECT "18","Area"       ,`Area`       ,"Area"         ,`Area`          ,"" AS K       FROM BaseCount WHERE @Kforex>0 AND `Area`>" " GROUP BY IFNULL(`Area`,"")) UNION ALL
+(SELECT "05","Owner"      ,`Owner_name` ,"Owner"        ,`Owner`         ,COUNT(*) AS K FROM BaseCount WHERE `Owner`      >" " GROUP BY IFNULL(`Owner`      ,""))
+-- ORDER BY 1,3
+ORDER BY 1, CASE WHEN `CallKey`!="Month" THEN `Value` ELSE NULL END ASC
+          , CASE WHEN `CallKey` ="Month" THEN `Value` ELSE NULL END DESC
+;');
+ 
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+Ejemplos:
+
+call InvoiceToPubliser(''); 			-- Asumirá todos los defaults
+call InvoiceToPubliser('month=lm,HideDetails=yes,Currency=original,filters=ye,Debug=ye');
+call InvoiceToPubliser('Publisher_id=13,filters=ye,Debug=yes');
+call InvoiceToPubliser('filters=yes,Debug=ye');
+call InvoiceToPubliser('owner=2,filters=ye,HideDetails=ye,Currency=original,Debug=ye');
+*/

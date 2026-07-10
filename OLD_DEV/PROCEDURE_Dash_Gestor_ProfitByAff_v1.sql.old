@@ -1,0 +1,124 @@
+/*
+PROCEDURE_Dash_Gestor_ProfitByAff.sql - Dashboard Gestor Profit by Affiliate
+
+09.01.2023 V1
+
+*/
+DROP PROCEDURE IF EXISTS Dash_Gestor_ProfitByAff;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_Gestor_ProfitByAff`(IN
+   InputCommLine    VARCHAR(250)
+   )
+COMMENT 'Dashboard Gestor. PERFORMANCE - Profit by Affiliate'
+
+BEGIN
+
+-- Defaults
+SET @Version      ='v1 09.01.2023';
+SET @Debug        ='no';
+SET @Meta         ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit
+-- @InputCommLine: ----5----0----5----0----5----0----5----0--
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+
+END WHILE;
+   
+SET @SumBy_Month=concat(' 
+    sum(                                                                     Profit) as `Total`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  0 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  0 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  1 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  1 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  2 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  2 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  3 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  3 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  4 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  4 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  5 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  5 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  6 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  6 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  7 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  7 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  8 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  8 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval  9 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval  9 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval 10 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval 10 month),7),'`
+   ,sum(case when `Month`=Left(date_sub(curdate(),interval 11 month),7) then Profit else 0 end) as `',left(date_sub(curdate(),interval 11 month),7),'`
+');
+
+SET @SQLmeta=concat(
+' UNION ALL (
+SELECT
+   "setting"
+   ,"width=150px" as Aff
+   ,"width=80px,center=true" as Aff_id
+   ,"width=100px,right=true,sortable=yes" Tot
+   ,"width=100px,right=true,sortable=yes" M0
+   ,"width=100px,right=true,sortable=yes" M1
+   ,"width=100px,right=true,sortable=yes" M2
+   ,"width=100px,right=true,sortable=yes" M3
+   ,"width=100px,right=true,sortable=yes" M4
+   ,"width=100px,right=true,sortable=yes" M5
+   ,"width=100px,right=true,sortable=yes" M6
+   ,"width=100px,right=true,sortable=yes" M7
+   ,"width=100px,right=true,sortable=yes" M8
+   ,"width=100px,right=true,sortable=yes" M9
+   ,"width=100px,right=true,sortable=yes" M10
+   ,"width=100px,right=true,sortable=yes" M11
+	FROM DUAL WHERE @Meta="YES")'
+);
+
+SET @SQL=concat(' 
+with ProfitByMonth as (
+SELECT Affiliate,Affiliate_id,left(DATE,7) AS Month
+   ,SUM(Qualified_Players      ) AS CPA
+   ,SUM(Net_Revenue            ) AS NR
+   ,SUM(CPA_Value_Gestor       ) AS CPA_Val_G
+   ,SUM(CPA_Value_Affiliate    ) AS CPA_Val_A
+   ,SUM(Revenue_Share_Gestor   ) AS RS_Val_G 
+   ,SUM(Revenue_Share_Affiliate) AS RS_Val_A
+   ,SUM(CPA_Value_Gestor-CPA_Value_Affiliate+Revenue_Share_Gestor-Revenue_Share_Affiliate) AS Profit
+FROM Snapshot_day_by_day_fact1
+WHERE left(Date,7)>=left(date_sub(curdate(),interval 11 month),7)
+GROUP BY Affiliate,MONTH
+)
+SELECT '
+,IF(@Meta="YES","'data' as `Meta`,",""),
+'Affiliate,Affiliate_id as `Aff ID`,',
+@SumBy_Month,'
+FROM ProfitByMonth
+GROUP BY Affiliate WITH ROLLUP
+'
+,IF(@Meta="YES",@SQLmeta,""),'
+ORDER BY Affiliate
+;');
+
+-- select @SumBy_Month,@SQL;
+
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug!="YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+
+/* TEST --------------
+
+call Dash_Gestor_ProfitByAff('meta=yes,debug=no');
+
+*/

@@ -1,0 +1,119 @@
+/* 
+PROCEDURE_ShowNotif_Affiliate.sql - Notificaciones al Afiliado
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Affiliate_id   =[ALL | id del Affiliate]. OBLIGATORIO. Default=none
+Operation      =[READ | SET_READ]. OPCIONAL. Default=READ .SET_READ=marca leída la notificación
+Notif_id       =[ALL | id]. OPCIONAL. Default=ALL. OBLIGATORIO si Operation=SET_READ
+Status         =[ALL | 1 | 0]. OPCIONAL. Default=0. 0=NOT_READ 1=READ
+Meta           =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug          =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                 [No] NO EJECUTA QUERY y devuelve el código del Query.
+                 [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+ 
+Ejemplos:
+   call ShowNotif_Affiliate(Affiliate_id,0,0);
+   call ShowNotif_Affiliate('ALL',0,0);
+   call ShowNotif_Affiliate('id notificación a marcar como leída',0,1);    
+
+   09.09.2022 V1
+   21.03.2022 V2  
+*/
+DROP PROCEDURE IF EXISTS ShowNotif_Affiliate;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `ShowNotif_Affiliate`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Notificaciones al Afiliado'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v2 21.03.2023';
+SET @CurrentDay      =curdate();
+
+SET @Affiliate_id    ='';
+SET @Operation       ='READ';
+SET @Notif_id        ='ALL';
+SET @Status          ='ALL';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Publisher_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='Affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='Operation'       THEN SET @Operation     =UPPER(@v); END IF;
+   IF lower(@k)='Notif_id'        THEN SET @Notif_id      =      @v;  END IF;
+   IF lower(@k)='status'          THEN SET @Status        =      @v;  END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+
+SET @WhereAffiliate_id  ='';
+SET @WhereOperation='';
+SET @WhereNotif_id='';
+SET @WhereStatus        ='';
+
+IF @Affiliate_id  !="ALL" THEN SET @WherePublisher_id  =CONCAT(" AND id  =",@Publisher_id );             END IF;
+IF @Notif_id  !="ALL" THEN SET @WhereNotif_id  =CONCAT(" AND id  =",@Publisher_id );             END IF;
+
+	IF SET_READ=1 and Notif_id>0 THEN
+      update account_notifications set Read_Status=1 where id=Notif_id and Affiliate_id=AffiliateID;
+   else
+      SELECT N.id,M.Affiliate_id,AC.username,N.Last_Update
+      ,CONCAT('Status ',upper(M.`Status`),' for Tracker ',M.Code_To_Affiliate,' ',A.Advertiser_Name
+      ,' ',M.Product,' assigned to your channel ',L.landing_page_name) AS 'Notification'
+      ,M.Code_To_Affiliate,A.Advertiser_Name,M.Product,L.landing_page_name,M.`Status`
+      FROM account_notifications N
+      INNER JOIN campaign_marketing_source M ON M.id=N.Extra_id_1
+      INNER JOIN account_account AC ON AC.id=M.Affiliate_id
+      INNER JOIN campaign_advertiser A ON A.id=M.Advertiser_id
+      INNER JOIN account_landing_pages L ON L.id=M.Channel_id
+      WHERE N.`Type` = 'MS Status Change'  AND N.Read_Status!=1
+      and M.Affiliate_id BETWEEN @AffiliateID_from AND @AffiliateID_until;
+	END IF;
+   
+   -- ----------------------------------------------------
+
+SELECT @SQL;
+   PREPARE stmt1 FROM @SQL;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+
+END$$
+DELIMITER ;
+
+/*
+   call ShowNotif_Affiliate('378',0,0);
+   call ShowNotif_Affiliate('ALL',0,0);
+   call ShowNotif_Affiliate('378',5392,1); -- Set Read notif 5392
+   call ShowNotif_Affiliate('378',0,0);      
+
+*/

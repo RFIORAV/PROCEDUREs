@@ -1,0 +1,132 @@
+BEGIN
+
+SET @Version         ='v1.3 10.04.2023';
+SET @view            ='YES';
+SET @Debug           ='NO';
+SET @Meta            ='YES';
+
+
+SET @InputCommLine=Concat(InputCommLine ,',');      
+
+SET @InputCommLine=replace(@InputCommLine,'"','');  
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+
+WHILE @InputCommLine>' ' DO
+
+   SET @e=INSTR(@InputCommLine,'=');    				   
+   SET @c=INSTR(@InputCommLine,','); 					   
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='view'            THEN SET @view          =UPPER(@v); END IF; 
+
+END WHILE;
+
+
+
+
+-- IF upper(View_OR_set)='SET' then SET @view='NO'; else SET @view='YES'; END IF;
+
+IF   DAY(CURDATE())<=3 THEN SET @Curr_Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+ELSE SET @Curr_Month=left(CURDATE(),7); END IF;
+
+CREATE TABLE IF NOT EXISTS `Snapshot_day_by_day_diff` (
+	`Month` VARCHAR(7) NULL DEFAULT NULL,
+	`Brand` VARCHAR(50) NULL DEFAULT '0',
+	`Username` VARCHAR(50) NULL DEFAULT '0',
+	`Tracker_Name` VARCHAR(50) NULL DEFAULT NULL,
+	`Tracker_id` VARCHAR(50) NULL DEFAULT NULL,
+	`Product` VARCHAR(50) NULL DEFAULT NULL,
+	`Qualified_Players` INT(10) NULL DEFAULT '0',
+	`Hour_Update` DATETIME NULL DEFAULT NULL,
+	`Creation_date` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE INDEX `Month` (`Month`, `Brand`, `Username`, `Tracker_Name`, `Tracker_id`, `Product`) USING BTREE
+)
+;
+
+IF @view='NO' THEN
+   TRUNCATE Snapshot_day_by_day_diff;
+   INSERT IGNORE INTO Snapshot_day_by_day_diff 
+      SELECT left(DATE,7) as Month,Brand,Username,Tracker_Name,Tracker_id,Product,sum(Qualified_Players) AS CPA,Hour_Update,now()
+      FROM  Snapshot_day_by_day D
+      WHERE left(DATE,7)=@Curr_Month
+      GROUP BY Brand,Username,Tracker_Name,Tracker_id,Product HAVING CPA<>0;
+END IF;
+
+SET SESSION group_concat_max_len = 200000;
+
+SET @CTE=CONCAT('
+WITH Day_by_Day AS (
+   SELECT left(DATE,7) as Month,Brand,Username_id,Affiliate,Tracker_Name,Tracker_id,Product,sum(Qualified_Players) AS CPA,Hour_Update
+   FROM  Snapshot_day_by_day_fact1 D
+   WHERE LEFT(DATE,7)=@Curr_Month
+   GROUP BY Brand,Username_id,Tracker_Name,Tracker_id,Product HAVING CPA<>0
+),
+Day_by_Day_Diff AS (
+   SELECT Month,Brand,Username,Tracker_Name,Tracker_id,Product,sum(Qualified_Players) AS CPA,Hour_Update
+   FROM  Snapshot_day_by_day_diff D
+   WHERE Month=@Curr_Month
+   GROUP BY Brand,Username,Tracker_Name,Tracker_id,Product HAVING CPA<>0
+)');
+
+
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+	 ,"width=100px"             as `date`
+   ,"width=150px"             as `Brand`
+   ,"width=150px"             as `Username_id`
+   ,"width=150px"             as `Affiliate`
+   ,"width=200px"             as `Tracker_Name`
+   ,"width=150px"             as `Tracker_ID`
+   ,"width=200px"             as `Product`  
+   ,"width=120px,right=true"  as `CPA ayer`
+   ,"width=120px,right=true"  as `CPA hoy` 
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT
+   "data" as `Meta`, 
+   F.Month,
+	 F.Brand,
+	 F.Username,
+	 D.Affiliate,
+	 F.Tracker_Name,
+	 F.Tracker_id,
+	 F.Product,
+	 F.CPA as `CPA ayer`,
+	 D.CPA as `CPA hoy`
+FROM Day_by_Day_Diff F
+left JOIN Day_by_Day D on F.Brand=D.Brand and F.Username=D.Username_id 
+         and F.Tracker_Name=D.Tracker_Name 
+         and F.Tracker_id=D.Tracker_id 
+         and F.Product=D.Product
+WHERE F.CPA>D.CPA
+;');
+
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+
+END

@@ -1,0 +1,219 @@
+# Procedimientos de Cálculo de Comisiones de Operaciones
+
+Este conjunto de procedimientos almacenados permite calcular comisiones de operaciones basándose en los movimientos de la tabla `DBD_movements` y aplicando las reglas definidas en la tabla `Deals`.
+
+## Archivos Incluidos
+
+1. **`PROCEDURE_Calculate_Operations_Commission_v1.sql`** - Procedimiento básico
+2. **`PROCEDURE_Calculate_Operations_Commission_v1.1_advanced.sql`** - Procedimiento avanzado con parámetros configurables
+3. **`EXAMPLE_Operations_Commission_Usage.sql`** - Ejemplos de uso y datos de prueba
+4. **`README_Operations_Commission.md`** - Este archivo de documentación
+
+## Estructura de Datos
+
+### Tabla DBD_movements
+```sql
+CREATE TABLE DBD_movements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    date DATE NOT NULL,
+    tracker_id INT NOT NULL,
+    product VARCHAR(80) NOT NULL,
+    deposits DECIMAL(15,2) NOT NULL DEFAULT 0
+);
+```
+
+### Tabla Deals
+```sql
+CREATE TABLE deals (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product VARCHAR(80) NULL,           -- Producto específico (vacío = cualquier producto)
+    criteria VARCHAR(50) NOT NULL,      -- Tipo de criterio (ej: 'Deposits')
+    threshold DECIMAL(15,2) NOT NULL,   -- Valor umbral para alcanzar el nivel
+    level VARCHAR(50) NOT NULL,         -- Nombre del nivel
+    cpa DECIMAL(12,2) NOT NULL          -- Comisión CPA para el nivel
+);
+```
+
+## Lógica del Cálculo
+
+1. **Agrupación**: Los movimientos se agrupan por `tracker_id` y `product`
+2. **Suma de criterios**: Se suma el campo especificado en `criteria` (ej: `deposits`)
+3. **Aplicación de reglas**: Se buscan los deals que coincidan con:
+   - Producto específico o cualquier producto (campo `product` vacío)
+   - Criterio coincidente
+   - Threshold alcanzado o superado
+4. **Selección de nivel**: Se aplica el nivel más alto alcanzado (mayor threshold)
+5. **Cálculo de comisión**: Se asigna la comisión CPA correspondiente al nivel
+
+## Procedimiento Básico
+
+### Sintaxis
+```sql
+call Calculate_Operations_Commission(
+    p_start_date DATE,      -- Fecha de inicio
+    p_end_date DATE,        -- Fecha de fin
+    p_tracker_id INT,       -- ID del tracker (NULL = todos)
+    p_product VARCHAR(80)   -- Producto (NULL = todos)
+);
+```
+
+### Ejemplos de Uso
+```sql
+-- Cálculo para todo enero 2025
+call Calculate_Operations_Commission('2025-01-01', '2025-01-31', NULL, NULL);
+
+-- Cálculo solo para Sport
+call Calculate_Operations_Commission('2025-01-01', '2025-01-31', NULL, 'Sport');
+
+-- Cálculo para un tracker específico
+call Calculate_Operations_Commission('2025-01-01', '2025-01-31', 123, NULL);
+```
+
+### Salida del Procedimiento Básico
+- Información del cálculo
+- Resumen general
+- Detalle por tracker y producto
+- Resumen por nivel alcanzado
+- Top 10 por comisión
+- Registros sin comisión
+
+## Procedimiento Avanzado
+
+### Sintaxis
+```sql
+call Calculate_Operations_Commission_Advanced('parametros');
+```
+
+### Parámetros Disponibles
+- `start_date`: Fecha de inicio (YYYY-MM-DD)
+- `end_date`: Fecha de fin (YYYY-MM-DD)
+- `tracker_id`: ID del tracker (ALL = todos)
+- `product`: Producto específico (ALL = todos)
+- `criteria`: Tipo de criterio (default: Deposits)
+- `output_type`: Tipo de salida (summary, detail, all, debug)
+- `save_results`: Guardar en tabla permanente (yes/no)
+- `currency`: Moneda para cálculos (default: EUR)
+
+### Ejemplos de Uso
+```sql
+-- Cálculo básico
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31');
+
+-- Cálculo con salida detallada
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,output_type=detail');
+
+-- Cálculo con debug y guardado
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,output_type=debug,save_results=yes');
+
+-- Cálculo filtrado
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,tracker_id=123,product=Sport,output_type=detail');
+```
+
+### Tipos de Salida
+- **summary**: Solo resumen general
+- **detail**: Detalle completo por tracker/producto
+- **all**: Resumen + detalle
+- **debug**: Información de debug + todos los datos
+
+## Ejemplo de Datos de Prueba
+
+### Deals de Ejemplo
+```sql
+INSERT INTO deals (product, criteria, threshold, level, cpa) VALUES
+('Sport', 'Deposits', 50, 'Bronze', 25),
+('Sport', 'Deposits', 100, 'Silver', 45),
+('Sport', 'Deposits', 200, 'Gold', 80),
+('Casino', 'Deposits', 75, 'Bronze', 30),
+('Casino', 'Deposits', 150, 'Silver', 55),
+('', 'Deposits', 25, 'Starter', 10);
+```
+
+### Escenarios de Cálculo
+1. **Tracker 1 - Sport**: Total deposits = 155 → Nivel Silver (45€)
+2. **Tracker 2 - Casino**: Total deposits = 500 → Nivel Platinum (200€)
+3. **Tracker 3 - Sport**: Total deposits = 1500 → Nivel Platinum (150€)
+4. **Tracker 4 - Casino**: Total deposits = 100 → Nivel Bronze (30€)
+5. **Tracker 5 - Poker**: Total deposits = 350 → Nivel Diamond (300€) [deals generales]
+
+## Tabla de Historial
+
+Si se usa `save_results=yes`, los resultados se guardan en la tabla `operations_commission_history`:
+
+```sql
+CREATE TABLE operations_commission_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tracker_id INT NOT NULL,
+    product VARCHAR(80) NOT NULL,
+    total_criteria_value DECIMAL(15,2) NOT NULL,
+    level_achieved VARCHAR(50) NULL,
+    commission_cpa DECIMAL(12,2) NOT NULL,
+    deal_id INT NULL,
+    criteria_used VARCHAR(50) NOT NULL,
+    currency VARCHAR(10) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    calculation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## Instalación y Uso
+
+1. **Ejecutar los procedimientos**:
+   ```sql
+   SOURCE PROCEDURE_Calculate_Operations_Commission_v1.sql;
+   SOURCE PROCEDURE_Calculate_Operations_Commission_v1.1_advanced.sql;
+   ```
+
+2. **Probar con datos de ejemplo**:
+   ```sql
+   SOURCE EXAMPLE_Operations_Commission_Usage.sql;
+   ```
+
+3. **Usar en producción**:
+   ```sql
+   call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,output_type=all,save_results=yes');
+   ```
+
+## Consideraciones Técnicas
+
+### Rendimiento
+- Los procedimientos usan tablas temporales para optimizar el rendimiento
+- Se incluyen índices en las tablas temporales para mejorar las consultas
+- Se recomienda ejecutar en horarios de baja carga
+
+### Manejo de Errores
+- Validación de parámetros obligatorios
+- Manejo de transacciones con rollback automático
+- Mensajes de error descriptivos
+
+### Compatibilidad
+- MySQL 8.0.37
+- Codificación UTF8MB4
+- Compatible con el estilo de otros procedimientos del proyecto
+
+## Mantenimiento
+
+### Actualización de Deals
+Para modificar las reglas de comisión, simplemente actualice la tabla `deals`:
+```sql
+-- Agregar nuevo nivel
+INSERT INTO deals (product, criteria, threshold, level, cpa) 
+VALUES ('Sport', 'Deposits', 1000, 'Diamond', 250);
+
+-- Modificar comisión existente
+UPDATE deals SET cpa = 50 WHERE product = 'Sport' AND level = 'Silver';
+```
+
+### Limpieza de Historial
+```sql
+-- Eliminar registros antiguos
+DELETE FROM operations_commission_history 
+WHERE calculation_date < DATE_SUB(NOW(), INTERVAL 1 YEAR);
+```
+
+## Soporte
+
+Para problemas o consultas sobre estos procedimientos, revisar:
+1. Los logs de MySQL para errores específicos
+2. La documentación de los procedimientos existentes en el proyecto
+3. Los ejemplos incluidos en `EXAMPLE_Operations_Commission_Usage.sql` 

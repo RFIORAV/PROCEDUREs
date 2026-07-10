@@ -1,0 +1,450 @@
+/*
+PROCEDURE_Gestor_MonthlySources2.sql - Reporte multimodo de las MS de un mes
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL. tiene prioridad sobre el resto de parámetros, excepto la fecha
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month.
+Affiliate_id    =[ALL | id del Affiliate]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Account_id      =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+Product         =[ALL | Product]. OPCIONAL. Default=ALL
+Platform        =[ALL | Platform]. OPCIONAL. Default=ALL
+Brand_Group     =[ALL | Brand_Group]. OPCIONAL. Default=ALL
+Currency        =[EUR | Original]. Moneda a la que se convierten los resultados. Original=No hacer conversiones. El Profit NO SE CALCULARÁ cuando sean monedas distintas. OPCIONAL. Default=EUR.
+OnlyOverCap     =[Yes | No]. Solo muestra los que exceden el CPA_Limit. Default=No (fuerza GroupByMS=yes)
+GroupByMS       =[Yes | No]. Agrupa Product by MS. OPCIONAL. Default=No
+Total           =[Yes | No]. Incluye línea/s de Totales. OPCIONAL. Default=Yes
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+TotLine         =[First | Last]. Posición de la línea de Totales. OPCIONAL. Default=First
+Meta            =[No | Yes]. [No] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Search          =[(dato a buscar]. OPCIONAL. Busca string en Tracker_ID/Tracker_Name/Code_To_Affiliate/MS_id
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Keys no utilizadas:
+ByAccount       =[No | Yes]. Info acumulada por Account/Advertiser. OPCIONAL. Default=No
+ByDay           =[No | Yes]. Info acumulada por Dia/Mes. OPCIONAL. Default=No
+View            =[viewAFF | viewGES]. Info de Fact2 (viewAFF) o de Fact1 (viewGES). OPCIONAL. Default=viewAFF
+OrderBy         =[CPA | CPAvalue | Profit | Advertiser]. OPCIONAL. Default=CPA
+Order           =[Desc | Asc]. OPCIONAL. Default=Desc
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Gestor_MonthlySources2(''); -- Todos los valores de selección por default
+call Gestor_MonthlySources2('meta=yes'); -- Todos los valores de selección por default usando _fact2
+call Gestor_MonthlySources2('meta=yes,search=1587,debug=ye'); 
+call Gestor_MonthlySources2('meta=yes,ms_id=1587,debug=ye'); 
+call Gestor_MonthlySources2('Month=2022-10,meta=no,OnlyOverCap=yes,debug=no'); 
+call Gestor_MonthlySources2('Filters=yes,meta=yes,debug=no'); -- Filtros current month
+call Gestor_MonthlySources2('Month=2022-10,Filters=no,search=yuh,debug=ye');
+call Gestor_MonthlySources2('Month=2022-10,search=80');
+call Gestor_MonthlySources2('Account_id=102,Product=Sports!-!Exchange,Filters=yes,GroupByMS=no,debug=no,meta=yes');
+
+29.09.2022 V2 Primera versión operativa
+01.10.2022 V2.2 Se agrega generación de filtros. Se agrega Key=Channel_id
+09.10.2022 V2.3 Opción de ver info sobre Fact1/Fact2. Parametro [viewAFF | viewGES]
+10.10.2022 V2.4 Filtros sobre la misma selección de parámetros
+11.10.2022 V2.5 Columna y filtro Brand_Group
+11.10.2022 V2.6 Columna METAdatos. Quitado parámetro View. Parémtro seleccionado se oculta
+13.10.2022 V2.6.1 filtro GroupByMS (deja una row por MS)
+13.10.2022 V2.6.2 Tratamiento de filtros x Product,Platform y Brand_Group con espacios internos
+                  Agregado columna CallKey a Filtros
+14.10.2022        Order by CPA desc
+14.10.2022 V2.6.3 Agrega columnas,`First_Time_Deposit`,`Views`,`Clicks`,`Signups`,`Impressions`
+                  ,`Deposits`,`Depositing_Customers`,`Active_Customers`
+14.10.2022        Agrega columna Cap/Used
+18.10.2022 V2.6.4 Agrega opción OnlyOverCap
+19.10.2022 V2.6.5 MS_id null=missing
+21.10.2022 V2.6.6 Agregadas columnas RS y CPA Value - Aff y Gestor. MS_Status. Elimina de filtro los que no tienen key
+21.10.2022 V2.6.7 En desarrollo. Permite la inclusión de parámetros opcionales estáticos
+26.10.2022 V2.6.8 Agrega parámetro MS_id
+26.10.2022 V2.6.9 Agrega parámetro Search
+27.10.2022 V2.7   Agrega parámetros Switch-estáticos
+*/
+
+DROP PROCEDURE IF EXISTS Gestor_MonthlySources2;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Gestor_MonthlySources2`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Gestor_MonthlySources2'
+BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v2.7 27.10.2022';
+SET @Month           =left(curdate(),7);
+SET @MS_id           ='ALL';
+SET @Owner           ='ALL';
+SET @Advertiser_id   ='ALL';
+SET @Affiliate_id    ='ALL';
+SET @Account_id      ='ALL';
+SET @Channel_id      ='ALL';
+SET @Product         ='ALL';
+SET @Platform        ='ALL';
+SET @Brand_Group     ='ALL';
+SET @Currency        ='EUR';
+SET @Total           ='YES';
+SET @Filters         ='NO';
+SET @TotLine         ='FIRST';
+SET @Meta            ='NO';
+SET @Debug           ='NO';
+SET @View            ='VIEWGES';
+SET @GroupByMS       ='NO';
+SET @OnlyOverCap     ='NO';
+SET @Search          ='';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+
+   IF lower(@k)='month'           THEN SET @Month         =UPPER(@v); END IF;
+   IF lower(@k)='ms_id'           THEN SET @MS_id         =UPPER(@v); END IF;
+   IF lower(@k)='owner'           THEN SET @Owner         =UPPER(@v); END IF;
+   IF lower(@k)='advertiser_id'   THEN SET @Advertiser_id =UPPER(@v); END IF;
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='account_id'      THEN SET @Account_id    =UPPER(@v); END IF;
+   IF lower(@k)='channel_id'      THEN SET @Channel_id    =UPPER(@v); END IF;
+   IF lower(@k)='currency'        THEN SET @Currency      =UPPER(@v); END IF;
+   IF lower(@k)='total'           THEN SET @Total         =UPPER(@v); END IF;
+   IF lower(@k)='totline'         THEN SET @TotLine       =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='view'            THEN SET @View          =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='groupbyms'       THEN SET @GroupByMS     =UPPER(@v); END IF;
+   IF lower(@k)='onlyovercap'     THEN SET @OnlyOverCap   =UPPER(@v); END IF;
+   IF lower(@k)='product'         THEN SET @Product       =      @v;  END IF;
+   IF lower(@k)='platform'        THEN SET @Platform      =      @v;  END IF;
+   IF lower(@k)='brand_group'     THEN SET @Brand_Group   =      @v;  END IF;
+   IF lower(@k)='search'          THEN SET @Search        =     (@v); END IF;
+
+END WHILE;
+
+-- Recupera espacios reemplazados en front end por caracter "\"
+IF @Product       !="ALL" THEN SET @Product      =replace(@Product,"!"," ");     END IF;
+IF @Platform      !="ALL" THEN SET @Platform     =replace(@Platform,"!"," ");    END IF;
+IF @Brand_Group   !="ALL" THEN SET @Brand_Group  =replace(@Brand_Group,"!"," "); END IF;
+
+IF @Debug!="NO" THEN SELECT @Product,@Platform,@Brand_Group; END IF;
+--
+IF @Debug!="NO" THEN SELECT @Month,@View,@Filters,@OWNER,@OnlyOverCap,@Brand_Group,@Advertiser_id,@Affiliate_id,@Account_id,@Channel_id,@Product,@Platform,@Currency,@Total,@Debug,@Meta,InputCommLine; END IF;
+
+SET @SearchClause=replace('and (D.Tracker_ID like "%XXX%" or D.Tracker_Name like "%XXX%"                                             
+     or D.Code_To_Affiliate like "%XXX%" or D.MS_id like "%XXX%")','XXX',@Search);                                           
+
+SET @WhereMS_id='';
+SET @WhereOwner='';         
+SET @WhereAdvertiser_id ='';
+SET @WhereAffiliate_id  ='';
+SET @WhereAdv_Account_id='';
+SET @WhereChannel_id    ='';
+SET @WhereStatus        ='';
+SET @WhereProduct       ='';
+SET @WherePlatform      ='';
+SET @WhereBrand_Group   ='';
+SET @WhereSearch        ='';
+
+IF @MS_id            !="ALL" THEN SET @WhereMS_id=CONCAT(" AND D.MS_id=",@MS_id);     
+ELSE                  
+   IF @Owner         !="ALL" THEN SET @WhereOwner         =CONCAT(" AND D.Owner=",@Owner);                                  END IF;
+   IF @Advertiser_id !="ALL" THEN SET @WhereAdvertiser_id =CONCAT(" AND IFNULL(D.Advertiser_id,'')   =",@Advertiser_id );   END IF;
+   IF @Affiliate_id  !="ALL" THEN SET @WhereAffiliate_id  =CONCAT(" AND IFNULL(D.Affiliate_id ,'')   =",@Affiliate_id  );   END IF;
+   IF @Account_id    !="ALL" THEN SET @WhereAdv_Account_id=CONCAT(" AND IFNULL(D.Username_id  ,'')   =",@Account_id);       END IF;
+   IF @Channel_id    !="ALL" THEN SET @WhereChannel_id    =CONCAT(" AND IFNULL(D.Channel_id	,'')    =",@Channel_id);       END IF;
+   IF @Product       !="ALL" THEN SET @WhereProduct       =CONCAT(" AND IFNULL(D.Product      ,'')   ='",@Product,"'");  	 END IF;
+   IF @Platform      !="ALL" THEN SET @WherePlatform      =CONCAT(" AND IFNULL(D.Portal     	,'')    ='",@Platform,"'"); 	 END IF;
+   IF @Brand_Group   !="ALL" THEN SET @WhereBrand_Group   =CONCAT(" AND IFNULL(D.Brand_Group 	,'') ='",@Brand_Group,"'"); END IF;
+   IF @Search        !=""    THEN SET @WhereSearch        =@SearchClause; END IF;
+END IF;
+
+IF @OnlyOverCap ="YES" 
+THEN SET @WhereOnlyOverCap   =CONCAT(" AND (CPA_Limit>0 AND CPA/CPA_Limit>0.8)");
+     SET @GroupByMS="YES";                                -- fuerza agrupación por ms para ver OverCap
+ELSE SET @WhereOnlyOverCap   =' ';  END IF;
+
+IF @GroupByMS="YES" AND @Product="ALL"
+THEN SET @GroupBySeleccBase='';
+ELSE SET @GroupBySeleccBase=' ,ifnull(D.Product,"") ';  END IF;
+
+IF @TotLine="FIRST" THEN SET @PositionTotLine=" Asc"; ELSE SET @PositionTotLine=" Desc"; END IF;
+
+IF lower(@Currency)='original' THEN SET @Currency_result='ALL'; ELSE SET @Currency_result=UPPER(@Currency); END IF;
+
+-- IF @View="VIEWAFF" THEN
+     -- SET @FromTable='," " as Platform FROM Snapshot_day_by_day_fact2 ';
+     -- SET @FilterFromTable='," " as Platform FROM Snapshot_day_by_day_fact2 ';
+     -- SET @AcumGesOnly='';
+     -- SET @TotGesOnly='';
+     -- SET @Meta='';
+-- ELSE
+	  -- SET @FromTable=",Brand_Group,Portal as Platform,Deal_Ges_CPA as `Ge_CPA`,Deal_Ges_RS as `Ge_RS` FROM Snapshot_day_by_day_fact1 ";
+	  -- SET @FilterFromTable=",Portal as Platform FROM Snapshot_day_by_day_fact1 ";
+     -- SET @AcumGesOnly=',Ge_CPA,Ge_RS ';
+     -- SET @TotGesOnly=',"~~~~~","~~~~~"';
+-- END IF;
+
+IF @Debug!="NO" THEN SELECT @OnlyOverCap,@GroupByMS,@Product,@GroupBySeleccBase,@View,@WhereOnlyOverCap,@Search,@MS_id; END IF;
+IF @Debug!="NO" THEN SELECT @WhereMS_id,@WhereOwner,@WhereAdvertiser_id,@WhereAffiliate_id,@WhereAdv_Account_id
+                           ,@WhereChannel_id,@WhereProduct,@WherePlatform,@WhereBrand_Group,@WhereSearch; END IF;
+
+/**************************************************************************************************************/
+SET @SQLmeta=concat(
+' UNION ALL (
+SELECT
+   "setting" as Meta
+   ,"width=100px,omit=true" as date
+   ,if(@Owner!="ALL","omit=true","width=80px") as Owner_id
+   ,if(@Brand_Group!="ALL" OR @Account_id!="ALL" OR @Advertiser_id!="ALL" OR @Affiliate_id!="ALL","omit=true","width=110px") as BrandGroup
+   ,if(@Platform!="ALL" OR @Brand_Group!="ALL" OR @Account_id!="ALL" OR @Advertiser_id!="ALL" OR @Affiliate_id!="ALL","omit=true","width=100px") as Platform
+   ,if(@Advertiser_id="ALL","width=120px","width=120px,omit=true") as Brand
+   ,if(@Account_id="ALL","width=160px","width=160px,omit=true") as Account
+   ,if(@Affiliate_id="ALL","width=160px","width=160px,omit=true") as Affiliate
+   ,"width=90px,center=true,action=1" as MS_id
+   ,"width=100px" as MS_Status
+   ,"width=100px,center=true" as Cap
+   ,"width=120px" as Tracker_ID
+   ,if(@Product!="ALL" OR @GroupByMS="YES","omit=true","minWidth:100px,maxWidth=400px,width=150px") Product
+   ,"width=80px,right=true" cpa
+   ,"width=90px,right=true" nr
+   ,"width=90px,right=true" Ge_sum_CPA
+   ,"width=90px,right=true" Ge_sum_RS
+   ,"width=90px,right=true" Af_sum_CPA
+   ,"width=90px,right=true" Af_sum_RS
+   ,"width=80px,right=true" Ge_cpa
+   ,"width=80px,right=true" Ge_rs
+   ,if(@GroupByMS="YES","omit=true","width=80px,right=true") Af_cpa
+   ,if(@GroupByMS="YES","omit=true","width=80px,right=true") Af_rs
+   ,"minWidth:100px,maxWidth=400px,width=170px" Channel
+   ,"minWidth:100px,maxWidth=400px,width=300px" Tracker_name
+   ,"width=100px" as Cod2Aff
+-- ,`FTD`,`Views`,`Clicks`,`Signups`,`Impr`,`Deposits`,`DepCust`,`ActCust`
+   ,"width=90px,right=true","width=90px,right=true","width=90px,right=true","width=90px,right=true"
+   ,"width=90px,right=true","width=110px,right=true","width=90px,right=true","width=90px,right=true"
+	FROM DUAL WHERE @Meta="YES")'
+);
+-- IF @Debug!="NO" THEN SELECT @SQLmeta; END IF;
+/**************************************************************************************************************/
+
+SET SESSION group_concat_max_len = 100000;
+
+/*
+
+*/
+
+SET @SQL=concat('
+WITH Seleccion_base as (
+SELECT LEFT(D.Date,7) as Date,D.Owner
+   ,D.Brand as Advertiser,D.Username as Account,D.Affiliate
+   ,ifnull(D.MS_id,"missing") AS MS_id
+   ,if(D.MS_id IS NULL,"unknown",M.Status) AS MS_Status
+   ,lower(D.Tracker_ID) as Tracker_ID
+   ,lower(D.Tracker_Name) as Tracker_Name
+   ,D.Code_To_Affiliate as Cod2Aff
+   ,lower(D.Product) as Product
+	,D.Channel,D.CPA_Limit
+   ,sum(D.Qualified_Players) as CPA
+   ,sum(D.Net_Revenue) as NetRev
+	,SUM(D.`Revenue_Share_Gestor`   ) AS `Ge_sum_RS`   
+	,SUM(D.`Revenue_Share_Affiliate`) AS `Af_sum_RS`
+	,SUM(D.`CPA_Value_Gestor`       ) AS `Ge_sum_CPA`    
+	,SUM(D.`CPA_Value_Affiliate`    ) AS `Af_sum_CPA`    
+   ,D.Deal_Aff_CPA                as `Af_CPA`
+   ,D.Deal_Aff_RS                 as `Af_RS`
+   ,D.Deal_Ges_CPA                as `Ge_CPA`
+   ,D.Deal_Ges_RS                 as `Ge_RS` 
+   ,sum(D.`First_Time_Deposit`)   as FTD
+   ,sum(D.`Views`)                as Views
+   ,sum(D.`Clicks`)               as Clicks
+   ,sum(D.`Signups`)              as Signups
+   ,sum(D.`Impressions`)          as Impr
+   ,sum(D.`Deposits`)             as Deposits
+   ,sum(D.`Depositing_Customers`) as DepCust
+   ,sum(D.`Active_Customers`)     as ActCust
+   ,D.Brand_Group
+   ,D.Portal as Platform
+FROM Snapshot_day_by_day_fact1 D
+LEFT JOIN `campaign_marketing_source` `M` ON `M`.`id` = D.`MS_id` AND D.MS_id is not null
+WHERE LEFT(DATE,7)=@Month '
+   ,@WhereMS_id
+   ,@WhereOwner
+   ,@WhereAdvertiser_id
+   ,@WhereAffiliate_id
+   ,@WhereAdv_Account_id
+   ,@WhereChannel_id
+   ,@WhereProduct
+   ,@WherePlatform
+   ,@WhereBrand_Group
+   ,@WhereSearch
+   ,'
+GROUP BY LEFT(Date,7),D.Brand,D.Username,ifnull(MS_id,0),D.Tracker_ID,D.Tracker_Name',@GroupBySeleccBase,'
+ORDER BY LEFT(Date,7),D.Owner,D.Brand,MS_id
+)
+(
+SELECT '
+   ,IF(@Meta="YES","'data' as `Meta`,",""),'
+   Date,Owner,Brand_Group AS BGroup,Platform,Advertiser,Account,Affiliate
+   ,MS_id
+   ,MS_Status AS Status
+   ,CASE CPA_Limit>0
+         WHEN CPA/CPA_Limit>=0.8 THEN concat(CPA_Limit,"/",ROUND(CPA/CPA_Limit*100,0),"%")
+         ELSE "" END  as `Cap/Used`
+   ,Tracker_ID,Product
+   ,CPA,NetRev
+   ,Ge_sum_CPA   `Ge_CPA Total`
+   ,Ge_sum_RS    `Ge_RS Total`
+   ,Af_sum_CPA   `Af_CPA Total`
+   ,Af_sum_RS    `Af_RS Total`
+   ,Ge_CPA       `Ge_CPA Deal`
+   ,Ge_RS        `Ge_RS Deal`
+   ,Af_CPA       `Af_CPA Deal`
+   ,Af_RS        `Af_RS Deal`
+   ,Channel,Tracker_Name,Cod2Aff
+   ,`FTD`,`Views`,`Clicks`,`Signups`,`Impr`,`Deposits`,`DepCust`,`ActCust`
+FROM Seleccion_base where 1=1',@WhereOnlyOverCap,'
+)
+UNION ALL
+(
+SELECT
+--  Date,Owner,Brand_Group,Platform,Advertiser,Account,Affiliate
+  ',IF(@Meta="YES","'total' as `Meta`,",""),'
+   " ~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"TOTAL"
+-- ,MS_id,Tracker_ID,Product
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,SUM(CPA),sum(NetRev)
+   ,SUM(Ge_sum_CPA)
+   ,SUM(Ge_sum_RS )
+   ,SUM(Af_sum_CPA)
+   ,SUM(Af_sum_RS )
+-- ,Af_CPA,Af_RS
+   ,"~~~~~"
+   ,"~~~~~"
+-- ,Ge_CPA,Ge_RS
+   ,"~~~~~","~~~~~"
+-- ,Channel,Tracker_Name,Cod2Aff
+   ,"~~~~~"
+   ,"~~~~~"
+   ,"~~~~~"
+   ,sum(`FTD`) as FTD,sum(`Views`) as Views,sum(`Clicks`) as Clicks,sum(`Signups`) as Signups
+   ,sum(`Impr`) as Impr,sum(`Deposits`) as Deposits,sum(`DepCust`) as DepCust,sum(`ActCust`) as ActCust
+FROM Seleccion_base
+WHERE @Total="YES"'
+,@WhereOnlyOverCap,'
+GROUP BY Date
+)'
+,IF(@Meta="YES",@SQLmeta,""),'
+ORDER BY Date',@PositionTotLine,',convert(`CPA`,signed) DESC;');
+
+SET @SQLfilters=CONCAT('
+WITH BaseCount AS (
+SELECT LEFT(Date,7) as Date,Owner
+   ,Brand as Advertiser,Username as Account,Affiliate
+   ,ifnull(MS_id,"missing") AS MS_id,Tracker_ID,Tracker_Name,Code_To_Affiliate as Cod2Aff,Channel
+   ,if(@Product!="ALL" OR @GroupByMS="YES","All",Product) as Product
+   -- ,sum(Qualified_Players) as CPA,sum(Net_Revenue) as NetRev,Deal_Aff_CPA as `Af_CPA`,Deal_Aff_RS as `Af_RS`
+   ,Username_id,Affiliate_id
+   ,Advertiser_id 
+   ,IFNULL(`Channel_id`,"") as Channel_id
+   ,IFNULL(`Brand_Group`,"") as `Brand_Group`
+   ,IFNULL(Portal,"") as Platform
+FROM Snapshot_day_by_day_fact1 D
+where LEFT(DATE,7)=@MONTH '
+   ,@WhereMS_id
+   ,@WhereOwner
+   ,@WhereAdvertiser_id
+   ,@WhereAffiliate_id
+   ,@WhereAdv_Account_id 
+   ,@WhereChannel_id
+   ,@WhereProduct
+   ,@WherePlatform
+   ,@WhereBrand_Group
+   ,@WhereSearch
+   ,'
+GROUP BY LEFT(Date,7),ifnull(Owner,""),ifnull(Brand_Group,""),ifnull(Platform,""),ifnull(Brand,"")
+,ifnull(Username,""),ifnull(MS_id,0),ifnull(Tracker_ID,""),ifnull(Tracker_Name,"")',@GroupBySeleccBase,',ifnull(Affiliate,""),ifnull(CHANNEL,"")   
+)
+(SELECT "01" as "Korder","Date" AS "WinTitle",`Date` AS "WinValues"
+                                       ,"Date" AS `CallKey`,`Date` AS "CallValue"
+                                                                        ,COUNT(*) AS "Rows" 
+                                                                                       FROM BaseCount GROUP BY `Date`) UNION ALL
+(SELECT "02","Owner"      ,`Owner`      ,"Owner"        ,`Owner`         ,COUNT(*) AS K FROM BaseCount WHERE `Owner`      >" " GROUP BY IFNULL(`Owner`      ,"")) UNION ALL
+(SELECT "03","Brand_Group",`Brand_Group`,"Brand_Group"  ,`Brand_Group`   ,COUNT(*) AS K FROM BaseCount WHERE `Brand_Group`>" " GROUP BY IFNULL(`Brand_Group`,"")) UNION ALL
+(SELECT "04","Platform"   ,`Platform`   ,"Platform"     ,`Platform`      ,COUNT(*) AS K FROM BaseCount WHERE `Platform`   >" " GROUP BY IFNULL(`Platform`   ,"")) UNION ALL
+(SELECT "05","Advertiser" ,`Advertiser` ,"Advertiser_id",`Advertiser_id` ,COUNT(*) AS K FROM BaseCount WHERE `Advertiser` >" " GROUP BY IFNULL(`Advertiser` ,"")) UNION ALL
+(SELECT "06","Account"    ,`Account`    ,"Username_id"  ,`Username_id`   ,COUNT(*) AS K FROM BaseCount WHERE `Account`    >" " GROUP BY IFNULL(`Account`    ,"")) UNION ALL
+(SELECT "07","Affiliate"  ,`Affiliate`  ,"Affiliate_id" ,`Affiliate_id`  ,COUNT(*) AS K FROM BaseCount WHERE `Affiliate`  >" " GROUP BY IFNULL(`Affiliate`  ,"")) UNION ALL
+(SELECT "08","Channel"    ,`Channel`    ,"Channel_id"   ,`Channel_id`    ,COUNT(*) AS K FROM BaseCount WHERE `Channel`    >" " GROUP BY IFNULL(`Channel`    ,"")) UNION ALL
+(SELECT "09","Product"    ,`Product`    ,"Product"      ,`Product`       ,COUNT(*) AS K FROM BaseCount WHERE `Product`    >" " GROUP BY IFNULL(`Product`    ,""))
+ORDER BY 1,3
+;');
+/*
+Month           =[AAAA-MM].
+Currency        =[EUR | Original].
+OnlyOverCap     =[Yes | No]. 
+GroupByMS       =[Yes | No]. 
+
+
+
+
+*/
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Gestor_MonthlySources2(''); -- Todos los valores de selección por default
+call Gestor_MonthlySources2('meta=yes'); -- Todos los valores de selección por default usando _fact2
+call Gestor_MonthlySources2('meta=yes,search=1587,debug=ye'); 
+call Gestor_MonthlySources2('meta=yes,ms_id=1587,debug=ye'); 
+call Gestor_MonthlySources2('Month=2022-10,meta=no,OnlyOverCap=yes,debug=no'); 
+call Gestor_MonthlySources2('Filters=yes,meta=yes,debug=no'); -- Filtros current month
+call Gestor_MonthlySources2('Month=2022-10,Filters=no,search=yuh,debug=ye');
+call Gestor_MonthlySources2('Month=2022-10,search=80');
+ 
+call Gestor_MonthlySources2('Account_id=102,Product=Sports!-!Exchange,Filters=yes,GroupByMS=no,debug=no,meta=yes');
+
+*/

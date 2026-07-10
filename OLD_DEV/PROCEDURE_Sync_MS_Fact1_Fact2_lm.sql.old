@@ -1,0 +1,60 @@
+/* PROCEDURE_Sync_MS_Fact1_Fact2_lm.sql
+   21.09.2022 V1 Sincroniza una Marketing Source entre Snapshot_day_by_day_fact1 y _fact2
+   
+*/
+DROP PROCEDURE IF EXISTS Sync_MS_Fact1_Fact2_lm;
+
+DELIMITER $$
+CREATE PROCEDURE Sync_MS_Fact1_Fact2_lm(IN MS_id_PROC int)
+   
+   COMMENT 'Sync una Marketing Source entre Fact1 y Fact2 LM'
+   LANGUAGE SQL
+
+BEGIN
+
+SET @Version         ='v1 21.09.2022';
+
+SET @LastMonth=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+-- SET @MS_id=1050;
+-- SET @MS_id=CONCAT('"',@MS_id,'"');
+-- SET @MS_id=MS_id_PROC;
+-- SELECT @LastMonth,@MS_id,MS_id_PROC;
+
+-- SELECT * FROM Snapshot_day_by_day_fact2 WHERE LEFT(DATE,7)=@LastMonth AND MS_id=MS_id_PROC;
+DELETE FROM Snapshot_day_by_day_fact2 WHERE LEFT(DATE,7)=@LastMonth AND MS_id=MS_id_PROC;
+-- /*    
+INSERT IGNORE INTO Snapshot_day_by_day_fact2 (
+   `id`,`Owner`,`Affiliate`,`Affiliate_id`,`Deal_Aff`,`Date`,`Username`,`Username_id`,`Brand`
+   ,`Advertiser_id`,`Tracker_ID`,`MS_id`,`Tracker_Name`,`Code_To_Affiliate`,`Product`,`Product_Real`
+   ,`Qualified_Players`,`Qualified_Players_Adjusted`,`First_Time_Deposit`,`Views`,`Clicks`,`Signups`
+   ,`Impressions`,`Sign_Up_Offer`,`Type`,`Language`,`Deposits`,`Depositing_Customers`,`Active_Customers`
+   ,`New_Depositing_Customers`,`New_Active_Customers`,`First_Time_Active_Customers`,`Turnover`,`Net_Revenue`
+   ,`CPA_Limit`,`Channel_id`,`Channel`,`Revenue_Share_Affiliate`,`CPA_Value_Affiliate`,`Deal_Aff_id`
+   ,`Deal_Aff_CPA`,`Deal_Aff_Carry_Over`,`Deal_Aff_RS_Against_CPA`,`Deal_Aff_RS_Base`,`Deal_Aff_RS`
+   ,`Deal_Aff_Valid_From`,`Data_Currency`,`TimeGen`
+) 
+-- */
+SELECT
+   id,Owner,Affiliate,Affiliate_id,Deal_Aff,Date,Username,Username_id,Brand
+   ,Advertiser_id,Tracker_ID,MS_id,Tracker_Name,Code_To_Affiliate,Product,Product_Real
+   ,sum(Qualified_Players) AS Qualified_Players,sum(Qualified_Players_Adjusted) AS Qualified_Players_Adjusted,sum(First_Time_Deposit) AS First_Time_Deposit,sum(Views) AS Views,sum(Clicks) AS Clicks,sum(Signups) AS Signups
+   ,sum(Impressions) AS Impressions,Sign_Up_Offer,Type,Language,sum(Deposits) AS Deposits,sum(Depositing_Customers) AS Depositing_Customers,sum(Active_Customers) AS Active_Customers
+   ,sum(New_Depositing_Customers) AS New_Depositing_Customers,sum(New_Active_Customers) AS New_Active_Customers,sum(First_Time_Active_Customers) AS First_Time_Active_Customers,sum(Turnover) AS Turnover,sum(Net_Revenue) AS Net_Revenue
+   ,CPA_Limit,Channel_id,Channel,sum(Revenue_Share_Affiliate) AS Revenue_Share_Affiliate,sum(CPA_Value_Affiliate) AS CPA_Value_Affiliate,Deal_Aff_id
+   ,Deal_Aff_CPA,Deal_Aff_Carry_Over,Deal_Aff_RS_Against_CPA,Deal_Aff_RS_Base,Deal_Aff_RS
+   ,Deal_Aff_Valid_From,Data_Currency,TimeGen
+FROM Snapshot_day_by_day_fact1
+WHERE LEFT(DATE,7)=@LastMonth AND MS_id=MS_id_PROC
+GROUP BY Owner,Date,Affiliate_id,MS_id -- ,Tracker_ID,Tracker_Name,Deal_Aff_CPA,Deal_Aff_RS
+	HAVING 
+      sum(Qualified_Players)<>0 OR 
+      sum(Net_Revenue)<>0 OR
+      sum(First_Time_Deposit)<>0 OR 
+      sum(Views)<>0 OR 
+      sum(Clicks)<>0 OR 
+      sum(Signups)<>0 OR 
+      sum(Impressions)<>0 
+;
+
+END$$
+DELIMITER ;

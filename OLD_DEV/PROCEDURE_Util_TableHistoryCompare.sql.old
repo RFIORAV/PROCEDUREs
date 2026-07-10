@@ -1,0 +1,126 @@
+/* PROCEDURE_Util_TableHistoryCompare.sql
+   01.09.2022 V1 Compara el diseño de dos tablas en dos db distintas. 
+              Genera ALTER para que la TableName1 en DBbase1 quede igual que TableName2 en DBreference
+   Parametros (TableName1, DBbase1,TableName2, DBreference)
+   
+*/
+DROP PROCEDURE IF EXISTS Util_TableHistoryCompare;
+DELIMITER $$
+CREATE PROCEDURE Util_TableHistoryCompare(IN
+   TableName1   VARCHAR(50),
+   DBbase1      VARCHAR(50)
+   -- TableName2   VARCHAR(50),
+   -- DBreference  VARCHAR(50)
+   
+   )
+   COMMENT '18.09.2022 V1 Compara tabla History con su tabla. Genera ALTER'
+   LANGUAGE SQL
+    
+BEGIN
+
+SET @TableNameRef=TableName1;
+SET @TableNameHis=CONCAT(TableName1,'_history');
+SET @DBreference=DBbase1;
+/*
+SET @TableNameRef='forex_deal_gestor_prod';
+SET @TableNameHis=CONCAT(@TableNameRef,'_history');
+SET @DBreference='euroaffiliati2';
+SELECT @TableNameRef,@TableNameHis,@DBreference;
+*/
+	(
+	SELECT CONCAT('ALTER TABLE ',@DBreference,'.',@TableNameHis,
+          '    CHANGE COLUMN `',B2.COLUMN_NAME,'` `',B2.COLUMN_NAME,'` ',B2.COLUMN_TYPE,' NULL DEFAULT NULL') AS ''
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B  ON B.TABLE_SCHEMA=@DBreference  AND B.TABLE_NAME = @TableNameRef  AND A.COLUMN_NAME = B.COLUMN_NAME
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B1 ON B1.TABLE_SCHEMA=@DBreference AND B1.TABLE_NAME = @TableNameHis AND A.COLUMN_NAME = B1.COLUMN_NAME
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B2 ON B2.TABLE_SCHEMA=@DBreference AND B2.TABLE_NAME = @TableNameHis
+   WHERE (A.TABLE_SCHEMA=@DBreference AND A.TABLE_NAME = @TableNameHis AND A.COLUMN_NAME NOT LIKE 'Aud_%'
+     AND  B.COLUMN_NAME IS NOT NULL AND A.COLUMN_TYPE != B.COLUMN_TYPE)
+      OR (A.TABLE_SCHEMA=@DBreference AND A.TABLE_NAME = @TableNameRef
+     AND B1.COLUMN_NAME IS NULL)
+   ORDER BY B2.ORDINAL_POSITION asc LIMIT 1
+   )
+	UNION ALL
+   (
+   SELECT CONCAT(',   CHANGE COLUMN `',A.COLUMN_NAME,'` `',A.COLUMN_NAME,'` ',B.COLUMN_TYPE,' NULL DEFAULT NULL '
+      ,case when B1.ORDINAL_POSITION=1 then concat('FIRST') else concat('AFTER ','`',B1.COLUMN_NAME,'` ') END)
+      ,A.COLUMN_NAME,A.ORDINAL_POSITION,B.COLUMN_NAME,B.ORDINAL_POSITION,B1.COLUMN_NAME,B1.ORDINAL_POSITION
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   INNER JOIN `INFORMATION_SCHEMA`.`COLUMNS` B  ON B.TABLE_SCHEMA=@DBreference  AND B.TABLE_NAME = @TableNameRef  AND A.COLUMN_NAME = B.COLUMN_NAME
+   LEFT  JOIN `INFORMATION_SCHEMA`.`COLUMNS` B1 ON B1.TABLE_SCHEMA=@DBreference AND B1.TABLE_NAME = @TableNameRef AND A.COLUMN_NAME = B1.COLUMN_NAME
+         AND B1.ORDINAL_POSITION=IF((B.ORDINAL_POSITION-1)>0,(B.ORDINAL_POSITION-1),1)
+   WHERE A.TABLE_SCHEMA=@DBreference AND A.TABLE_NAME = @TableNameHis 
+	  AND B.COLUMN_NAME IS NOT NULL AND (A.COLUMN_TYPE != B.COLUMN_TYPE
+	   OR A.ORDINAL_POSITION != B.ORDINAL_POSITION)
+   ORDER BY A.ORDINAL_POSITION
+   )
+   UNION ALL
+   (
+   SELECT CONCAT(',   ADD COLUMN `',A.COLUMN_NAME,'` ',A.COLUMN_TYPE
+      ,' NULL DEFAULT NULL '
+      ,case when A.ORDINAL_POSITION=1 then concat('FIRST') else concat('AFTER ','`',B1.COLUMN_NAME,'` ') end)
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B ON B.TABLE_SCHEMA=@DBreference AND B.TABLE_NAME = @TableNameHis AND A.COLUMN_NAME = B.COLUMN_NAME
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B1 ON B1.TABLE_SCHEMA=@DBreference AND B1.TABLE_NAME = @TableNameRef 
+         AND B1.ORDINAL_POSITION=IF((A.ORDINAL_POSITION-1)>0,(A.ORDINAL_POSITION-1),1)
+   WHERE A.TABLE_SCHEMA=@DBreference AND A.TABLE_NAME = @TableNameRef AND B.COLUMN_NAME IS NULL 
+   )
+   UNION ALL
+	(
+	SELECT ';' AS ''
+   FROM `INFORMATION_SCHEMA`.`COLUMNS` A
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B  ON B.TABLE_SCHEMA=@DBreference  AND B.TABLE_NAME = @TableNameRef  AND A.COLUMN_NAME = B.COLUMN_NAME
+   LEFT JOIN `INFORMATION_SCHEMA`.`COLUMNS` B1 ON B1.TABLE_SCHEMA=@DBreference AND B1.TABLE_NAME = @TableNameHis AND A.COLUMN_NAME = B1.COLUMN_NAME
+   WHERE (A.TABLE_SCHEMA=@DBreference AND A.TABLE_NAME = @TableNameHis AND A.COLUMN_NAME NOT LIKE 'Aud_%'
+     AND  B.COLUMN_NAME IS NOT NULL AND A.COLUMN_TYPE != B.COLUMN_TYPE)
+      OR (A.TABLE_SCHEMA=@DBreference AND A.TABLE_NAME = @TableNameRef
+     AND B1.COLUMN_NAME IS NULL)
+   ORDER BY A.ORDINAL_POSITION asc LIMIT 1
+   )
+;
+END$$
+DELIMITER ;
+
+/*
+-- TEST --------------
+call Util_TableHistoryCompare('account_account','euroaffiliati2');
+call Util_TableHistoryCompare('account_account_files','euroaffiliati2');
+call Util_TableHistoryCompare('campaign_advertiser','euroaffiliati2');
+
+*/
+/*
+ALTER TABLE euroaffiliati2.campaign_advertiser_history CHANGE COLUMN `Creation_Date` `Creation_Date` datetime(6) DEFAULT CURRENT_TIMESTAMP(6);
+ALTER TABLE euroaffiliati2.campaign_advertiser_history CHANGE COLUMN `id` `id` int NULL DEFAULT NULL;
+ALTER TABLE euroaffiliati2.campaign_advertiser_history ADD COLUMN `Affiliate_Manager_Email` varchar(30) NULL DEFAULT NULL;
+ALTER TABLE euroaffiliati2.campaign_advertiser_history ADD COLUMN `KYC` tinyint(1) NULL DEFAULT NULL;
+ALTER TABLE euroaffiliati2.campaign_advertiser_history ADD COLUMN `Platform_Domain` varchar(57) NULL DEFAULT NULL;
+-- 
+ALTER TABLE euroaffiliati2.account_account_history    CHANGE COLUMN `id` `id` int NULL DEFAULT NULL
+,   ADD COLUMN `is_forex` tinyint(1) NULL DEFAULT NULL
+,   ADD COLUMN `is_gambling` tinyint(1) NULL DEFAULT NULL
+;
+
+-- PARA SIMULAR MODIFICACIONES DE LA TABLA
+ALTER TABLE `account_account_history`
+	CHANGE COLUMN `nation` `nation` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci' AFTER `company_address`,
+	CHANGE COLUMN `birthday` `birthday` INT NULL DEFAULT NULL AFTER `city`,
+	CHANGE COLUMN `terms` `terms` VARCHAR(50) NULL DEFAULT NULL AFTER `url`,
+	DROP COLUMN `telegram_report`,
+	DROP COLUMN `referral_id`,
+	DROP COLUMN `referral_id_origin`,
+	DROP COLUMN `CPA_Limit`,
+	DROP COLUMN `document_id_back`,
+	DROP COLUMN `document_id_front`;
+
+ALTER TABLE `account_account_referral_history`
+	CHANGE COLUMN `referral_token` `referral_token` TEXT NULL COLLATE 'utf8mb4_0900_ai_ci' AFTER `username`,
+	DROP COLUMN `deal_id`,
+	DROP COLUMN `Status`;
+	
+ALTER TABLE `forex_deal_gestor_prod`			ADD COLUMN `Pirulo_after_is_active` VARCHAR(50) NOT NULL DEFAULT '' AFTER `is_active`;	
+ALTER TABLE `forex_deal_gestor_prod_history`	DROP COLUMN `id`;
+
+;
+
+
+*/

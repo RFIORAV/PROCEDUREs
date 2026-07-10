@@ -1,0 +1,261 @@
+/*
+PROCEDURE_Report_Publisher_invoices_v1.sql - Report Invoices and Payment Publishers (campaign_publisher_invoice y campaign_publisher_receivable)
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+DataFrom        =[Invoices | Payments]. OPCIONAL. Default=Invoices
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Invoiced_Month  =[ALL | AAAA-MM ]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Invoice_id      =[ALL | id de Invoice]. OPCIONAL. Default=ALL. 
+Status_id       =[ALL | 1 | 0 | N]. OPCIONAL. Default=ALL. 1=Active 0=Inactive 4=Paused 6=Paused NM N=Other inactiv
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+ 
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Report_Publisher_invoices('debug=yes'); -- Devuelve todas las MS
+call Report_Publisher_invoices('debug=ye,filters=yes');
+call Report_Publisher_invoices('debug=ye,filters=no,status=0');
+
+18.10.2024 V1     Primera versión operativa
+04.03.2025        fix INNER JOIN x LEFT JOIN
+*/
+
+DROP PROCEDURE IF EXISTS Report_Publisher_invoices;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Publisher_invoices`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Publisher invoices'
+
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 04.03.2025';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @Owner           ='ALL';
+SET @DataFrom        ='Invoices';
+SET @Publisher_id    ='ALL';
+SET @Invoice_id      ='ALL';
+SET @Invoiced_Month  ='ALL';
+SET @Status_id       ='ALL';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);
+
+   IF lower(@k)='datafrom'        THEN SET @DataFrom      =UPPER(@v); END IF;
+   IF lower(@k)='owner'           THEN SET @Owner         =UPPER(@v); END IF;
+   IF lower(@k)='publisher_id'    THEN SET @Publisher_id  =UPPER(@v); END IF;
+   IF lower(@k)='invoice_id'      THEN SET @Invoice_id    =UPPER(@v); END IF;
+   IF lower(@k)='Invoiced_Month'  THEN SET @Invoiced_Month=UPPER(@v); END IF;
+   IF lower(@k)='status_id'       THEN SET @Status_id     =      @v;  END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @DataFrom,@Month,@Filters,@OWNER,@Publisher_id,@Invoice_id,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereOwner='';
+SET @WherePublisher='';
+SET @WhereInvoice_id='';
+SET @WhereInvoiced_Month='';
+SET @WhereStatus='';
+
+IF @Owner         !="ALL" THEN SET @WhereOwner         =CONCAT(" AND i.Owner=",@Owner);                     END IF;
+IF @Publisher_id  !="ALL" THEN SET @WherePublisher     =CONCAT(" AND i.Publisher_id   =",@Publisher_id );   END IF;
+IF @Status_id     !="ALL" THEN SET @WhereStatus        =CONCAT(" AND i.`Status_id`    =",@Status_id );      END IF;
+IF @Invoiced_Month!="ALL" THEN SET @WhereInvoiced_Month=CONCAT(" AND i.`Invoiced_Month`='",@Invoiced_Month,"'" ); END IF;
+IF @Invoice_id    !="ALL" 
+THEN SET @WhereInvoice_id=CONCAT(" AND i.id=",@Invoice_id );
+     SET @WhereOwner='';
+     SET @WherePublisher='';
+     SET @WhereInvoiced_Month='';
+     SET @DataFrom="PAYMENTS";
+END IF;
+
+IF @Debug!="NO" THEN SELECT @WhereOwner,@WhereStatus,@WherePublisher,@WhereInvoice_id,@WhereInvoiced_Month; END IF;
+
+SET @Count=0;
+
+/**************************************************************************************************************/
+
+SET @CTE_Invoices=CONCAT('
+WITH Main_Table_Data as (
+SELECT i.id,i.`Status`,i.Owner,a.`username` as OwnerName,i.Publisher_id,p.`Advertiser_Name` as Publisher
+      ,i.`Invoiced_Month`,i.`Invoice_Number`,i.`Date`,i.`Due_Date`
+      ,format(i.`Ammount`,2),i.`Currency`
+      ,i.`Remarks`,left(i.`Last_Update`,16) as `Last_Update`,o.`username` as `User`
+FROM `campaign_publisher_invoice` i
+LEFT JOIN campaign_publisher  p     ON p.id=i.Publisher_id      -- 04.03.2025
+LEFT JOIN account_account     a     ON a.id=i.Owner             -- 04.03.2025
+LEFT JOIN account_account     o     ON o.id=i.Operator          -- 04.03.2025
+WHERE 1=1 '
+   ,@WhereOwner
+   ,@WherePublisher
+   ,@WhereInvoiced_Month
+   ,@WhereStatus
+,')
+');
+
+SET @CTE_Payments=CONCAT('
+WITH Main_Table_Data as (
+SELECT r.id,r.`Status`,i.Owner,a.`username` as OwnerName
+      ,i.Publisher_id,p.`Advertiser_Name` as Publisher
+      ,i.`Invoiced_Month`,i.`Invoice_Number`,i.`Date` `Inv Date`
+      ,r.`Bank_account`,r.`Date` `Pay Date`
+      ,format(r.`Gross_Ammount`,2),r.`Transfer_Currency`
+      ,format(r.`Net_Ammount`,2),r.`Currency`
+      ,r.`Remarks`,left(r.`Last_Update`,16) as `Last_Update`,o.`username` as `User`
+FROM `campaign_publisher_receivable` r
+INNER JOIN `campaign_publisher_invoice` i ON i.id=r.`Invoice_id`
+LEFT  JOIN campaign_publisher  p     ON p.id=i.Publisher_id      -- 04.03.2025
+LEFT  JOIN account_account     a     ON a.id=i.Owner             -- 04.03.2025
+LEFT  JOIN account_account     o     ON o.id=r.Operator          -- 04.03.2025
+WHERE 1=1 '
+   ,@WhereOwner
+   ,@WherePublisher
+   ,@WhereInvoice_id
+   ,@WhereStatus
+,')
+');
+
+SET @SQLmeta_Invoices=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"width=80px,action=2"   as `Action`
+   ,"omit=yes"              as `id`
+   ,"width=080px"           as `Status`
+   ,"omit=yes"              as `Owner_id`
+   ,"width=100px"           as `Owner`
+   ,"omit=yes"              as `Publisher_id`
+   ,"width=130px"           as `Publisher`
+   ,"width=100px"           as `Invoiced Month`
+   ,"width=100px"           as `Invoice Number`
+   ,"width=100px"           as `Invoice Date`
+   ,"width=100px"           as `Due Date`
+   ,"width=100px,right=yes" as `Ammount`
+   ,"width=100px"           as `Currency`
+   ,"width=100px"           as `Remarks`
+   ,"width=130px"           as `Last Update`
+   ,"width=100px"           as `User`
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQLmeta_Payments=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"width=80px,action=2"   as `Action`
+   ,"omit=yes"              as `id`
+   ,"omit=yes"              as `Status`
+   ,"omit=yes"              as `Owner_id`
+   ,"omit=yes"              as `Owner`
+   ,"omit=yes"              as `Publisher_id`
+   ,"omit=yes"              as `Publisher`
+   ,"omit=yes"              as `Invoiced Month`
+   ,"width=100px"           as `Invoice Number`
+   ,"width=100px"           as `Invoice Date`
+   ,"width=100px"           as `Bank account`
+   ,"width=100px"           as `Date Payment`
+   ,"width=100px,right=yes" as `Gross Ammount`
+   ,"width=100px"           as `Transfer Currency`
+   ,"width=100px,right=yes" as `Credited Ammount`
+   ,"width=100px"           as `Credited Currency`
+   ,"width=100px"           as `Remarks`
+   ,"width=130px"           as `Last Update`
+   ,"width=100px"           as `User`
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+IF( @DataFrom="PAYMENTS",@CTE_Payments,@CTE_Invoices),
+IF( @DataFrom="PAYMENTS",@SQLmeta_Payments,@SQLmeta_Invoices),
+'
+SELECT "data" as `Meta`,"..." as `Action`,
+   MT.*
+FROM Main_Table_Data MT
+;'
+);
+
+-- IF @DataFrom="PAYMENTS" THEN SET @SQL=(REPLACE(@SQL,"_Invoices","_Payments")); END IF;
+
+-- WHERE 1=1 '
+--    ,@WhereStat_final,
+-- ------------------------------------------------------------
+
+SET @Month_INI=left(DATE_SUB(CURDATE(), INTERVAL 12 MONTH),7);
+
+SET @SQLfilters=CONCAT(
+@CTE_Invoices,'
+(SELECT "01" as "Korder","Owner" AS "Key",`OwnerName` AS "Value","Owner" AS `CallKey`,`Owner` AS "CallValue",COUNT(*) AS "Rows"
+                                                                                     FROM Main_Table_Data GROUP BY `Owner`) UNION ALL
+(SELECT "03","Invoiced Month",`Invoiced_Month`,"Invoiced_Month" ,`Invoiced_Month`,"" FROM Main_Table_Data WHERE `Invoiced_Month`>="',@Month_INI,'"  
+                                                                                     GROUP BY `Invoiced_Month`) UNION ALL
+(SELECT "05","Publisher",`Publisher`,"Publisher_id" ,`Publisher_id`              ,COUNT(*) AS K FROM Main_Table_Data GROUP BY `Publisher`)
+ORDER BY 1,3
+;');
+/*
+SELECT i.id,i.`Status`,i.Owner,a.`username` as OwnerName,i.Publisher_id,p.`Advertiser_Name` as Publisher
+      ,i.`Invoiced_Month`,i.`Invoice_Number`,i.`Date`,i.`Due_Date`
+      ,i.`Ammount`,i.`Currency`,i.`Remarks`,left(i.`Last_Update`,16) as `Last_Update`,i.`Operator`
+*/
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/* 
+
+call Report_Publisher_invoices('debug=ye'); -- Devuelve todas las MS
+call Report_Publisher_invoices('debug=ye,filters=yeS');
+call Report_Publisher_invoices('debug=ye,DataFrom=Payments');
+call Report_Publisher_invoices('debug=ye,filters=no,Publisher_id=2');
+call Report_Publisher_invoices('debug=ye,filters=no,Invoice_id=10');
+call Report_Publisher_invoices('debug=ye,filters=no,Invoiced_Month=2024-01');
+*/

@@ -1,0 +1,102 @@
+/* PROCEDURE_Check_DbD_v1.sql - Check Main Table vs Raw data table (fact1/DbD)
+
+   05.09.2022 V1     COMPARA Snapshot_day_by_day contra Snapshot_day_by_day_fact1. Devuelve diferencias
+                     Mes corriente a partir de día 6. Antes del 6, Last Month
+   19.10.2022 V1.1   Columna Meta
+   Parametros (none)
+*/
+
+DROP PROCEDURE IF EXISTS Check_DbD;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE Check_DbD()
+   COMMENT 'Check Main Table vs Raw data table (fact1/DbD)'
+   LANGUAGE SQL
+
+BEGIN
+
+SET @Version='v1.1 18.10.2022';
+SET @Meta="YES";
+
+IF DAY(CURDATE()) <= 5  
+THEN SET @DateFrom=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+ELSE SET @DateFrom=LEFT(CURDATE(),7);
+END IF;
+    
+-- Difrerencias de CPA entre DbD y DbD_fact1
+WITH Dif_DbD_vs_Fact1 as (
+  SELECT "" as Meta,
+     'DbD' as Tabla,left(Date,7) Date,Brand,D.username AS Username_id,C.Username,Tracker_ID,Tracker_Name,0 as MS_ID
+		,'' as Warning,D.Product
+     ,SUM(Qualified_Players) AS CPA,Hour_Update,Language
+  FROM Snapshot_day_by_day D
+  LEFT JOIN campaign_username C ON C.id=D.username
+  WHERE left(Date,7)>=@DateFrom
+  GROUP BY left(Date,7),Brand,username,Tracker_ID,Tracker_Name,Product,Language
+  UNION ALL -- -----------------------
+  SELECT "" as Meta,
+     'Fact1' as Tabla,left(Date,7) Date,Brand,Username_id,Username,Tracker_ID,Tracker_Name,MS_ID
+		,if(MS_ID IS NULL,'<<FALTA MS','') as Warning,Product
+     ,SUM(Qualified_Players) AS CPA,Hour_Update,Language
+  FROM Snapshot_day_by_day_fact1
+  WHERE left(Date,7)>=@DateFrom
+  GROUP BY left(Date,7),Brand,username,Tracker_ID,Tracker_Name,Product,Language
+)
+
+(
+SELECT "" as Meta,
+    Tabla,left(Date,7) Date,Brand,Username_id,Username,Tracker_ID,Tracker_Name,MS_ID,Warning,Product
+   ,ROUND(SUM(if(Tabla='DbD',CPA,0)),0) AS CPAs_DbD
+	,ROUND(SUM(if(Tabla='DbD',0,CPA)),0) AS CPAs_Fa1
+	,Hour_Update,Language
+FROM Dif_DbD_vs_Fact1
+GROUP BY left(Date,7),Brand,Username_id,Tracker_ID,Tracker_Name,Product,Language HAVING CPAs_DbD<>CPAs_Fa1
+ORDER BY Brand,Date,Username_id,Tracker_ID,Tracker_Name
+)
+UNION ALL
+(
+SELECT "" as Meta,
+    Tabla,left(Date,7),'TOTAL Mes' AS Brand,'-------' AS Username_id,'-------' AS Username,'-------' AS Tracker_ID,'-------' AS Tracker_Name
+	,'-------' AS MS_ID,'-------' AS Warning,'-------' AS Product
+   ,'-------' AS  CPAs_DbD
+	,ROUND(SUM(CPA),0) AS CPAs_Fa1
+	,Hour_Update,Language
+from Dif_DbD_vs_Fact1 WHERE Tabla='Fact1' GROUP BY left(Date,7)
+)
+UNION ALL
+(
+SELECT "" as Meta,
+    Tabla,max(DATE),'PROYECTADO Mes Cte' AS Brand,'-------' AS Username_id,'-------' AS Username,'-------' AS Tracker_ID,'-------' AS Tracker_Name
+	,'-------' AS MS_ID,'-------' AS Warning,'-------' AS Product
+   ,'-------' AS  CPAs_DbD
+	,ROUND(SUM(CPA)/DAY(curdate())*DAY(LAST_DAY(CURDATE())),0) AS CPAs_Fa1
+	,Hour_Update,Language
+from Dif_DbD_vs_Fact1 WHERE Tabla='Fact1' 
+)
+UNION ALL 
+(
+SELECT
+  "setting" as Meta
+  ,"width=80px,center=true" as Tabla
+  ,"width=100px" as DATE
+  ,"width=200px" as Brand
+  ,"width=100px" as Username_id
+  ,"width=100px" as Username
+  ,"width=100px" as Tracker_ID
+  ,"width=260px" as Tracker_Name
+  ,"width=100px" as MS_ID
+  ,"width=100px" as Warning
+  ,"width=100px" as Product
+  ,"width=100px" as CPAs_DbD
+  ,"width=100px" as CPAs_Fa1
+  ,"width=160px" as Hour_Update
+  ,"width=100px" as Language
+FROM DUAL WHERE @Meta="YES"
+)
+;
+
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call Check_DbD();

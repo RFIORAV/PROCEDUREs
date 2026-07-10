@@ -1,0 +1,68 @@
+/*** Monthly_CPA_Aff_Brand_matrix
+	(ex Totali_affiliate_CPA_brand_matrix)
+	15.12.2021 First version
+	21.01.2022 VideoSlot added
+	26.02.2022 BetFair added
+	16.08.2022 Cambio a forex_day_by_day_fact1_2 en lugar de forex_Totali_affiliate_new por performance
+	16.08.2022 Se agregan nuevas Brand
+*/
+
+CREATE OR REPLACE VIEW `Totali_affiliate_CPA_brand_matrix` AS
+ 
+SELECT 
+     Owner,Affiliate,LEFT(Date,7) as `Date`
+    ,SUM(Qualified_Players) AS Total
+    ,SUM(CASE WHEN Brand='BetClic'       THEN Qualified_Players ELSE 0 END) AS 'BetClic'        
+    ,SUM(CASE WHEN Brand='BetFair'       THEN Qualified_Players ELSE 0 END) AS 'BetFair'        
+    ,SUM(CASE WHEN Brand='BetWay'        THEN Qualified_Players ELSE 0 END) AS 'BetWay'         
+    ,SUM(CASE WHEN Brand='BoaBoa'        THEN Qualified_Players ELSE 0 END) AS 'BoaBoa'         
+    ,SUM(CASE WHEN Brand='BuranCasino'   THEN Qualified_Players ELSE 0 END) AS 'BuranCasino'    
+    ,SUM(CASE WHEN Brand='Bwin'          THEN Qualified_Players ELSE 0 END) AS 'Bwin'           
+    ,SUM(CASE WHEN Brand='Codere'        THEN Qualified_Players ELSE 0 END) AS 'Codere'         
+    ,SUM(CASE WHEN Brand='EuroBet'       THEN Qualified_Players ELSE 0 END) AS 'EuroBet'        
+    ,SUM(CASE WHEN Brand='GiocoDigitale' THEN Qualified_Players ELSE 0 END) AS 'GiocoDigitale'  
+    ,SUM(CASE WHEN Brand='GoldBet'       THEN Qualified_Players ELSE 0 END) AS 'GoldBet'        
+    ,SUM(CASE WHEN Brand='LeoVegas'      THEN Qualified_Players ELSE 0 END) AS 'LeoVegas'       
+    ,SUM(CASE WHEN Brand='LibraBet'      THEN Qualified_Players ELSE 0 END) AS 'LibraBet'       
+    ,SUM(CASE WHEN Brand='Lottomatica'   THEN Qualified_Players ELSE 0 END) AS 'Lottomatica'    
+    ,SUM(CASE WHEN Brand='Luckia'        THEN Qualified_Players ELSE 0 END) AS 'Luckia'         
+    ,SUM(CASE WHEN Brand='NetBet'        THEN Qualified_Players ELSE 0 END) AS 'NetBet'         
+    ,SUM(CASE WHEN Brand='PlanetWin365'  THEN Qualified_Players ELSE 0 END) AS 'PlanetWin365'   
+    ,SUM(CASE WHEN Brand='PokerStars'    THEN Qualified_Players ELSE 0 END) AS 'PokerStars'     
+    ,SUM(CASE WHEN Brand='Rabona'        THEN Qualified_Players ELSE 0 END) AS 'Rabona'         
+    ,SUM(CASE WHEN Brand='Sisal'         THEN Qualified_Players ELSE 0 END) AS 'Sisal'          
+    ,SUM(CASE WHEN Brand='Snai'          THEN Qualified_Players ELSE 0 END) AS 'Snai'           
+    ,SUM(CASE WHEN Brand='VideoSlot'     THEN Qualified_Players ELSE 0 END) AS 'VideoSlot'      
+    ,SUM(CASE WHEN Brand='Wazamba'       THEN Qualified_Players ELSE 0 END) AS 'Wazamba'        
+    ,SUM(CASE WHEN Brand='WilliamHill'   THEN Qualified_Players ELSE 0 END) AS 'WilliamHill'     
+FROM forex_day_by_day_fact1_2
+WHERE Qualified_Players<>0
+GROUP BY Owner,Affiliate,LEFT(Date,7) -- WITH ROLLUP 
+;
+
+/**  ANTIGUA HASTA 17.08.2022
+SELECT
+   `Owner`                   AS `Owner`
+   ,IFNULL(`Affiliate`,' ')  AS `Affiliate`
+   ,`Date`                   AS `DATE`
+   ,SUM(`Qualified_Players`) AS `Total`
+   ,SUM((CASE WHEN(`Brand`='BetClic')       THEN `Qualified_Players` ELSE 0 END)) AS `BetClic`
+   ,SUM((CASE WHEN(`Brand`='BetWay')        THEN `Qualified_Players` ELSE 0 END)) AS `BetWay`
+   ,SUM((CASE WHEN(`Brand`='Bwin')          THEN `Qualified_Players` ELSE 0 END)) AS `Bwin`
+   ,SUM((CASE WHEN(`Brand`='Codere')        THEN `Qualified_Players` ELSE 0 END)) AS `Codere`
+   ,SUM((CASE WHEN(`Brand`='EuroBet')       THEN `Qualified_Players` ELSE 0 END)) AS `EuroBet`
+   ,SUM((CASE WHEN(`Brand`='GiocoDigitale') THEN `Qualified_Players` ELSE 0 END)) AS `GiocoDigitale`
+   ,SUM((CASE WHEN(`Brand`='GoldBet')       THEN `Qualified_Players` ELSE 0 END)) AS `GoldBet`
+   ,SUM((CASE WHEN(`Brand`='LeoVegas')      THEN `Qualified_Players` ELSE 0 END)) AS `LeoVegas`
+   ,SUM((CASE WHEN(`Brand`='Luckia')        THEN `Qualified_Players` ELSE 0 END)) AS `Luckia`
+   ,SUM((CASE WHEN(`Brand`='NetBet')        THEN `Qualified_Players` ELSE 0 END)) AS `NetBet`
+   ,SUM((CASE WHEN(`Brand`='PlanetWin365')  THEN `Qualified_Players` ELSE 0 END)) AS `PlanetWin365`
+   ,SUM((CASE WHEN(`Brand`='PokerStars')    THEN `Qualified_Players` ELSE 0 END)) AS `PokerStars`
+   ,SUM((CASE WHEN(`Brand`='Sisal')         THEN `Qualified_Players` ELSE 0 END)) AS `Sisal`
+   ,SUM((CASE WHEN(`Brand`='Snai')          THEN `Qualified_Players` ELSE 0 END)) AS `Snai`
+   ,SUM((CASE WHEN(`Brand`='WilliamHill')   THEN `Qualified_Players` ELSE 0 END)) AS `WilliamHill`
+   ,SUM((CASE WHEN(`Brand`='VideoSlot')     THEN `Qualified_Players` ELSE 0 END)) AS `VideoSlot`
+FROM `forex_Totali_affiliate_new`
+GROUP BY `Owner`,`Affiliate`,`Date`
+;
+*/

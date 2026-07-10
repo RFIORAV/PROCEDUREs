@@ -1,0 +1,300 @@
+/*
+PROCEDURE_Dash_info.sql
+
+Descripción:
+  Procedimiento Dash_info.
+
+Observaciones:
+ Devuelve currentValue y trendValue para una metrica puntual del dashboard mensual.
+ No utiliza columna Meta.
+ Cada Key debe estar seguida de = y el valor deseado SIN comillas.
+ Cada par Key=Value debe ir seguido de una COMA.
+ El conjunto de pares debe ir entre '' (comillas simples) como unico parametro string.
+
+Keys:
+ Month    = [YYYY-MM]. OPCIONAL. Default=mes actual.
+ Metric   = [CPA | CPA_Value | RS_Val | Tot_Comm | CPA_Profit | Profit]. OPCIONAL. Default=CPA.
+ Owner_id = [id owner]. OPCIONAL. Si se informa, busca username en account_account y filtra por Owner.
+ Debug    = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+ InputCommLine = [valor]. Parámetro de entrada.
+
+Parametros ('[Key=Value[,...]]')
+
+Ejemplos:
+ call Dash_info_dev('Metric=CPA');
+ call Dash_info_dev('Metric=CPA,debug=yes'); 
+ call Dash_info_dev('Month=2026-03,Metric=CPA');
+ call Dash_info_dev('Month=2026-03,Metric=Tot_Comm');
+ call Dash_info_dev('Month=2026-03,Metric=CPA_Profit,Owner_id=864');
+ call Dash_info_dev('Debug=KeyValues');
+
+15.04.2026 v1.0 Primera version operativa
+15.04.2026 v1.1 Se migra a InputCommLine y se agregan defaults Month actual y Owner_id=ALL
+15.04.2026 v1.2 Owner_id informado se traduce a username desde account_account; sin Owner_id usa Owner=All Owners
+28.04.2026 v1.3 trendValue pasa a porcentaje de variacion contra mes anterior
+22.05.2026 v1.4 Si Month=mes corriente, trendValue compara acumulado a la misma fecha del mes anterior; fix filtro Date en meses distintos al corriente
+29.05.2026 v1.5 Fix filtro por Owner en dash_total_by_month y campaign_log_dashboard
+*/
+
+DROP PROCEDURE IF EXISTS Dash_info;
+DROP PROCEDURE IF EXISTS Dash_info_dev;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_info`(IN InputCommLine VARCHAR(250))
+COMMENT 'v1.5 29.05.2026 - Obtiene currentValue y trendValue por metrica desde dash_total_by_month'
+SQL SECURITY DEFINER
+
+proc_label:BEGIN
+    DECLARE v_Version VARCHAR(32) DEFAULT 'v1.5 29.05.2026';
+    DECLARE v_InputCommLine VARCHAR(500);
+    DECLARE v_Month VARCHAR(7);
+    DECLARE v_PrevMonth VARCHAR(7);
+    DECLARE v_CurrentMonth VARCHAR(7);
+    DECLARE v_Metric VARCHAR(30);
+    DECLARE v_Owner_id VARCHAR(150);
+    DECLARE v_Owner VARCHAR(150);
+    DECLARE v_Debug VARCHAR(20);
+    DECLARE v_CompareDay INT;
+    DECLARE v_UsePartialCompare CHAR(3) DEFAULT 'NO';
+    DECLARE v_PrevCompareDate DATE;
+    DECLARE v_CurrentValue DECIMAL(16,2) DEFAULT 0;
+    DECLARE v_PrevValue DECIMAL(16,2);
+    DECLARE v_e INT;
+    DECLARE v_c INT;
+    DECLARE v_k VARCHAR(100);
+    DECLARE v_v VARCHAR(250);
+
+    SET v_Month = LEFT(CURDATE(), 7);
+    SET v_Metric = 'CPA';
+    SET v_Owner_id = '';
+    SET v_Owner = 'All Owners';
+    SET v_Debug = 'NO';
+
+    SET v_InputCommLine = CONCAT(IFNULL(InputCommLine, ''), ',');
+    SET v_InputCommLine = REPLACE(v_InputCommLine, '"', '');
+
+    WHILE v_InputCommLine > ' ' DO
+        SET v_e = INSTR(v_InputCommLine, '=');
+        SET v_c = INSTR(v_InputCommLine, ',');
+
+        IF v_e = 0 OR v_c = 0 OR v_e > v_c THEN
+            LEAVE proc_label;
+        END IF;
+
+        SET v_k = TRIM(SUBSTRING(v_InputCommLine, 1, v_e - 1));
+        SET v_v = TRIM(SUBSTRING(v_InputCommLine, v_e + 1, v_c - (v_e + 1)));
+        SET v_InputCommLine = SUBSTRING(v_InputCommLine, v_c + 1);
+
+        IF LOWER(v_k) = 'month' THEN SET v_Month = v_v; END IF;
+        IF LOWER(v_k) = 'metric' THEN SET v_Metric = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'owner_id' THEN SET v_Owner_id = v_v; END IF;
+        IF LOWER(v_k) = 'debug' THEN SET v_Debug = UPPER(v_v); END IF;
+    END WHILE;
+
+    IF CHAR_LENGTH(v_Month) <> 7
+       OR SUBSTRING(v_Month, 5, 1) <> '-'
+       OR STR_TO_DATE(CONCAT(v_Month, '-01'), '%Y-%m-%d') IS NULL THEN
+        SELECT 'ERROR: Month invalido. Formato esperado YYYY-MM.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    IF v_Metric NOT IN ('CPA', 'CPA_VALUE', 'RS_VAL', 'TOT_COMM', 'CPA_PROFIT', 'PROFIT') THEN
+        SELECT 'ERROR: Metric invalido. Valores permitidos: CPA, CPA_Value, RS_Val, Tot_Comm, CPA_Profit, Profit.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+    -- Check if there is more than one owner data for the month
+    Set @Check_Owner=(SELECT count(Owner) FROM dash_total_by_month 
+                      WHERE Month=v_Month AND Date IN ('TOTAL NOW', 'TOTAL')); 
+
+    IF v_Owner_id > '' THEN
+        SELECT IFNULL(MAX(A.username), '') INTO v_Owner
+        FROM account_account A
+        WHERE CAST(A.id AS CHAR) = v_Owner_id;
+
+        IF v_Owner = '' THEN
+            SELECT CONCAT('ERROR: Owner_id no encontrado en account_account [', v_Owner_id, '].') AS error_message;
+            LEAVE proc_label;
+        END IF;
+    ELSE
+        SET v_Owner = 'All Owners';
+    END IF;
+
+    SET v_CurrentMonth = LEFT(CURDATE(), 7);
+    SET v_CompareDay = DAY(CURDATE());
+
+    SET v_PrevMonth = DATE_FORMAT(
+        DATE_SUB(STR_TO_DATE(CONCAT(v_Month, '-01'), '%Y-%m-%d'), INTERVAL 1 MONTH),
+        '%Y-%m'
+    );
+
+    -- Comparacion parcial solo cuando Month es el mes corriente
+    IF v_Month = v_CurrentMonth THEN
+        SET v_PrevCompareDate = DATE_SUB(CURDATE(), INTERVAL 1 MONTH);
+
+        IF v_CompareDay = DAY(LAST_DAY(CURDATE()))
+           OR DAY(v_PrevCompareDate) = DAY(LAST_DAY(v_PrevCompareDate))
+           OR v_CompareDay > DAY(LAST_DAY(v_PrevCompareDate)) THEN
+            SET v_UsePartialCompare = 'NO';
+        ELSE
+            SET v_UsePartialCompare = 'YES';
+        END IF;
+    END IF;
+
+    IF v_Debug = 'KEYVALUES' THEN
+        SELECT 'Version' AS `Key`, v_Version AS `Value`
+        UNION ALL SELECT 'Month', v_Month
+        UNION ALL SELECT 'PrevMonth', v_PrevMonth
+        UNION ALL SELECT 'CurrentMonth', v_CurrentMonth
+        UNION ALL SELECT 'CompareDay', CAST(v_CompareDay AS CHAR)
+        UNION ALL SELECT 'UsePartialCompare', v_UsePartialCompare
+        UNION ALL SELECT 'PrevCompareDate', IFNULL(DATE_FORMAT(v_PrevCompareDate, '%Y-%m-%d'), '')
+        UNION ALL SELECT 'Metric', v_Metric
+        UNION ALL SELECT 'Owner_id', IFNULL(v_Owner_id, '')
+        UNION ALL SELECT 'Owner', v_Owner
+        UNION ALL SELECT 'Debug', v_Debug;
+        LEAVE proc_label;
+    END IF;
+
+    SELECT IFNULL(SUM(
+        CASE v_Metric
+            WHEN 'CPA' THEN IFNULL(T.`CPA`, 0)
+            WHEN 'CPA_VALUE' THEN IFNULL(T.`CPA_Value`, 0)
+            WHEN 'RS_VAL' THEN IFNULL(T.`RS_Val`, 0)
+            WHEN 'TOT_COMM' THEN IFNULL(T.`Tot_Comm`, 0)
+            WHEN 'CPA_PROFIT' THEN IFNULL(T.`CPA_Value`, 0) - IFNULL(T.`AfCom_cpa`, 0)
+            WHEN 'PROFIT' THEN IFNULL(T.`Profit`, 0)
+            ELSE 0
+        END
+    ), 0) INTO v_CurrentValue
+    FROM dash_total_by_month T
+    WHERE T.`Month` = v_Month
+      AND T.`Date` IN ('TOTAL NOW', 'TOTAL')
+      AND CASE WHEN @Check_Owner > 1 THEN T.`Owner` = v_Owner ELSE 1=1 END
+      ;
+
+    IF v_UsePartialCompare = 'YES' THEN
+        SET v_PrevValue = NULL;
+
+        SELECT
+            CASE v_Metric
+                WHEN 'CPA' THEN IFNULL(C.`CPA`, 0)
+                WHEN 'CPA_VALUE' THEN IFNULL(C.`CPA_Value`, 0)
+                WHEN 'RS_VAL' THEN IFNULL(C.`RS_Val`, 0)
+                WHEN 'TOT_COMM' THEN IFNULL(C.`Tot_Comm`, 0)
+                WHEN 'CPA_PROFIT' THEN IFNULL(C.`CPA_Value`, 0) - IFNULL(C.`AfCom_cpa`, 0)
+                WHEN 'PROFIT' THEN IFNULL(C.`Profit`, 0)
+                ELSE 0
+            END INTO v_PrevValue
+        FROM campaign_log_dashboard C
+        WHERE LEFT(C.`Owner_id`, 7) = v_PrevMonth
+          AND C.`Date` IN ('TOTAL', 'TOTAL NOW')
+          AND DAY(STR_TO_DATE(RIGHT(C.`Owner_id`, 16), '%Y-%m-%d %H:%i')) = v_CompareDay
+          AND CASE WHEN @Check_Owner > 1 THEN C.`Owner` = v_Owner ELSE 1=1 END
+        --   AND (
+        --       (v_Owner = 'All Owners' AND TRIM(C.`Brand`) = 'GRAND TOTAL' AND C.`Owner` = 'All Owners')
+        --       OR (v_Owner <> 'All Owners' AND C.`Owner` = v_Owner AND TRIM(C.`Brand`) = 'TOTAL')
+        --   )
+        ORDER BY C.`Owner_id` DESC
+        LIMIT 1;
+
+        IF v_Debug = 'YES' THEN SELECT  v_CurrentValue,v_PrevValue,@Check_Owner; END IF;
+
+        IF v_PrevValue IS NULL THEN
+            SELECT IFNULL(SUM(
+                CASE v_Metric
+                    WHEN 'CPA' THEN IFNULL(T.`CPA`, 0)
+                    WHEN 'CPA_VALUE' THEN IFNULL(T.`CPA_Value`, 0)
+                    WHEN 'RS_VAL' THEN IFNULL(T.`RS_Val`, 0)
+                    WHEN 'TOT_COMM' THEN IFNULL(T.`Tot_Comm`, 0)
+                    WHEN 'CPA_PROFIT' THEN IFNULL(T.`CPA_Value`, 0) - IFNULL(T.`AfCom_cpa`, 0)
+                    WHEN 'PROFIT' THEN IFNULL(T.`Profit`, 0)
+                    ELSE 0
+                END
+            ), 0) INTO v_PrevValue
+            FROM dash_total_by_month T
+            WHERE T.`Month` = v_PrevMonth
+              AND T.`Date` IN ('TOTAL NOW', 'TOTAL')
+              AND T.`Owner` = v_Owner;
+        END IF;
+    ELSE
+        SELECT IFNULL(SUM(
+            CASE v_Metric
+                WHEN 'CPA' THEN IFNULL(T.`CPA`, 0)
+                WHEN 'CPA_VALUE' THEN IFNULL(T.`CPA_Value`, 0)
+                WHEN 'RS_VAL' THEN IFNULL(T.`RS_Val`, 0)
+                WHEN 'TOT_COMM' THEN IFNULL(T.`Tot_Comm`, 0)
+                WHEN 'CPA_PROFIT' THEN IFNULL(T.`CPA_Value`, 0) - IFNULL(T.`AfCom_cpa`, 0)
+                WHEN 'PROFIT' THEN IFNULL(T.`Profit`, 0)
+                ELSE 0
+            END
+        ), 0) INTO v_PrevValue
+        FROM dash_total_by_month T
+        WHERE T.`Month` = v_PrevMonth
+          AND T.`Date` IN ('TOTAL NOW', 'TOTAL')
+          AND T.`Owner` = v_Owner;
+    END IF;
+
+    SET v_PrevValue = IFNULL(v_PrevValue, 0);
+
+    SELECT
+        CASE WHEN v_Metric = 'CPA' THEN FORMAT(v_CurrentValue, 0) ELSE FORMAT(v_CurrentValue, 2) END AS currentValue,
+        CASE
+            WHEN v_PrevValue = 0 THEN 0
+            ELSE ROUND(((v_CurrentValue - v_PrevValue) / v_PrevValue) * 100, 1)
+        END AS trendValue;
+
+    IF v_Debug = 'YES' THEN
+        SELECT
+            v_Version AS Version,
+            v_Month AS Month,
+            v_PrevMonth AS PrevMonth,
+            v_UsePartialCompare AS UsePartialCompare,
+            v_CompareDay AS CompareDay,
+            v_PrevCompareDate AS PrevCompareDate,
+            v_Metric AS Metric,
+            IFNULL(v_Owner_id, '') AS Owner_id,
+            v_Owner AS Owner,
+            v_CurrentValue AS CurrentValueRaw,
+            v_PrevValue AS PrevValueRaw;
+    END IF;
+END$$
+DELIMITER ;
+
+/*
+-- Crear tabla si no existe PROCEDURE_DashTotalByMonth_v1.sql
+CREATE TABLE IF NOT EXISTS `dash_total_by_month` (
+   `id` INT AUTO_INCREMENT,
+   `Year` INT NOT NULL,
+   `Month` VARCHAR(7) NOT NULL,
+   `Date` VARCHAR(22) DEFAULT NULL,
+   `Owner_id` VARCHAR(150) DEFAULT NULL,
+   `Owner` VARCHAR(100) DEFAULT NULL,
+   `Publisher` VARCHAR(150) DEFAULT NULL,
+   `Brand` VARCHAR(150) DEFAULT NULL,
+   `StatusAdv` VARCHAR(30) DEFAULT NULL,
+   `Account` VARCHAR(200) DEFAULT NULL,
+   `Status` VARCHAR(30) DEFAULT NULL,
+   `Curr` VARCHAR(11) DEFAULT NULL,
+   `Cap/Used` VARCHAR(57) DEFAULT NULL,
+   `Signup` INT DEFAULT NULL,
+   `FTD` INT DEFAULT NULL,
+   `CPA` INT DEFAULT NULL,
+   `CPA_Value` DECIMAL(10,2) DEFAULT NULL,
+   `Net_Rev` DECIMAL(10,2) DEFAULT NULL,
+   `RS_Val` DECIMAL(10,2) DEFAULT NULL,
+   `Tot_Comm` DECIMAL(10,2) DEFAULT NULL,
+   `Profit` DECIMAL(10,2) DEFAULT NULL,
+   `AfCurr` VARCHAR(11) DEFAULT NULL,
+   `AfCom_cpa` DECIMAL(10,2) DEFAULT NULL,
+   `AfCom_rs` DECIMAL(10,2) DEFAULT NULL,
+   `AfCom_tot` DECIMAL(10,2) DEFAULT NULL,
+   `AfCPA` VARCHAR(33) DEFAULT NULL,
+   `AfRS` VARCHAR(33) DEFAULT NULL,
+   `Area` VARCHAR(50) DEFAULT NULL,
+   `RS COver Pend` VARCHAR(51) DEFAULT NULL,
+   `Publisher_id` VARCHAR(11) DEFAULT NULL,
+   `Created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_year_month_owner` (`Year`, `Month`, `Owner`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+ */

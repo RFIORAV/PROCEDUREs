@@ -1,0 +1,160 @@
+DELIMITER $$
+
+CREATE PROCEDURE PROCEDURE_Cap_excess_by_level_Set_Status_v2()
+BEGIN
+    -- Variables de control
+    DECLARE v_Month VARCHAR(7);
+    DECLARE v_Month_Start DATE;
+    DECLARE v_Month_End DATE;
+    DECLARE v_Error INT DEFAULT 0;
+
+    -- Obtener el mes actual en formato YYYY-MM
+    SET v_Month = DATE_FORMAT(CURDATE(), '%Y-%m');
+    
+    -- Definir rangos de fecha para optimizar el índice (Evitar LEFT(Date, 7))
+    SET v_Month_Start = STR_TO_DATE(CONCAT(v_Month, '-01'), '%Y-%m-%d');
+    SET v_Month_End = DATE_ADD(v_Month_Start, INTERVAL 1 MONTH);
+
+    -- 1. Lógica de Parsing de Parámetros (Mantenida igual)
+    IF v_Error = 0 THEN
+        -- Aquí iría la lógica de parsing si fuera necesaria, 
+        -- pero el ejemplo original no usaba parámetros dinámicos, 
+        -- solo variables globales. Se mantiene la estructura.
+    END IF;
+
+    -- 2. Verificar Configuración Global
+    IF v_Error = 0 THEN
+        -- Simulación de verificación de configuración
+        -- SET v_Error = (SELECT COUNT(*) FROM settings WHERE setting_name = 'EnforceCapCPA' AND setting_value = '1');
+    END IF;
+
+    -- 3. Modo Debug (Previsualización)
+    IF v_Error = 0 THEN
+        -- Usamos CTE para evitar repetir la lógica de JOIN y SUM
+        WITH cpa_data AS (
+            SELECT 
+                'Operator' AS level_name,
+                s.PublisherID AS entity_id,
+                p.Name AS entity_name,
+                SUM(s.Qualified_Players) AS cpa_acum,
+                p.CAP_Limit AS cpa_limit
+            FROM Snapshot_day_by_day_fact1 s
+            JOIN campaign_publisher p ON s.PublisherID = p.PublisherID
+            WHERE s.Date >= v_Month_Start AND s.Date < v_Month_End
+            GROUP BY s.PublisherID, p.Name, p.CAP_Limit
+            
+            UNION ALL
+            
+            SELECT 
+                'Brand' AS level_name,
+                s.AdvertiserID AS entity_id,
+                a.Name AS entity_name,
+                SUM(s.Qualified_Players) AS cpa_acum,
+                a.CAP_Limit AS cpa_limit
+            FROM Snapshot_day_by_day_fact1 s
+            JOIN campaign_advertiser a ON s.AdvertiserID = a.AdvertiserID
+            WHERE s.Date >= v_Month_Start AND s.Date < v_Month_End
+            GROUP BY s.AdvertiserID, a.Name, a.CAP_Limit
+            
+            UNION ALL
+            
+            SELECT 
+                'Account' AS level_name,
+                s.AccountID AS entity_id,
+                u.Username AS entity_name,
+                SUM(s.Qualified_Players) AS cpa_acum,
+                u.CAP_Limit AS cpa_limit
+            FROM Snapshot_day_by_day_fact1 s
+            JOIN campaign_username u ON s.AccountID = u.AccountID
+            WHERE s.Date >= v_Month_Start AND s.Date < v_Month_End
+            GROUP BY s.AccountID, u.Username, u.CAP_Limit
+            
+            UNION ALL
+            
+            SELECT 
+                'Affiliate' AS level_name,
+                s.AffiliateID AS entity_id,
+                a.Username AS entity_name,
+                SUM(s.Qualified_Players) AS cpa_acum,
+                a.CAP_Limit AS cpa_limit
+            FROM Snapshot_day_by_day_fact1 s
+            JOIN account_account a ON s.AffiliateID = a.AffiliateID
+            WHERE s.Date >= v_Month_Start AND s.Date < v_Month_End
+            GROUP BY s.AffiliateID, a.Username, a.CAP_Limit
+        )
+        SELECT 
+            level_name, entity_id, entity_name, cpa_acum, cpa_limit,
+            ROUND(cpa_limit * 0.89, 2) AS threshold_89_percent
+        FROM cpa_data
+        WHERE cpa_acum >= ROUND(cpa_limit * 0.89, 2);
+    END IF;
+
+    -- 4. Ejecución de Actualizaciones (UPDATE)
+    IF v_Error = 0 THEN
+        -- Usamos CTE para la lógica de actualización
+        WITH cpa_data AS (
+            SELECT 
+                s.PublisherID, SUM(s.Qualified_Players) AS cpa_acum, p.CAP_Limit AS cpa_limit
+            FROM Snapshot_day_by_day_fact1 s
+            JOIN campaign_publisher p ON s.PublisherID = p.PublisherID
+            WHERE s.Date >= v_Month_Start AND s.Date < v_Month_End
+            GROUP BY s.PublisherID, p.CAP_Limit
+            
+            UNION ALL
+            
+            SELECT 
+                s.AdvertiserID, SUM(s.Qualified_Players) AS cpa_acum, a.CAP_Limit AS cpa_limit
+            FROM Snapshot_day_by_day_fact1 s
+            JOIN campaign_advertiser a ON s.AdvertiserID = a.AdvertiserID
+            WHERE s.Date >= v_Month_Start AND s.Date < v_Month_End
+            GROUP BY s.AdvertiserID, a.CAP_Limit
+            
+            UNION ALL
+            
+            SELECT 
+                s.AccountID, SUM(s.Qualified_Players) AS cpa_acum, u.CAP_Limit AS cpa_limit
+            FROM Snapshot_day_by_day_fact1 s
+            JOIN campaign_username u ON s.AccountID = u.AccountID
+            WHERE s.Date >= v_Month_Start AND s.Date < v_Month_End
+            GROUP BY s.AccountID, u.CAP_Limit
+            
+            UNION ALL
+            
+            SELECT 
+                s.AffiliateID, SUM(s.Qualified_Players) AS cpa_acum, a.CAP_Limit AS cpa_limit
+            FROM Snapshot_day_by_day_fact1 s
+            JOIN account_account a ON s.AffiliateID = a.AffiliateID
+            WHERE s.Date >= v_Month_Start AND s.Date < v_Month_End
+            GROUP BY s.AffiliateID, a.CAP_Limit
+        )
+        UPDATE campaign_publisher p
+        JOIN cpa_data c ON p.PublisherID = c.PublisherID
+        SET p.Status = '6'
+        WHERE c.cpa_acum >= ROUND(c.cpa_limit * 0.89, 2);
+
+        UPDATE campaign_advertiser a
+        JOIN cpa_data c ON a.AdvertiserID = c.AdvertiserID
+        SET a.Status = '6'
+        WHERE c.cpa_acum >= ROUND(c.cpa_limit * 0.89, 2);
+
+        UPDATE campaign_username u
+        JOIN cpa_data c ON u.AccountID = c.AccountID
+        SET u.Status = '6'
+        WHERE c.cpa_acum >= ROUND(c.cpa_limit * 0.89, 2);
+
+        UPDATE account_account a
+        JOIN cpa_data c ON a.AffiliateID = c.AffiliateID
+        SET a.Status = '6'
+        WHERE c.cpa_acum >= ROUND(c.cpa_limit * 0.89, 2);
+
+        IF v_Error = 0 THEN
+            COMMIT;
+        ELSE
+            ROLLBACK;
+        END IF;
+    END IF;
+
+END$$
+
+DELIMITER ;
+

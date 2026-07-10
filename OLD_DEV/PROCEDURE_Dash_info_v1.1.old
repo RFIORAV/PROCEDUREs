@@ -1,0 +1,172 @@
+/*
+PROCEDURE_Dash_info_v1.2.sql
+
+Descripción:
+  Procedimiento Dash_info.
+
+Observaciones:
+ Devuelve currentValue y trendValue para una metrica puntual del dashboard mensual.
+ No utiliza columna Meta.
+ Cada Key debe estar seguida de = y el valor deseado SIN comillas.
+ Cada par Key=Value debe ir seguido de una COMA.
+ El conjunto de pares debe ir entre '' (comillas simples) como unico parametro string.
+
+Keys:
+ Month    = [YYYY-MM]. OPCIONAL. Default=mes actual.
+ Metric   = [CPA | CPA_Value | RS_Val | Tot_Comm | CPA_Profit | Profit]. OPCIONAL. Default=CPA.
+ Owner_id = [id owner]. OPCIONAL. Si se informa, busca username en account_account y filtra por Owner.
+ Debug    = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+ InputCommLine = [valor]. Parámetro de entrada.
+
+Parametros ('[Key=Value[,...]]')
+
+Ejemplos:
+ call Dash_info('Metric=CPA');
+ call Dash_info('Month=2026-03,Metric=Tot_Comm');
+ call Dash_info('Month=2026-03,Metric=CPA_Profit,Owner_id=864');
+ call Dash_info('Debug=KeyValues');
+
+15.04.2026 v1.0 Primera version operativa
+15.04.2026 v1.1 Se migra a InputCommLine y se agregan defaults Month actual y Owner_id=ALL
+15.04.2026 v1.2 Owner_id informado se traduce a username desde account_account; sin Owner_id usa Owner=All Owners
+*/
+
+SET NAMES 'utf8mb4';
+
+-- DROP PROCEDURE IF EXISTS Dash_info;
+DROP PROCEDURE IF EXISTS Dash_info_dev;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_info_dev`(IN InputCommLine VARCHAR(250))
+COMMENT 'Obtiene currentValue y trendValue por metrica desde dash_total_by_month'
+SQL SECURITY DEFINER
+
+proc_label:BEGIN
+    DECLARE v_Version VARCHAR(32) DEFAULT 'v1.1 27.04.2026';
+    DECLARE v_InputCommLine VARCHAR(500);
+    DECLARE v_Month VARCHAR(7);
+    DECLARE v_PrevMonth VARCHAR(7);
+    DECLARE v_Metric VARCHAR(30);
+    DECLARE v_Owner_id VARCHAR(150);
+    DECLARE v_Owner VARCHAR(150);
+    DECLARE v_Debug VARCHAR(20);
+    DECLARE v_e INT;
+    DECLARE v_c INT;
+    DECLARE v_k VARCHAR(100);
+    DECLARE v_v VARCHAR(250);
+
+    SET v_Month = LEFT(CURDATE(), 7);
+    SET v_Metric = 'CPA';
+    SET v_Owner_id = '';
+    SET v_Owner = 'All Owners';
+    SET v_Debug = 'NO';
+
+    SET v_InputCommLine = CONCAT(IFNULL(InputCommLine, ''), ',');
+    SET v_InputCommLine = REPLACE(v_InputCommLine, '"', '');
+
+    WHILE v_InputCommLine > ' ' DO
+        SET v_e = INSTR(v_InputCommLine, '=');
+        SET v_c = INSTR(v_InputCommLine, ',');
+
+        IF v_e = 0 OR v_c = 0 OR v_e > v_c THEN
+            LEAVE proc_label;
+        END IF;
+
+        SET v_k = TRIM(SUBSTRING(v_InputCommLine, 1, v_e - 1));
+        SET v_v = TRIM(SUBSTRING(v_InputCommLine, v_e + 1, v_c - (v_e + 1)));
+        SET v_InputCommLine = SUBSTRING(v_InputCommLine, v_c + 1);
+
+        IF LOWER(v_k) = 'month' THEN SET v_Month = v_v; END IF;
+        IF LOWER(v_k) = 'metric' THEN SET v_Metric = UPPER(v_v); END IF;
+        IF LOWER(v_k) = 'owner_id' THEN SET v_Owner_id = v_v; END IF;
+        IF LOWER(v_k) = 'debug' THEN SET v_Debug = UPPER(v_v); END IF;
+    END WHILE;
+
+    IF CHAR_LENGTH(v_Month) <> 7
+       OR SUBSTRING(v_Month, 5, 1) <> '-'
+       OR STR_TO_DATE(CONCAT(v_Month, '-01'), '%Y-%m-%d') IS NULL THEN
+        SELECT 'ERROR: Month invalido. Formato esperado YYYY-MM.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    IF v_Metric NOT IN ('CPA', 'CPA_VALUE', 'RS_VAL', 'TOT_COMM', 'CPA_PROFIT', 'PROFIT') THEN
+        SELECT 'ERROR: Metric invalido. Valores permitidos: CPA, CPA_Value, RS_Val, Tot_Comm, CPA_Profit, Profit.' AS error_message;
+        LEAVE proc_label;
+    END IF;
+
+    IF v_Owner_id > '' THEN
+        SELECT IFNULL(MAX(A.username), '') INTO v_Owner
+        FROM account_account A
+        WHERE CAST(A.id AS CHAR) = v_Owner_id;
+
+        IF v_Owner = '' THEN
+            SELECT CONCAT('ERROR: Owner_id no encontrado en account_account [', v_Owner_id, '].') AS error_message;
+            LEAVE proc_label;
+        END IF;
+    ELSE
+        SET v_Owner = 'All Owners';
+    END IF;
+
+    SET v_PrevMonth = DATE_FORMAT(
+        DATE_SUB(STR_TO_DATE(CONCAT(v_Month, '-01'), '%Y-%m-%d'), INTERVAL 1 MONTH),
+        '%Y-%m'
+    );
+
+    IF v_Debug = 'KEYVALUES' THEN
+        SELECT 'Version' AS `Key`, v_Version AS `Value`
+        UNION ALL SELECT 'Month', v_Month
+        UNION ALL SELECT 'PrevMonth', v_PrevMonth
+        UNION ALL SELECT 'Metric', v_Metric
+        UNION ALL SELECT 'Owner_id', IFNULL(v_Owner_id, '')
+        UNION ALL SELECT 'Owner', v_Owner
+        UNION ALL SELECT 'Debug', v_Debug;
+        LEAVE proc_label;
+    END IF;
+
+    SELECT
+        IFNULL(SUM(
+            CASE
+                WHEN T.`Month` = v_Month THEN
+                    CASE v_Metric
+                        WHEN 'CPA' THEN IFNULL(T.`CPA`, 0)
+                        WHEN 'CPA_VALUE' THEN IFNULL(T.`CPA_Value`, 0)
+                        WHEN 'RS_VAL' THEN IFNULL(T.`RS_Val`, 0)
+                        WHEN 'TOT_COMM' THEN IFNULL(T.`Tot_Comm`, 0)
+                        WHEN 'CPA_PROFIT' THEN IFNULL(T.`CPA_Value`, 0) - IFNULL(T.`AfCom_cpa`, 0)
+                        WHEN 'PROFIT' THEN IFNULL(T.`Profit`, 0)
+                        ELSE 0
+                    END
+                ELSE 0
+            END
+        ), 0) AS currentValue,
+        IFNULL(SUM(
+            CASE
+                WHEN T.`Month` = v_PrevMonth THEN
+                    CASE v_Metric
+                        WHEN 'CPA' THEN IFNULL(T.`CPA`, 0)
+                        WHEN 'CPA_VALUE' THEN IFNULL(T.`CPA_Value`, 0)
+                        WHEN 'RS_VAL' THEN IFNULL(T.`RS_Val`, 0)
+                        WHEN 'TOT_COMM' THEN IFNULL(T.`Tot_Comm`, 0)
+                        WHEN 'CPA_PROFIT' THEN IFNULL(T.`CPA_Value`, 0) - IFNULL(T.`AfCom_cpa`, 0)
+                        WHEN 'PROFIT' THEN IFNULL(T.`Profit`, 0)
+                        ELSE 0
+                    END
+                ELSE 0
+            END
+        ), 0) AS trendValue
+    FROM dash_total_by_month T
+    WHERE T.`Month` IN (v_Month, v_PrevMonth)
+      AND T.`Date` = 'TOTAL NOW'
+      AND T.`Owner` = v_Owner;
+
+    IF v_Debug = 'YES' THEN
+        SELECT
+            v_Version AS Version,
+            v_Month AS Month,
+            v_PrevMonth AS PrevMonth,
+            v_Metric AS Metric,
+            IFNULL(v_Owner_id, '') AS Owner_id,
+            v_Owner AS Owner;
+    END IF;
+END$$
+DELIMITER ;

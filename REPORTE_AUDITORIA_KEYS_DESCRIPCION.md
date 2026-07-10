@@ -1,0 +1,195 @@
+# Reporte de Auditoría de Keys y Descripción
+
+**Fecha:** 21/04/2026
+
+## Resumen por tipo de corrección aplicado
+
+- Solo Keys: **142**
+- Solo Descripción: **1**
+- Keys + Descripción: **1**
+- Ya conformes previamente: **32**
+- Total auditados: **176**
+- Estado final OK: **176**
+
+## Archivos tocados (`PROCEDUREs/**/PROCEDURE_*.sql`)
+
+- PROCEDUREs\PROCEDURE_Calculate_Operations_Commission_v1.sql
+- PROCEDUREs\PROCEDURE_total_monthly_comm_ges_upd_v5.6.sql
+- PROCEDUREs\PROCEDURE_sub_monthly_comms_affiliate_v4.1_SUB.sql
+- PROCEDUREs\PROCEDURE_Snapshot_day_by_day_fact1_upd_lm_v2.sql
+- PROCEDUREs\PROCEDURE_marketing_source_refresh_v1.SQL
+- PROCEDUREs\PROCEDURE_Check_DbD_v1.6_op.sql
+- PROCEDUREs\PROCEDURE_Check_DbD_v1.5.2_op.sql
+- PROCEDUREs\PROCEDURE_Util_TableHistoryCompare_v2.3.sql
+- PROCEDUREs\PROCEDURE_util_Sync_bot_files_allDB_v1.sql
+- PROCEDUREs\PROCEDURE_Util_TableCompareFields_v2.3.sql
+- PROCEDUREs\PROCEDURE_util_copy_table_only_same_fields_v1.sql
+- PROCEDUREs\PROCEDURE_Util_CompareDB_create_tables_and_triggers.sql
+- PROCEDUREs\PROCEDURE_Update_auto_from_dbd_manual_v1.sql
+- PROCEDUREs\PROCEDURE_util_alter_table_customizable.sql
+- PROCEDUREs\PROCEDURE_total_monthly_comm_aff_upd_v5.6.sql
+- PROCEDUREs\PROCEDURE_Total_CommByAdvertiser_v2.2_obsoleta.sql
+- PROCEDUREs\PROCEDURE_TEST_rules_Account_deal.sql
+- PROCEDUREs\PROCEDURE_TEST_rules_mkt_source_deal.sql
+- PROCEDUREs\PROCEDURE_Sync_MS_Fact1_Fact2_lm_v1.3.sql
+- PROCEDUREs\PROCEDURE_TEMPLATE_v1.0.sql
+- PROCEDUREs\PROCEDURE_Sync_MS_DbD_DbD_lm_v3.x.sql
+- PROCEDUREs\PROCEDURE_Sync_MS_DbD_DbD_lm_v2.x.sql
+- PROCEDUREs\PROCEDURE_Sync_MS_DbD_DbD_lm_v2.1.sql
+- PROCEDUREs\PROCEDURE_Sync_Fact2_from_Fact1_v1.7.sql
+- PROCEDUREs\PROCEDURE_Sync_MS_DbD_DbD_lm_byBrand_v1.sql
+- PROCEDUREs\PROCEDURE_Sync_Fact2_from_Fact1_Manual_v1.1 (obsoleto).sql
+- PROCEDUREs\PROCEDURE_sub_total_monthy_comm_aff_upd_v4.1_sub.sql
+- PROCEDUREs\PROCEDURE_sync_common_tables_upd.sql
+- PROCEDUREs\PROCEDURE_sub_Snapshot_day_by_day_fact3_upd_v1.sql
+- PROCEDUREs\PROCEDURE_Snapshot_day_by_day_fact1_upd_v2.4.sql
+- PROCEDUREs\PROCEDURE_Snapshot_day_by_day_fact2_upd_cm_v1.4.sql
+- PROCEDUREs\PROCEDURE_Snapshot_day_by_day_fact1_upd_from_dbd_manual_v1.5.sql
+- PROCEDUREs\PROCEDURE_Snapshot_day_by_day_fact1_upd_from_dbd_v3.9_split.sql
+- PROCEDUREs\PROCEDURE_Snapshot_day_by_day_fact1_upd_from_dbd_manual_BM_v1.2.sql
+- PROCEDUREs\PROCEDURE_Snapshot_day_by_day_fact1_upd_from_dbd_FX_v3.6.sql
+- PROCEDUREs\PROCEDURE_ShowNotif_Affiliate.sql
+- PROCEDUREs\PROCEDURE_Show_Diff_CPA_DbD_yesterday_v1.6.sql
+- PROCEDUREs\PROCEDURE_Show_mkt_sources_deal.sql
+- PROCEDUREs\PROCEDURE_Show_Diff_CPA_DbD_90days_v2.x.sql
+- PROCEDUREs\PROCEDURE_Show_Diff_CPA_DbD_90days_v1.2.sql
+- PROCEDUREs\PROCEDURE_Set_record_dbd_manual_v1.x.sql
+- PROCEDUREs\PROCEDURE_Roles_Permissions_Menu_v1.sql
+- PROCEDUREs\PROCEDURE_Report_Util_Settings_v1.sql
+- PROCEDUREs\PROCEDURE_Report_Util_Settings_v1.2.sql
+- PROCEDUREs\PROCEDURE_Report_SubAffiliates_v1.2.2.sql
+- PROCEDUREs\PROCEDURE_Report_Snapshots_Dashboards_v1.4.1.sql
+- PROCEDUREs\PROCEDURE_Report_Referral_Deals_v1.1.sql
+- PROCEDUREs\PROCEDURE_Report_Publisher_ManAdj_v1_op.sql
+- PROCEDUREs\PROCEDURE_Report_Publisher_v1.4.1_op.sql
+- PROCEDUREs\PROCEDURE_Report_Publisher_Interactions_v1_op.sql
+- PROCEDUREs\PROCEDURE_Report_Publisher_invoices_v1.3.x_op.sql
+- PROCEDUREs\PROCEDURE_Report_players_netrefer_v2.4.sql
+- PROCEDUREs\PROCEDURE_Report_Payment_methods_v1.2.sql
+- PROCEDUREs\PROCEDURE_Report_Notification_Types_v1.1.sql
+- PROCEDUREs\PROCEDURE_Report_MS_Rebrandly_v1.1_op.sql
+- PROCEDUREs\PROCEDURE_Report_MultiQuery_v1.3.1.sql
+- PROCEDUREs\PROCEDURE_Report_MS_deals_v1.3_MAF.sql
+- PROCEDUREs\PROCEDURE_Report_MarketingSources_v1.2_RS (obsoleta).sql
+- PROCEDUREs\PROCEDURE_Report_MarketingSources1_v2.5_MAF_multipar_op.sql
+- PROCEDUREs\PROCEDURE_Report_MarketingSources1_v2.4_MAF_op.sql
+- PROCEDUREs\PROCEDURE_Report_ip_log_v1.sql
+- PROCEDUREs\PROCEDURE_Report_ip_log_v1.1.sql
+- PROCEDUREs\PROCEDURE_Report_Invoices_Aff_v2.5.x.sub.sql
+- PROCEDUREs\PROCEDURE_Report_FinMov_ManAdj_v1.1 (obsoleta).sql
+- PROCEDUREs\PROCEDURE_Report_Economics_Affiliate_v1.2_currency.old.sql
+- PROCEDUREs\PROCEDURE_Report_Economics_Affiliate_v1.2_currency_op.sql
+- PROCEDUREs\PROCEDURE_Report_Documents.v2.6.x.sub.sql
+- PROCEDUREs\PROCEDURE_Report_Deal_MktPlace_v1.2.1_MAF_op.sql
+- PROCEDUREs\PROCEDURE_Report_day_by_day_v1.3.3.sql
+- PROCEDUREs\PROCEDURE_Report_DashTotalByMonth_v1.x.sql
+- PROCEDUREs\PROCEDURE_Report_CPA_Trend_v1.1.sql
+- PROCEDUREs\PROCEDURE_Report_CPA_quitadas_v1.sql
+- PROCEDUREs\PROCEDURE_Report_CPA_quitadas_v1.1.sql
+- PROCEDUREs\PROCEDURE_Report_Countries_v1.sql
+- PROCEDUREs\PROCEDURE_Report_Comm_Contacts_v1.sql
+- PROCEDUREs\PROCEDURE_Report_Comm_Groups_v1.sql
+- PROCEDUREs\PROCEDURE_Report_Channels_v1.5_MAF.sql
+- PROCEDUREs\PROCEDURE_Report_Cashflow_v2.x_op.sql
+- PROCEDUREs\PROCEDURE_Report_Brands_v1.5.1_op.sql
+- PROCEDUREs\PROCEDURE_Report_Campaign_v1.1_op.sql
+- PROCEDUREs\PROCEDURE_Report_bonus_gestor_v1_op.sql
+- PROCEDUREs\PROCEDURE_Report_balance_by_affiliate_v1.7.sql
+- PROCEDUREs\PROCEDURE_Report_Bonus_Affiliate_v1.1.sql
+- PROCEDUREs\PROCEDURE_Report_balance_by_affiliate_v1.6.6_tmptable.sql
+- PROCEDUREs\PROCEDURE_Report_Affiliates_v1.6.1_tag.sql
+- PROCEDUREs\PROCEDURE_Report_Affiliate_Tags_v1.sql
+- PROCEDUREs\PROCEDURE_Report_Affiliate_Interactions_v1.sql
+- PROCEDUREs\PROCEDURE_Report_Ads_v1.sql
+- PROCEDUREs\PROCEDURE_Report_Accounts_v1.4_op.sql
+- PROCEDUREs\PROCEDURE_Report_Accounts_deals_v1.2.sql
+- PROCEDUREs\PROCEDURE_Publisher_balance_to_Proforma_v1.x_op.sql
+- PROCEDUREs\PROCEDURE_PseudoBOT_Indirect_account_v1.sql
+- PROCEDUREs\PROCEDURE_PseudoBOT_Indirect_account_v1.1_dev.sql
+- PROCEDUREs\PROCEDURE_Postback_for_Affiliate_v1.SQL
+- PROCEDUREs\PROCEDURE_NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix.sql
+- PROCEDUREs\PROCEDURE_players_nerefer_to_DbD_AR_v1.5.sql
+- PROCEDUREs\PROCEDURE_netrefer_customer_report_v1.sql
+- PROCEDUREs\PROCEDURE_MS_Switch_Affiliate_batch_v1.sql
+- PROCEDUREs\PROCEDURE_MS_Switch_Account_batch_v2.sql
+- PROCEDUREs\PROCEDURE_MS_Status_6_Reset_v1.sql
+- PROCEDUREs\PROCEDURE_MS_autogen_from_DbD_v1.sql
+- PROCEDUREs\PROCEDURE_monthly_comms_gestor_v5.7.4.sql
+- PROCEDUREs\PROCEDURE_monthly_comms_affiliate_v5.6.1.sql
+- PROCEDUREs\PROCEDURE_Monitor_CPA_trend_v1.2.sql
+- PROCEDUREs\PROCEDURE_marketing_source_swap_v1.SQL
+- PROCEDUREs\PROCEDURE_Master_Sub_Affiliate_v1.x.sql
+- PROCEDUREs\PROCEDURE_MAF_product_list_v1.sql
+- PROCEDUREs\PROCEDURE_Log_Processes_v1.sql
+- PROCEDUREs\PROCEDURE_Lite_Info_for_graph_v2_op.sql
+- PROCEDUREs\PROCEDURE_Lite_Info_for_graph_v1_op.sql
+- PROCEDUREs\PROCEDURE_InvoiceToPubliser_v1.x_op.sql
+- PROCEDUREs\PROCEDURE_InvoiceToPubliser_v1.2_bonus_op.sql
+- PROCEDUREs\PROCEDURE_HandleEditOperation_v1.sql
+- PROCEDUREs\PROCEDURE_FM_edit_info_fact1_v1.sql
+- PROCEDUREs\PROCEDURE_Fra_info_v1.sql
+- PROCEDUREs\PROCEDURE_Gestor_MonthlySources_v3.2.2_tags_op.sql
+- PROCEDUREs\PROCEDURE_Gestor_MarketingSources_v1.1 (obsoleta).sql
+- PROCEDUREs\PROCEDURE_Gestor_MonthlySources_v3.3_OpcMultivalor_op.sql
+- PROCEDUREs\PROCEDURE_Gestor_YearlySources_v1_op.sql
+- PROCEDUREs\PROCEDURE_GetAffiliateTags_v1.sql
+- PROCEDUREs\PROCEDURE_Edit_FinMov_ManAdj_v1.5.5.sql
+- PROCEDUREs\PROCEDURE_economics_by_affiliate1_v1.x_bonus.sql
+- PROCEDUREs\PROCEDURE_economics_by_affiliate_v2.1_currency.sql
+- PROCEDUREs\PROCEDURE_economics_by_affiliate1_v1.9_bonus.old.sql
+- PROCEDUREs\PROCEDURE_dbd_to_fact1_v1.1.sql
+- PROCEDUREs\PROCEDURE_DbD_fact_data_to_history.sql
+- PROCEDUREs\PROCEDURE_DbD_data_to_history.sql
+- PROCEDUREs\PROCEDURE_DashTotalByMonth_v1.1_op.sql
+- PROCEDUREs\PROCEDURE_Dash_TotalByAffiliate_v1.1.sql
+- PROCEDUREs\PROCEDURE_Dash_Mob_Aff_BrandByWeek_v1.2_sub.sql
+- PROCEDUREs\PROCEDURE_Dash_GestorOrAffiliate_TotalByAffiliate_v1.sql
+- PROCEDUREs\PROCEDURE_Dash_info_v1.0.sql
+- PROCEDUREs\PROCEDURE_Dash_Gestor_TotalByAdvertiser_v4.8_adj_dev_op.sql
+- PROCEDUREs\PROCEDURE_Dash_Gestor_TotalByAdvertiser_v4.7.6_man_adj_op.sql
+- PROCEDUREs\PROCEDURE_Dash_ChannelMatrix_v1.1.sql
+- PROCEDUREs\PROCEDURE_Dash_Gestor_ProfitByAff_v1.3_op.sql
+- PROCEDUREs\PROCEDURE_Dash_BrandMatrix_v2.3.3_graph.sql
+- PROCEDUREs\PROCEDURE_Dash_BrandMatrix_v2.3.1.sql
+- PROCEDUREs\PROCEDURE_Dash_Aff_Referral_v1.6.sql
+- PROCEDUREs\PROCEDURE_Dash_Aff_Brand_v1.6_sub_currency.sql
+- PROCEDUREs\PROCEDURE_Dash_Aff_Channel_v1.4_sub_currency.sql
+- PROCEDUREs\PROCEDURE_CreateSnapshotDbDView.SQL
+- PROCEDUREs\PROCEDURE_Crea_Soporte_AUTOGEN_v1.sql
+- PROCEDUREs\PROCEDURE_CREATE_gambling_tables_from_DB1_to_DB2.sql
+- PROCEDUREs\PROCEDURE_CPA_ByAFFILIATE_BrandMatrix_v3.4_sub.sql
+- PROCEDUREs\PROCEDURE_CopyTablesToDEV_v1.1.sql
+- PROCEDUREs\PROCEDURE_CopyTablesFromMarcaBlanca.sql
+- PROCEDUREs\PROCEDURE_Compare_Tables_Between_DBs_v1.sql
+- PROCEDUREs\PROCEDURE_Compare_Fact1_Fact2_v2.sql
+- PROCEDUREs\PROCEDURE_Compare_Fact1_Fact2_v1.sql
+- PROCEDUREs\PROCEDURE_Compare_Fact1_Fact2_lm_v1.6.sql
+- PROCEDUREs\PROCEDURE_Compare_DbD_DbD_lm_v2.4.sql
+- PROCEDUREs\PROCEDURE_Check_Bot_Status_v2.sql
+- PROCEDUREs\PROCEDURE_Cap_excess_to_DbD_manual_v1.1.sql
+- PROCEDUREs\PROCEDURE_campaign_mkt_source_url_upd_country_v1.sql
+- PROCEDUREs\PROCEDURE_bm_Snapshot_day_by_day_fact1_upd_from_dbd_v3.6.sql
+- PROCEDUREs\PROCEDURE_Analisys_customer_report_v6.sql
+- PROCEDUREs\PROCEDURE_Analisys_customer_report_v5.sql
+- PROCEDUREs\PROCEDURE_Analisys_customer_report_v4.sql
+- PROCEDUREs\PROCEDURE_Analisys_customer_report_v3.sql
+- PROCEDUREs\PROCEDURE_Analisys_customer_report_v2.sql
+- PROCEDUREs\PROCEDURE_Analisys_customer_report_v1.sql
+- PROCEDUREs\PROCEDURE_Analisys_customer_report_genfile_v1.sql
+- PROCEDUREs\PROCEDURE_Affiliate_Monthly_Sources_v1.6.4_mov.sql
+- PROCEDUREs\PROCEDURE_Aff_MarketingSources_v2_op.sql
+- PROCEDUREs\PROCEDURE_Aff_Payment_Method_v1.2.sql
+- PROCEDUREs\PROCEDURE_Aff_Postback_Outbound_v1.2_sub.SQL
+- PROCEDUREs\PROCEDURE_Aff_LandingPage_v1.2.sql
+- PROCEDUREs\PROCEDURE_Aff_Commission_Last12months_v1.sql
+- PROCEDUREs\PROCEDURE_Aff_Favorites_v1.sql
+- PROCEDUREs\PROCEDURE_Aff_Channels_v1.5.1_sub.sql
+- PROCEDUREs\PROCEDURE_Aff_Channels_Landing_v1.4.3_sub.sql
+- PROCEDUREs\PROCEDURE_Aff_Channels_DealMS_v1.8.2_ads.sql
+- PROCEDUREs\PROCEDURE_Adecuar_nuevaDB_segun_ea2_y_marca_blanca_v1.sql
+- PROCEDUREs\OLD_DEV\PROCEDURE_Dash_Gestor_TotalByAdvertiser_v3.3.sql
+- PROCEDUREs\PROCEDURE_Check_CAP_limit_v1.sql
+
+## Nota de alcance
+
+Este ajuste se limita a documentación (cabeceras, keys descriptivas y/o bloques `COMMENT`) sin cambios en la lógica SQL ni en el comportamiento funcional de los procedimientos.

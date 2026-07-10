@@ -1,0 +1,60 @@
+-- Crear base de datos si no existe
+CREATE DATABASE IF NOT EXISTS affiliate_reporting;
+USE affiliate_reporting;
+
+-- Tabla de clientes
+CREATE TABLE IF NOT EXISTS customers (
+    customer_id VARCHAR(20) PRIMARY KEY,
+    client_reference VARCHAR(20),
+    customer_country VARCHAR(100),
+    ip_address VARCHAR(50),
+    join_date DATE,
+    landing_page_id VARCHAR(20),
+    landing_page_description TEXT,
+    source_group VARCHAR(100),
+    campaign VARCHAR(100)
+);
+
+-- Tabla de afiliados
+CREATE TABLE IF NOT EXISTS affiliates (
+    affiliate_id VARCHAR(20) PRIMARY KEY,
+    affiliate_name VARCHAR(100),
+    affiliate_status VARCHAR(50),
+    affiliate_country VARCHAR(100)
+);
+
+-- Tabla de métricas principales
+CREATE TABLE IF NOT EXISTS main_metrics (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    customer_id VARCHAR(20),
+    affiliate_id VARCHAR(20),
+    join_year_month VARCHAR(7),
+    signups INT,
+    first_deposit_count INT,
+    first_deposit_amount DECIMAL(10,2),
+    deposits DECIMAL(10,2),
+    gross_win DECIMAL(10,2),
+    bonus DECIMAL(10,2),
+    tax DECIMAL(10,2),
+    turnover DECIMAL(10,2),
+    net_revenue DECIMAL(10,2),
+    qualified_players_tier1 INT,
+    qualified_players_tier2 INT,
+    hits INT,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
+    FOREIGN KEY (affiliate_id) REFERENCES affiliates(affiliate_id)
+);
+
+-- Tabla unificada de métricas por tipo de juego
+CREATE TABLE IF NOT EXISTS game_metrics (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    customer_id VARCHAR(20),
+    game_type ENUM('casino', 'bingo', 'poker', 'skill', 'sports', 'virtual'),
+    number_tickets INT,
+    turnover DECIMAL(10,2),
+    gross_win DECIMAL(10,2),
+    bonus DECIMAL(10,2),
+    tax DECIMAL(10,2),
+    net_revenue DECIMAL(10,2),
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+); 

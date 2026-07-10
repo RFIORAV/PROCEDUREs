@@ -1,0 +1,293 @@
+/*
+PROCEDURE_Report_balance_by_affiliate.sql - Report balance by affiliate
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+IncludeInactives=[Yes | No]. Muestra Afiliados Status<>1. OPCIONAL. Default=No.
+ShowInactives   =[Yes | No]. Muestra Sólo Afiliados Status<>1. OPCIONAL. Default=No.
+Omit0           =[Yes | No]. Omite Afiliados con Saldo=0. OPCIONAL. Default=yes.
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+CALL  Report_balance_by_affiliate('');  -- asum defaults: LMonth
+CALL  Report_balance_by_affiliate('filters=yes,debug=non');
+CALL  Report_balance_by_affiliate('filters=ye,omit0=no,debug=non');
+
+23.05.2024 v1
+24.05.2024 v1.1   Antig último movim
+28.05.2024 v1.3   Considera Status de Afiliado
+08.08.2024 v1.4   Adapt muli Currency
+02.11.2024 v1.5   Utiliza monthly_comms_affiliate_v5 en lugar de view_monthly_fact_aff4
+21.11.2024 v1.6   Opciones inactives
+
+*/	
+SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+
+-- -----------------------------------------------------
+-- DROP PROCEDURE IF EXISTS Report_balance_by_affiliate_dev;
+DROP PROCEDURE IF EXISTS Report_balance_by_affiliate;
+-- -----------------------------------------------------
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_balance_by_affiliate`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report balance by affiliate'
+
+ProcedureBody: BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.6 21.11.2024'; 
+SET @CurrentDay      =curdate();
+SET @Date_confirm    =CONCAT(LEFT(CURDATE(),7),"-20");
+SET @LMonth          =left(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+SET @Month           =left(curdate(),7);
+
+SET @Omit_0          ='YES';
+SET @IncludeInactives='NO';
+SET @ShowInactives   ='NO';
+SET @OldBalances     ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+SET @Debug           ='NO';
+SET @flag            ='all';
+
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='Omit_0'           THEN SET @Omit_0          =UPPER(@v); END IF;
+   IF lower(@k)='IncludeInactives' THEN SET @IncludeInactives=UPPER(@v); END IF;
+   IF lower(@k)='ShowInactives'    THEN SET @ShowInactives   =UPPER(@v); END IF;
+   IF lower(@k)='OldBalances'      THEN SET @OldBalances     =UPPER(@v); END IF;
+   IF lower(@k)='debug'            THEN SET @Debug           =UPPER(@v); END IF;
+   IF lower(@k)='filters'          THEN SET @Filters         =UPPER(@v); END IF;
+   IF lower(@k)='meta'             THEN SET @Meta            =UPPER(@v); END IF;
+
+END WHILE;
+
+-- Obtiene @MultiCurrency y @Currency desde tabla util_settings
+SET @MultiCurrency=(SELECT IFNULL(`Value_01`,'NO')  FROM `util_settings` WHERE Setting='MultiCurrency');
+SET @Currency=     (SELECT IFNULL(`Value_01`,'EUR') FROM `util_settings` WHERE Setting='GridCurrency');
+
+IF   CURDATE()>=@Date_confirm
+THEN SET @LabelConf=CONCAT(',"width=110px,omit=true"  as `Confirmed ',@Date_confirm,'`');
+ELSE SET @LabelConf=CONCAT(',"width=110px,right=true" as `Confirmed ',@Date_confirm,'`');
+END  IF;	
+
+if @ShowInactives="YES" THEN SET @IncludeInactives="YES"; END IF;
+
+SET @LatestMov=LEFT(DATE_SUB(CURDATE(), INTERVAL 3 MONTH),7);
+SET @LatestMovFin=DATE_SUB(CURDATE(), INTERVAL 1 MONTH);
+
+IF @Debug!="NO" THEN SELECT @Date_confirm,@LMonth,@Omit_0,@IncludeInactives,@ShowInactives,@LatestMov,@LatestMovFin
+                           ,@MultiCurrency,@Currency
+                           ,@Debug,@filters,@meta,@LabelConf,@InputCommLine; END IF;
+
+/**************************************************************************************************************/
+-- SET SESSION group_concat_max_len = 200000;
+-- -----------------------------------------------------------------------------------------------------
+
+SET @SQLmeta=CONCAT('
+(
+SELECT
+   "setting" as Meta
+   ,"width=200px"            `Affiliate`
+   ,"width=90px"             `Curr`
+   ,"width=110px,right=true" `Estimated`
+   ,"width=110px,right=true" `Confirmed today`
+'
+   ,@LabelConf,
+'
+   ,IF(@MultiCurrency="YES","width=110px,right=true","omit=true") AS `Financial Currency`
+   ,IF(@MultiCurrency="YES","width=110px,right=true","omit=true") AS `Financial Confirmed`
+   ,"width=110px,center=true" `Latest operation`
+   ,"width=50px"              ` `
+   ,"width=120px,right=true"  `Withdraw last 30 days`
+   ,"width=110px,center=true" `Status Affiliate`
+FROM DUAL WHERE @Meta="YES"
+   )'
+);
+
+SET @SQL=concat(' 
+with Main_data as (
+SELECT Affiliate_id,ifnull(A.username,"_Unassigned") AS `Affiliate`,`Currency`
+	,round(sum(case when x.Status in (0,1,2)		then Amount ELSE 0 END),2) AS `Estimated`
+	,round(sum(case when x.Status IN (1,2)			then Amount ELSE 0 END),2) AS `Confirmed`
+	,round(sum(case when x.Status_21 IN (1,2)		then Amount ELSE 0 END),2) AS `Confirmed21`
+   ,@Currency                                                              as `Financial Currency`
+	,round(sum(case when x.Status IN (1,2)			then getCurrencyConversion(Amount,Currency,@Currency)
+                                                            ELSE 0 END),2) AS `Financial Confirmed`
+   ,A.Status,A.Status_id
+FROM (
+
+SELECT Affiliate_id
+	,(DATE_ADD(DATE_SUB(CONCAT(`Month`,"-01"), INTERVAL 1 DAY), INTERVAL 1 MONTH)) as `DATE`
+	,"CPA" AS Op_type
+   ,CONCAT_WS(" ",Brand,Product_Real) AS Description
+   ,sum(net_Total_comm) AS Amount
+	,CASE WHEN `Month`<@LMonth THEN "1" 
+         WHEN `Month`=@LMonth and CURDATE()>=@Date_confirm THEN "1"
+         ELSE 0 END                                                        AS Status
+	,CASE WHEN `Month`<@LMonth THEN "Confirmed"
+         WHEN `Month`=@LMonth and CURDATE()>=@Date_confirm THEN "Confirmed"
+         ELSE "Provisional" END                                            AS StatusText
+	,0 as balance_est,0 as balance_conf
+	,CASE WHEN `Month`<@LMonth THEN "1" 
+         WHEN `Month`=@LMonth and CURDATE()<@Date_confirm THEN "1"
+         ELSE 0 END                                                        AS Status_21
+   -- ,getCurrencyConversion(net_CPA_Val,Currency,@Currency) AS Transact
+   ,Currency
+FROM monthly_comms_affiliate_v5 F 
+GROUP BY Affiliate_id,DATE,Currency
+
+UNION ALL
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,sum(Amount_Debit*-1) AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est, 0 as balance_conf
+	,IFNULL(Status,0) AS Status_21
+   ,IFNULL(Currency,@Currency)  as "Currency"
+FROM account_financial_movement F WHERE ifnull(F.Status,0) IN (1,2)
+GROUP BY Affiliate_id,"DATE",F.Currency
+UNION ALL
+
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,sum(Amount_Credit) AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+	,IFNULL(Status,0) AS Status_21
+   ,IFNULL(Currency,@Currency)  as "Currency"
+FROM account_manual_adjustments F WHERE ifnull(F.Status,0) in (1,2)
+GROUP BY Affiliate_id,"DATE",F.Currency
+) AS x
+LEFT JOIN account_account A ON Affiliate_id	=A.id
+'
+,if(@ShowInactives="YES"," WHERE A.`Status_id`!=1 "," ")
+,if(@IncludeInactives="YES"," "," WHERE A.`Status_id`=1 "),
+'
+GROUP BY Affiliate,Currency -- WITH ROLLUP
+),
+Latest_operation as (
+SELECT Affiliate_id as `Aff_id`,IFNULL(A.username,"_Unassigned") AS `username`
+      ,max(`Month`) as `Latest_op`
+FROM monthly_comms_affiliate_v5 F 
+LEFT JOIN account_account A ON F.Affiliate_id=A.id
+WHERE net_Total_comm<>0 -- OR (RS_AJUST)<>0
+GROUP by Affiliate_id
+),
+Latest_withdraw as (
+SELECT Affiliate_id as `Aff_id`,IFNULL(A.username,"_Unassigned") AS `username`
+      ,`Currency`,SUM(Amount_Debit) AS `Withdraw`
+FROM account_financial_movement F 
+LEFT JOIN account_account A ON F.Affiliate_id=A.id
+WHERE IFNULL(F.Status,0) IN (1,2) AND LEFT(Date,10)>=@LatestMovFin
+GROUP by Affiliate_id
+),
+Main_dataRollUp AS (
+SELECT 
+       IF(GROUPING(M.Affiliate), "___ GRAND TOTAL ___", M.Affiliate) AS Affiliate
+      ,IF(GROUPING(M.Currency), "T.Curr", M.Currency) AS Currency
+      ,sum(`Estimated`          )                   `Estimated`          
+      ,sum(`Confirmed`          )                   `Confirmed`          
+      ,sum(`Confirmed21`        )                   `Confirmed21`        
+      ,sum(`Financial Currency` )                   `Financial Currency` 
+      ,sum(`Financial Confirmed`)                   `Financial Confirmed`
+      ,IF(L.`username` IS NULL,"",L.`Latest_op`) AS `Latest_op`
+      ,IF(W.`username` IS NULL,"",W.`Currency`)  AS `Curr`
+      ,IF(W.`username` IS NULL,"",W.`Withdraw`)  AS `Withdraw`
+      ,Status
+FROM Main_data M 
+LEFT JOIN Latest_operation L ON L.username=M.Affiliate
+LEFT JOIN Latest_withdraw  W ON W.username=M.Affiliate
+WHERE @flag="all" '
+,if(@Omit_0="YES"," AND (`Estimated`<>0 OR `Confirmed`<>0 OR `Confirmed21`<>0)",""),
+'
+GROUP BY M.Affiliate,M.Currency WITH ROLLUP
+)
+-- SELECT * FROM Main_data;         -- Test
+-- SELECT * FROM Main_dataRollUp;   -- Test
+-- SELECT * FROM Latest_operation;  -- Test
+-- SELECT * FROM Latest_withdraw;   -- Test
+'
+,@SQLmeta,'
+UNION ALL
+(
+SELECT IF(`Affiliate`="___ GRAND TOTAL ___","total","data") as `Meta`
+      ,`Affiliate`
+      ,`Currency`
+      ,`Estimated`
+      ,`Confirmed`
+      ,`Confirmed21`
+      ,`Financial Currency`
+      ,`Financial Confirmed`
+      ,`Latest_op`
+      ,`Curr`
+      ,`Withdraw`
+      ,Status
+FROM Main_dataRollUp  
+WHERE `Currency`!="T.Curr" OR Affiliate="___ GRAND TOTAL ___"
+)
+ORDER BY `Affiliate`
+;');
+/*
+-- Filtros------------------------------------------------------------------------------------
+*/
+SET @SQLfilters=CONCAT('
+SELECT "01" as "Korder","Criteria" AS "Key","Show Inactives" AS "Value","IncludeInactives" AS `CallKey`,"YES" AS `CallValue` UNION ALL
+SELECT "01" as "Korder","Criteria" AS "Key","Show Only Inactives" AS "Value","ShowInactives" AS `CallKey`,"YES" AS `CallValue` UNION ALL
+SELECT "01" as "Korder","Criteria" AS "Key","Show Balances = 0.00" AS "Value","Omit_0" AS `CallKey`,"NO" AS `CallValue`
+-- UNION ALL
+-- SELECT "01" as "Korder","Criteria" AS "Key","Show Old Balances" AS "Value","OldBalances" AS `CallKey`,"YES" AS `CallValue`
+;');
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Filters="YES" THEN SET @SQL=@SQLfilters; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END;
+$$
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- -----------------------------------------------------
+/*
+CALL  Report_balance_by_affiliate('');
+CALL  Report_balance_by_affiliate('filters=yes,debug=YE');
+CALL  Report_balance_by_affiliate_dev('meta=yes,Omit_0=yes,OldBalances=YE,debug=YE');
+CALL  Report_balance_by_affiliate('filters=ye,Omit_0=yes,IncludeInactives=ye,debug=YE');
+CALL  Report_balance_by_affiliate('filters=ye,Omit_0=yes,showInactives=yes,debug=YE');
+
+*/

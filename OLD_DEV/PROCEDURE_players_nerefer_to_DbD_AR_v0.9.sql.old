@@ -1,0 +1,268 @@
+/**
+	PROCEDURE_players_nerefer_to_DbD_AR_v1.sql
+
+	**	Actualiza tabla Snapshot_day_by_day desde players_netrefer_API
+	
+   **	ADAPTADA PARA USO DE AFFILIATE REVOLUTION
+   
+	15.03.2025 v1     
+   
+   call players_nerefer_to_DbD_AR('');
+   call players_nerefer_to_DbD_AR('LM');   
+*/
+
+DROP PROCEDURE IF EXISTS players_nerefer_to_DbD_AR;
+-- -------------------------------------------------------------
+DELIMITER //
+
+CREATE PROCEDURE players_nerefer_to_DbD_AR(IN Curr_Last_Month varchar(7))
+COMMENT 'Actualiza tabla Snapshot_day_by_day desde players_netrefer_API AR - Last Month y Cte / AAAA-MM'
+DETERMINISTIC
+MODIFIES SQL DATA
+-- SQL SECURITY INVOKER
+ 
+proc_label:BEGIN
+
+SET @Version='v1 15.03.2025';
+SET @DateFrom=LEFT(CURDATE(),7);    -- Asume Curr Month por defecto
+
+IF UPPER(Curr_Last_Month)='LM' THEN SET @DateFrom=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+-- Cuando se pide reproceso general de todo, limita a MES de movimiento más antiguo DbD
+SET @MinDateFromDbD=(SELECT MIN(LEFT(DATE,7)) FROM players_netrefer_API WHERE DATE IS NOT NULL);
+IF    UPPER(Curr_Last_Month)='ALLALL' 
+THEN  SET @DateFrom=@MinDateFromDbD;
+END IF;
+
+-- SELECT  Curr_Last_Month,@MinDateFromDbD,@DateFrom from dual;
+
+-- Valida fecha
+IF    LEFT(Curr_Last_Month,3)='202' 
+THEN
+      IF   SUBSTRING(Curr_Last_Month,6,2) IN ('01','02','03','04','05','06','07','08','09','10','11','12')
+      THEN SET @DateFrom=LEFT(Curr_Last_Month,7);
+      ELSE SELECT "Invalid Month parameter" from dual;
+           LEAVE proc_label; 
+      END IF;
+END IF;
+
+-- Valida que se haya pedido un mes dentro del rango de datos de DbD
+IF    @DateFrom < @MinDateFromDbD OR @DateFrom > LEFT(CURDATE(),7)
+THEN  SELECT "Month out of range DbD data" from dual;
+      LEAVE proc_label; 
+END IF;
+
+-- ------------------ SOLAMENTE PARA affiliaterevolution -----------------------
+-- USE affiliaterevolution;
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS Snapshot_day_by_day_temp_AR LIKE Snapshot_day_by_day;
+
+/***** CREAR UN LOOP POR Account_id */
+
+INSERT INTO Snapshot_day_by_day_temp_AR 
+   SELECT * FROM Snapshot_day_by_day 
+   WHERE (LEFT(DATE,7)=@DateFrom 
+      OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0'));
+
+DELETE FROM Snapshot_day_by_day_temp_AR 
+WHERE LEFT(DATE,7)=@DateFrom OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0');
+
+/*
+SELECT `id`
+   ,`Owner`
+   ,`Affiliate`
+   ,`Campaign`
+   ,`Deal`
+   ,`Deal_Aff`
+   ,`Hour_Update`
+   ,`Date`
+   ,`Username`
+   ,`Portal`
+   ,`Brand`
+   ,`Tracker_ID`
+   ,`Tracker_Name`
+   ,`Code_To_Affiliate`
+   ,`Product`
+   ,`Product_Real`
+   ,`Qualified_Players`
+   ,`Qualified_Players_Adjusted`
+   ,`Criteria_Type`
+   ,`Level_Reached`
+   ,`First_Time_Deposit`
+   ,`Views`
+   ,`Clicks`
+   ,`Signups`
+   ,`Impressions`
+   ,`Sign_Up_Offer`
+   ,`Type`
+   ,`Language`
+   ,`Country`
+   ,`Brand_Name`
+   ,`Registration_Date`
+   ,`Deposits`
+   ,`Depositing_Customers`
+   ,`Active_Customers`
+   ,`New_Depositing_Customers`
+   ,`New_Active_Customers`
+   ,`First_Time_Active_Customers`
+   ,`Turnover`
+   ,`Net_Revenue`
+   ,`Revenue_Share_Gestor`
+   ,`Revenue_Share_Affiliate`
+   ,`CPA_Value_Affiliate`
+   ,`CPA_Value_Gestor` 
+FROM Snapshot_day_by_day
+*/
+
+INSERT IGNORE INTO Snapshot_day_by_day_temp_AR (
+   `Date`
+   ,`Hour_Update`
+   ,`Brand`
+   ,`Username`
+   ,`Product`
+   ,`Country`
+   ,`Sign_Up_Offer`
+   ,`Tracker_Name`
+   ,`Tracker_ID`
+   ,`Level_Reached`
+   ,`Brand_Name`   
+   ,`Qualified_Players`          
+   ,`Deposits`             
+   ,`Turnover`               
+   ,`Net_Revenue`
+)
+SELECT
+   `Date`,
+   `Hour_Update`,
+   `Advertiser`,
+   -- `Username`,
+   `Username_id`,
+   -- `Method`,
+   -- `Prodotto`,
+    CASE WHEN `Advertiser`="Snai" AND DATE_FORMAT(STR_TO_DATE(Signup_Date, "%d-%m-%Y"), "%Y-%m-%d")<"2024-12-01"
+         THEN CONCAT(`Prodotto`,"-20")
+         ELSE `Prodotto` END AS `Product`,
+   -- `Customer_Reference_ID`,
+   -- `Alias`,
+   -- `AffiliateID`,
+   `Country`,
+--    `Signup_Date`           as `Registration_Date`,
+   `Reward_Plan`           as `Sign_Up_Offer`,
+   `Marketing_Source_Name` as `Tracker_Name`,
+   `Marketing_Source_ID`   as `Tracker_ID`,
+   -- `URL`,
+   -- `Expiry_Date`,
+   -- `Customer_Type`,
+   `Customer_Level`        as `Level_Reached`,
+   -- `CPA_Processed_Date`,
+   `Brand`                 as `Brand_Name`,
+   -- `Customer_Signup_Source`,
+    SUM(CASE WHEN CPA_Processed_Date>"" AND DATE_FORMAT(STR_TO_DATE(CPA_Processed_Date, "%d-%m-%Y"), "%Y-%m")=LEFT(`Date`,7)
+             THEN 1 ELSE 0 END) AS `Qualified_Players`,     
+-- ROUND(SUM(`Gross_Revenue`        ),2) AS `Gross_Revenue`         ,
+   ROUND(SUM(`Deposits`             ),2) AS `Deposits`              ,
+   ROUND(SUM(`Turnover`             ),2) AS `Turnover`              ,
+-- ROUND(SUM(`Payouts`              ),2) AS `Payouts`               ,
+-- ROUND(SUM(`Contributions`        ),2) AS `Contributions`         ,
+-- ROUND(SUM(`Transactions`         ),2) AS `Transactions`          ,
+-- ROUND(SUM(`Points`               ),2) AS `Points`                ,
+-- ROUND(SUM(`Adj_(Chargebacks)`    ),2) AS `Adj_(Chargebacks)`     ,
+-- ROUND(SUM(`Total_Net_Revenue`    ),2) AS `Total_Net_Revenue`     ,
+   ROUND(SUM(`Total_Net_Revenue_MTD`),2) AS `Net_Revenue` 
+   -- `Details`,
+   -- COUNT(0) AS Records
+   
+FROM players_netrefer_API p
+WHERE (LEFT(DATE,7)=@DateFrom 
+      OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0'))
+      
+GROUP BY 
+--    LEFT(`Date`,7),
+   `Advertiser`,
+   `Username_id`,
+   `Date`,
+   `Product`,
+   `Reward_Plan`,
+   `Marketing_Source_Name`,
+   `Marketing_Source_ID`,
+   `Brand`
+
+ORDER BY    
+   `Advertiser`,
+   `Username_id`,
+   `Date`,   
+   `Product`,   
+   `Reward_Plan`
+;
+
+END//
+DELIMITER ;
+
+/*
+call players_nerefer_to_DbD_AR;
+
+SELECT
+   `Date`,
+   `Hour_Update`,
+   `Advertiser`,
+   `Username`,
+   `Username_id`,
+   `Method`,
+   -- `Prodotto`,
+    CASE WHEN `Advertiser`="Snai" AND DATE_FORMAT(STR_TO_DATE(Signup_Date, "%d-%m-%Y"), "%Y-%m-%d")<"2024-12-01"
+         THEN CONCAT(`Prodotto`,"-20")
+         ELSE `Prodotto` END AS `Product`,
+   `Customer_Reference_ID`,
+   `Alias`,
+   `AffiliateID`,
+   `Country`,
+   `Signup_Date`           as `Registration_Date`,
+   `Reward_Plan`           as `Sign_Up_Offer`,
+   `Marketing_Source_Name` as `Tracker_Name`,
+   `Marketing_Source_ID`   as `Tracker_ID`,
+   `URL`,
+   `Expiry_Date`,
+   `Customer_Type`,
+   `Customer_Level`        as `Level_Reached`,
+   `CPA_Processed_Date`,
+   `Brand`                 as `Brand_Name`,
+   `Customer_Signup_Source`,
+    SUM(CASE WHEN CPA_Processed_Date>"" AND DATE_FORMAT(STR_TO_DATE(CPA_Processed_Date, "%d-%m-%Y"), "%Y-%m")=LEFT(`Date`,7)
+             THEN 1 ELSE 0 END) AS `Qualified_Players`,     
+   ROUND(SUM(`Gross_Revenue`        ),2) AS `Gross_Revenue`         ,
+   ROUND(SUM(`Deposits`             ),2) AS `Deposits`              ,
+   ROUND(SUM(`Turnover`             ),2) AS `Turnover`              ,
+   ROUND(SUM(`Payouts`              ),2) AS `Payouts`               ,
+   ROUND(SUM(`Contributions`        ),2) AS `Contributions`         ,
+   ROUND(SUM(`Transactions`         ),2) AS `Transactions`          ,
+   ROUND(SUM(`Points`               ),2) AS `Points`                ,
+   ROUND(SUM(`Adj_(Chargebacks)`    ),2) AS `Adj_(Chargebacks)`     ,
+   ROUND(SUM(`Total_Net_Revenue`    ),2) AS `Total_Net_Revenue`     ,
+   ROUND(SUM(`Total_Net_Revenue_MTD`),2) AS `Net_Revenue` 
+   `Details`,
+   COUNT(0) AS Records
+   
+FROM players_netrefer_API p
+WHERE (LEFT(DATE,7)=@DateFrom 
+      OR '1'=IF(UPPER(Curr_Last_Month)='ALLALL','1','0'))
+      
+GROUP BY 
+--    LEFT(`Date`,7),
+   `Advertiser`,
+   `Username_id`,
+   `Date`,
+   `Product`,
+   `Reward_Plan`,
+   `Marketing_Source_Name`,
+   `Marketing_Source_ID`,
+   `Brand`
+
+ORDER BY    
+   `Advertiser`,
+   `Username_id`,
+   `Date`,   
+   `Product`,   
+   `Reward_Plan`
+;
+*/

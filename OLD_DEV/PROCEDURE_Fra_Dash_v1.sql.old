@@ -1,0 +1,521 @@
+/*
+PROCEDURE_Fra_Dash_v1.sql
+
+Descripción:
+  Responde a dos preguntas de negocio sobre el período Month_from..Month_until:
+  (1) ¿Cuánto beneficio representa un Publisher_id?  → Mode=Publisher (o OnlyClients).
+  (2) ¿Cuánto beneficio aporta un Afiliado?         → Mode=Affiliate (atribución proporcional;
+      ver Notas). Detalle por par Publisher/Afiliado → Mode=Detail (o OnlyAffiliates).
+
+  Beneficio publisher = net_Total_comm gestor − comisiones pagadas (incl. ajustes manuales
+  con IncludeInProfitCalculation=1) agregadas por Publisher.
+
+Observaciones:
+  Cada Key debe estar seguida de = y el valor deseado SIN comillas.
+  Cada par Key=Value debe ir seguido de una COMA.
+  El conjunto de pares debe ir entre '' (comillas simples) como único parámetro string.
+
+Keys:
+  Month_from = [YYYY-MM]. Inicio del período (inclusive). OPCIONAL. Default=YYYY-01 (enero del año corriente).
+  Month_until = [YYYY-MM]. Fin del período (inclusive). OPCIONAL. Default=YYYY-12 (diciembre del año corriente).
+  Mode = [Publisher | Affiliate | Detail]. OPCIONAL. Default=Publisher.
+         Publisher (alias OnlyClients): una fila por Publisher_id — columna Beneficio = beneficio del client.
+         Affiliate (alias ByAffiliate, PorAfiliado): una fila por Affiliate_id — Beneficio aportado
+         según reparto del margen (G_p − T_p) en proporción a lo pagado a cada afiliado en cada publisher.
+         Detail (alias OnlyAffiliates): fila por par Publisher_id/Affiliate_id; Beneficio = G_p − pago en esa fila
+         (gestor del publisher repetido por contexto de drill-down).
+         Aliases legacy: OnlyClients→Publisher, OnlyAffiliates→Detail.
+  Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+  Filters = [No | Yes]. OPCIONAL. Default=No. Si Yes: resultset con Korder, Key, Value, CallKey, CallValue, Rows
+          (mismo criterio que Dash_Gestor_ProfitByAff).
+  Meta = [No | Yes]. OPCIONAL. Default=Yes.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+  CALL Fra_Dash('');  -- período por defecto: enero–diciembre del año corriente
+  CALL Fra_Dash('Month_from=2025-01,Month_until=2025-12,Mode=Publisher,Meta=Yes');
+  CALL Fra_Dash('Month_from=2025-01,Month_until=2025-12,Mode=Affiliate');
+  CALL Fra_Dash('Mode=Detail,Month_from=2025-01,Month_until=2025-06');
+  CALL Fra_Dash('Filters=Yes');
+
+Notas:
+  - Nombre de publisher: Advertiser_Name en campaign_publisher.
+  - Ajustes manuales: Amount_Credit con IncludeInProfitCalculation=1 (y Status 1,2), repartidos
+    entre publishers del afiliado en proporción a net_Total_comm por par (v. código).
+  - Mode=Affiliate: por cada publisher p, T_p = suma pagada a todos los afiliados en p;
+    al afiliado a se le atribuye (pago_a_p / T_p) × (G_p − T_p). Sumando en p se obtiene el
+    beneficio aportado globalmente por ese Affiliate_id (coherente con la suma de beneficios por publisher).
+  - Publisher_id en comisiones afiliado: COALESCE(campaign_username.Publisher_id por Account_id,
+    campaign_advertiser.Publisher_id por Advertiser_id) para no agrupar todo en 0 si falla el username.
+
+03.05.2026 v1.0 Creación según especificación Fra_Dash (prompt Fra_Dash_v1)
+03.05.2026 v1.0.1 Publisher_id afiliado vía campaign_username; redondeo monetario
+03.05.2026 v1.0.2 DECLARE sin DEFAULT; SET de inicialización
+03.05.2026 v1.1.0 Modos Publisher / Affiliate / Detail; columna Beneficio
+03.05.2026 v1.1.1 Detail: Publisher_id en Meta; COALESCE publisher vía advertiser
+03.05.2026 v1.1.2 Filters: Korder, Key, Value, CallKey, CallValue, Rows
+03.05.2026 v1.1.3 Default Month_from/Month_until = enero y diciembre del año corriente
+04.05.2026 v1.1.4 Meta: Beneficio/Pct_Beneficio y Publisher_id visible en Detail
+*/
+
+SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+DROP PROCEDURE IF EXISTS Fra_Dash;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Fra_Dash`(IN InputCommLine VARCHAR(250))
+COMMENT 'Fra_Dash: beneficio por Publisher (Q1), aporte por Afiliado (Q2), detalle Pub-Aff; período configurable'
+SQL SECURITY DEFINER
+fra_dash_label:BEGIN
+
+    DECLARE v_Version VARCHAR(32);
+    DECLARE v_InputCommLine VARCHAR(400);
+    DECLARE v_Month_from CHAR(7);
+    DECLARE v_Month_until CHAR(7);
+    DECLARE v_Mode VARCHAR(20);
+    DECLARE v_Debug VARCHAR(20);
+    DECLARE v_Filters VARCHAR(5);
+    DECLARE v_Meta VARCHAR(5);
+    DECLARE v_e INT;
+    DECLARE v_c INT;
+    DECLARE v_k VARCHAR(80);
+    DECLARE v_v VARCHAR(250);
+    DECLARE v_stmt LONGTEXT;
+
+    SET v_Version = 'v1.1.4 04.05.2026';
+    SET v_Month_from = CONCAT(YEAR(CURDATE()), '-01');
+    SET v_Month_until = CONCAT(YEAR(CURDATE()), '-12');
+    SET v_Mode = 'PUBLISHER';
+    SET v_Debug = 'NO';
+    SET v_Filters = 'NO';
+    SET v_Meta = 'YES';
+    SET v_e = 0;
+    SET v_c = 0;
+    SET v_k = '';
+    SET v_v = '';
+    SET v_stmt = '';
+
+    SET v_InputCommLine = IFNULL(InputCommLine, '');
+    SET v_InputCommLine = CONCAT(v_InputCommLine, ',');
+    SET v_InputCommLine = REPLACE(v_InputCommLine, '"', '');
+
+    parse_loop:WHILE v_InputCommLine > ' ' DO
+        SET v_e = INSTR(v_InputCommLine, '=');
+        SET v_c = INSTR(v_InputCommLine, ',');
+        IF v_e = 0 OR v_c = 0 OR v_e > v_c THEN
+            LEAVE parse_loop;
+        END IF;
+        SET v_k = TRIM(SUBSTRING(v_InputCommLine, 1, v_e - 1));
+        SET v_v = TRIM(SUBSTRING(v_InputCommLine, v_e + 1, v_c - (v_e + 1)));
+        SET v_InputCommLine = SUBSTRING(v_InputCommLine, v_c + 1);
+
+        IF LOWER(v_k) = 'month_from' THEN
+            SET v_Month_from = UPPER(LEFT(v_v, 7));
+        ELSEIF LOWER(v_k) = 'month_until' THEN
+            SET v_Month_until = UPPER(LEFT(v_v, 7));
+        ELSEIF LOWER(v_k) = 'mode' THEN
+            IF LOWER(TRIM(v_v)) IN ('onlyaffiliates', 'detail', 'detalle') THEN
+                SET v_Mode = 'DETAIL';
+            ELSEIF LOWER(TRIM(v_v)) IN ('affiliate', 'affiliates', 'porafiliado', 'byaffiliate') THEN
+                SET v_Mode = 'AFFILIATE';
+            ELSEIF LOWER(TRIM(v_v)) IN ('onlyclients', 'publisher', 'client', 'porpublisher') THEN
+                SET v_Mode = 'PUBLISHER';
+            ELSE
+                SET v_Mode = 'PUBLISHER';
+            END IF;
+        ELSEIF LOWER(v_k) = 'debug' THEN
+            SET v_Debug = UPPER(TRIM(v_v));
+        ELSEIF LOWER(v_k) = 'filters' THEN
+            SET v_Filters = UPPER(TRIM(v_v));
+        ELSEIF LOWER(v_k) = 'meta' THEN
+            SET v_Meta = UPPER(TRIM(v_v));
+        END IF;
+    END WHILE;
+
+    IF v_Month_from NOT REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$'
+       OR STR_TO_DATE(CONCAT(v_Month_from, '-01'), '%Y-%m-%d') IS NULL THEN
+        SELECT CONCAT('ERROR: Month_from inválido [', v_Month_from, ']. Use YYYY-MM.') AS Mensaje;
+        LEAVE fra_dash_label;
+    END IF;
+
+    IF v_Month_until NOT REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$'
+       OR STR_TO_DATE(CONCAT(v_Month_until, '-01'), '%Y-%m-%d') IS NULL THEN
+        SELECT CONCAT('ERROR: Month_until inválido [', v_Month_until, ']. Use YYYY-MM.') AS Mensaje;
+        LEAVE fra_dash_label;
+    END IF;
+
+    IF v_Month_from > v_Month_until THEN
+        SELECT 'ERROR: Month_from no puede ser mayor que Month_until.' AS Mensaje;
+        LEAVE fra_dash_label;
+    END IF;
+
+    IF v_Debug = 'KEYVALUES' THEN
+        SELECT 'Month_from' AS `Key`, v_Month_from AS `Value`
+        UNION ALL SELECT 'Month_until', v_Month_until
+        UNION ALL SELECT 'Mode', v_Mode
+        UNION ALL SELECT 'Debug', v_Debug
+        UNION ALL SELECT 'Filters', v_Filters
+        UNION ALL SELECT 'Meta', v_Meta
+        UNION ALL SELECT 'Version', v_Version;
+        LEAVE fra_dash_label;
+    END IF;
+
+    IF v_Filters = 'YES' THEN
+        SELECT u.Korder, u.`Key`, u.`Value`, u.CallKey, u.CallValue, u.`Rows`
+        FROM (
+            SELECT '01' AS Korder, 'Month_from' AS `Key`, v_Month_from AS `Value`, 'Month_from' AS CallKey, v_Month_from AS CallValue, '' AS `Rows` FROM DUAL
+            UNION ALL
+            SELECT '02' AS Korder, 'Month_until' AS `Key`, v_Month_until AS `Value`, 'Month_until' AS CallKey, v_Month_until AS CallValue, '' AS `Rows` FROM DUAL
+            UNION ALL
+            SELECT '03' AS Korder, 'Mode' AS `Key`, 'Publisher' AS `Value`, 'Mode' AS CallKey, 'Publisher' AS CallValue, '' AS `Rows` FROM DUAL
+            UNION ALL
+            SELECT '04' AS Korder, 'Mode' AS `Key`, 'Affiliate' AS `Value`, 'Mode' AS CallKey, 'Affiliate' AS CallValue, '' AS `Rows` FROM DUAL
+            UNION ALL
+            SELECT '05' AS Korder, 'Mode' AS `Key`, 'Detail' AS `Value`, 'Mode' AS CallKey, 'Detail' AS CallValue, '' AS `Rows` FROM DUAL
+            UNION ALL
+            SELECT '06' AS Korder, 'Mode' AS `Key`, 'OnlyClients' AS `Value`, 'Mode' AS CallKey, 'OnlyClients' AS CallValue, '' AS `Rows` FROM DUAL
+            UNION ALL
+            SELECT '07' AS Korder, 'Mode' AS `Key`, 'OnlyAffiliates' AS `Value`, 'Mode' AS CallKey, 'OnlyAffiliates' AS CallValue, '' AS `Rows` FROM DUAL
+            UNION ALL
+            SELECT CONCAT('8', REPLACE(m.Mes, '-', '')) AS Korder, 'Mes' AS `Key`, m.Mes AS `Value`, 'Month_from' AS CallKey, m.Mes AS CallValue, '' AS `Rows`
+            FROM (
+                SELECT DISTINCT `Month` AS Mes FROM monthly_comms_gestor_v5
+                WHERE `Month` BETWEEN v_Month_from AND v_Month_until
+                UNION
+                SELECT DISTINCT `Month` AS Mes FROM monthly_comms_affiliate_v5
+                WHERE `Month` BETWEEN v_Month_from AND v_Month_until
+            ) m
+        ) u
+        ORDER BY 1 ASC, 3 DESC;
+        LEAVE fra_dash_label;
+    END IF;
+
+    SET v_stmt = CONCAT(
+'WITH
+params AS (
+  SELECT ''', v_Month_from, ''' AS mf, ''', v_Month_until, ''' AS mu,
+         ''', v_Mode, ''' AS mode_flag
+),
+ges AS (
+  SELECT g.Publisher_id,
+         SUM(IFNULL(g.CPA, 0)) AS cpa_ges,
+         SUM(IFNULL(g.net_CPA_Val, 0)) AS net_cpa_val_ges,
+         SUM(IFNULL(g.net_RS_Val, 0)) AS net_rs_val_ges,
+         SUM(IFNULL(g.net_Total_comm, 0)) AS net_total_comm_ges
+  FROM monthly_comms_gestor_v5 g
+  CROSS JOIN params p
+  WHERE g.`Month` BETWEEN p.mf AND p.mu
+  GROUP BY g.Publisher_id
+),
+comm_pa AS (
+  SELECT COALESCE(u.Publisher_id, ad.Publisher_id, 0) AS Publisher_id,
+         a.Affiliate_id,
+         SUM(IFNULL(a.CPA, 0)) AS cpa_aff,
+         SUM(IFNULL(a.net_CPA_Val, 0)) AS net_cpa_val_aff,
+         SUM(IFNULL(a.net_RS_Val, 0)) AS net_rs_val_aff,
+         SUM(IFNULL(a.net_Total_comm, 0)) AS net_total_comm_aff
+  FROM monthly_comms_affiliate_v5 a
+  LEFT JOIN campaign_username u ON u.id = a.Account_id
+  LEFT JOIN campaign_advertiser ad ON ad.id = a.Advertiser_id
+  CROSS JOIN params p
+  WHERE a.`Month` BETWEEN p.mf AND p.mu
+  GROUP BY COALESCE(u.Publisher_id, ad.Publisher_id, 0), a.Affiliate_id
+),
+comm_a_tot AS (
+  SELECT a.Affiliate_id,
+         SUM(IFNULL(a.net_Total_comm, 0)) AS tot_net_aff
+  FROM monthly_comms_affiliate_v5 a
+  CROSS JOIN params p
+  WHERE a.`Month` BETWEEN p.mf AND p.mu
+  GROUP BY a.Affiliate_id
+),
+aff_pub_cnt AS (
+  SELECT Affiliate_id, COUNT(DISTINCT Publisher_id) AS pub_cnt
+  FROM comm_pa
+  GROUP BY Affiliate_id
+),
+man AS (
+  SELECT m.Affiliate_id,
+         SUM(IFNULL(m.Amount_Credit, 0)) AS adj_raw
+  FROM account_manual_adjustments m
+  CROSS JOIN params p
+  WHERE IFNULL(m.IncludeInProfitCalculation, 0) = 1
+    AND IFNULL(m.Status, 0) IN (1, 2)
+    AND LEFT(m.`Date`, 7) BETWEEN p.mf AND p.mu
+  GROUP BY m.Affiliate_id
+),
+comm_pa_adj AS (
+  SELECT
+    c.Publisher_id,
+    c.Affiliate_id,
+    c.cpa_aff,
+    c.net_cpa_val_aff,
+    c.net_rs_val_aff,
+    c.net_total_comm_aff,
+    ROUND(IFNULL(m.adj_raw, 0) * (
+      CASE
+        WHEN IFNULL(t.tot_net_aff, 0) <> 0 THEN c.net_total_comm_aff / t.tot_net_aff
+        WHEN IFNULL(apc.pub_cnt, 0) > 0 THEN 1.0 / apc.pub_cnt
+        ELSE 0
+      END
+    ), 2) AS manual_adj_alloc,
+    ROUND(c.net_total_comm_aff + IFNULL(m.adj_raw, 0) * (
+      CASE
+        WHEN IFNULL(t.tot_net_aff, 0) <> 0 THEN c.net_total_comm_aff / t.tot_net_aff
+        WHEN IFNULL(apc.pub_cnt, 0) > 0 THEN 1.0 / apc.pub_cnt
+        ELSE 0
+      END
+    ), 2) AS net_total_comm_aff_incl_adj
+  FROM comm_pa c
+  LEFT JOIN comm_a_tot t ON t.Affiliate_id = c.Affiliate_id
+  LEFT JOIN man m ON m.Affiliate_id = c.Affiliate_id
+  LEFT JOIN aff_pub_cnt apc ON apc.Affiliate_id = c.Affiliate_id
+),
+aff_by_pub AS (
+  SELECT Publisher_id,
+         SUM(cpa_aff) AS cpa_aff,
+         SUM(net_cpa_val_aff) AS net_cpa_val_aff,
+         SUM(net_rs_val_aff) AS net_rs_val_aff,
+         SUM(net_total_comm_aff) AS net_total_comm_aff,
+         SUM(manual_adj_alloc) AS manual_adj_alloc,
+         SUM(net_total_comm_aff_incl_adj) AS net_total_comm_aff_incl_adj
+  FROM comm_pa_adj
+  GROUP BY Publisher_id
+),
+pub_paid_tot AS (
+  SELECT Publisher_id,
+         SUM(net_total_comm_aff_incl_adj) AS t_pay_pub
+  FROM comm_pa_adj
+  GROUP BY Publisher_id
+),
+aff_agg AS (
+  SELECT x.Affiliate_id,
+         SUM(x.cpa_aff) AS cpa_aff,
+         SUM(x.net_cpa_val_aff) AS net_cpa_val_aff,
+         SUM(x.net_rs_val_aff) AS net_rs_val_aff,
+         SUM(x.net_total_comm_aff) AS net_total_comm_aff,
+         SUM(x.manual_adj_alloc) AS manual_adj_alloc,
+         SUM(x.net_total_comm_aff_incl_adj) AS net_total_comm_aff_incl_adj,
+         ROUND(SUM(
+           CASE
+             WHEN IFNULL(pt.t_pay_pub, 0) > 0
+             THEN x.net_total_comm_aff_incl_adj * (IFNULL(g.net_total_comm_ges, 0) - pt.t_pay_pub) / pt.t_pay_pub
+             ELSE 0
+           END
+         ), 2) AS Beneficio
+  FROM comm_pa_adj x
+  LEFT JOIN ges g ON g.Publisher_id = x.Publisher_id
+  LEFT JOIN pub_paid_tot pt ON pt.Publisher_id = x.Publisher_id
+  GROUP BY x.Affiliate_id
+),
+base_affiliate AS (
+  SELECT
+    NULL AS Publisher_id,
+    "" AS Publisher_name,
+    ag.Affiliate_id,
+    IFNULL(TRIM(af.username), "") AS Affiliate_username,
+    0 AS cpa_ges,
+    0 AS net_cpa_val_ges,
+    0 AS net_rs_val_ges,
+    0 AS net_total_comm_ges,
+    ag.cpa_aff,
+    ag.net_cpa_val_aff,
+    ag.net_rs_val_aff,
+    ag.net_total_comm_aff,
+    ag.manual_adj_alloc,
+    ag.net_total_comm_aff_incl_adj,
+    ag.Beneficio
+  FROM aff_agg ag
+  LEFT JOIN account_account af ON af.id = ag.Affiliate_id
+  CROSS JOIN params p
+  WHERE p.mode_flag = ''AFFILIATE''
+),
+base_aff AS (
+  SELECT
+    x.Publisher_id,
+    IFNULL(cp.Advertiser_Name, "") AS Publisher_name,
+    x.Affiliate_id,
+    IFNULL(TRIM(af.username), "") AS Affiliate_username,
+    IFNULL(g.cpa_ges, 0) AS cpa_ges,
+    IFNULL(g.net_cpa_val_ges, 0) AS net_cpa_val_ges,
+    IFNULL(g.net_rs_val_ges, 0) AS net_rs_val_ges,
+    IFNULL(g.net_total_comm_ges, 0) AS net_total_comm_ges,
+    x.cpa_aff,
+    x.net_cpa_val_aff,
+    x.net_rs_val_aff,
+    x.net_total_comm_aff,
+    x.manual_adj_alloc,
+    x.net_total_comm_aff_incl_adj,
+    ROUND(IFNULL(g.net_total_comm_ges, 0) - x.net_total_comm_aff_incl_adj, 2) AS Beneficio
+  FROM comm_pa_adj x
+  LEFT JOIN ges g ON g.Publisher_id = x.Publisher_id
+  LEFT JOIN campaign_publisher cp ON cp.id = x.Publisher_id
+  LEFT JOIN account_account af ON af.id = x.Affiliate_id
+  CROSS JOIN params p
+  WHERE p.mode_flag = ''DETAIL''
+),
+base_pub AS (
+  SELECT
+    g.Publisher_id,
+    cp.Advertiser_Name AS Publisher_name,
+    NULL AS Affiliate_id,
+    "" AS Affiliate_username,
+    g.cpa_ges,
+    g.net_cpa_val_ges,
+    g.net_rs_val_ges,
+    g.net_total_comm_ges,
+    IFNULL(a.cpa_aff, 0) AS cpa_aff,
+    IFNULL(a.net_cpa_val_aff, 0) AS net_cpa_val_aff,
+    IFNULL(a.net_rs_val_aff, 0) AS net_rs_val_aff,
+    IFNULL(a.net_total_comm_aff, 0) AS net_total_comm_aff,
+    IFNULL(a.manual_adj_alloc, 0) AS manual_adj_alloc,
+    IFNULL(a.net_total_comm_aff_incl_adj, 0) AS net_total_comm_aff_incl_adj,
+    ROUND(g.net_total_comm_ges - IFNULL(a.net_total_comm_aff_incl_adj, 0), 2) AS Beneficio
+  FROM ges g
+  LEFT JOIN aff_by_pub a ON a.Publisher_id = g.Publisher_id
+  LEFT JOIN campaign_publisher cp ON cp.id = g.Publisher_id
+  CROSS JOIN params p
+  WHERE p.mode_flag = ''PUBLISHER''
+),
+unioned AS (
+  SELECT b.* FROM base_pub b
+  CROSS JOIN params p WHERE p.mode_flag = ''PUBLISHER''
+  UNION ALL
+  SELECT b.* FROM base_affiliate b
+  CROSS JOIN params p WHERE p.mode_flag = ''AFFILIATE''
+  UNION ALL
+  SELECT b.* FROM base_aff b
+  CROSS JOIN params p WHERE p.mode_flag = ''DETAIL''
+),
+den AS (
+  SELECT
+    (SELECT IFNULL(SUM(g2.cpa_ges), 0) FROM ges g2) AS t_cpa_ges,
+    (SELECT IFNULL(SUM(g2.net_cpa_val_ges), 0) FROM ges g2) AS t_net_cpa_ges,
+    (SELECT IFNULL(SUM(g2.net_rs_val_ges), 0) FROM ges g2) AS t_net_rs_ges,
+    (SELECT IFNULL(SUM(g2.net_total_comm_ges), 0) FROM ges g2) AS t_net_tot_ges,
+    (SELECT IFNULL(SUM(u2.cpa_aff), 0) FROM unioned u2) AS t_cpa_aff,
+    (SELECT IFNULL(SUM(u2.net_cpa_val_aff), 0) FROM unioned u2) AS t_net_cpa_aff,
+    (SELECT IFNULL(SUM(u2.net_rs_val_aff), 0) FROM unioned u2) AS t_net_rs_aff,
+    (SELECT IFNULL(SUM(u2.net_total_comm_aff_incl_adj), 0) FROM unioned u2) AS t_net_tot_aff,
+    (SELECT IFNULL(SUM(u2.Beneficio), 0) FROM unioned u2) AS t_beneficio
+  FROM DUAL
+),
+numbered AS (
+  SELECT u.*,
+         d.t_cpa_ges, d.t_net_cpa_ges, d.t_net_rs_ges, d.t_net_tot_ges,
+         d.t_cpa_aff, d.t_net_cpa_aff, d.t_net_rs_aff, d.t_net_tot_aff,
+         d.t_beneficio
+  FROM unioned u
+  CROSS JOIN den d
+),
+data_rows AS (
+  SELECT
+    ''data'' AS Meta,
+    n.Publisher_id,
+    n.Publisher_name,
+    n.Affiliate_id,
+    n.Affiliate_username,
+    n.cpa_ges,
+    n.net_cpa_val_ges,
+    n.net_rs_val_ges,
+    n.net_total_comm_ges,
+    n.cpa_aff,
+    n.net_cpa_val_aff,
+    n.net_rs_val_aff,
+    n.net_total_comm_aff,
+    n.manual_adj_alloc,
+    n.net_total_comm_aff_incl_adj,
+    n.Beneficio,
+    ROUND(100 * n.cpa_ges / NULLIF(n.t_cpa_ges, 0), 2) AS Pct_ges_CPA,
+    ROUND(100 * n.net_cpa_val_ges / NULLIF(n.t_net_cpa_ges, 0), 2) AS Pct_ges_net_CPA_Val,
+    ROUND(100 * n.net_rs_val_ges / NULLIF(n.t_net_rs_ges, 0), 2) AS Pct_ges_net_RS_Val,
+    ROUND(100 * n.net_total_comm_ges / NULLIF(n.t_net_tot_ges, 0), 2) AS Pct_ges_net_Total_comm,
+    ROUND(100 * n.cpa_aff / NULLIF(n.t_cpa_aff, 0), 2) AS Pct_aff_CPA,
+    ROUND(100 * n.net_cpa_val_aff / NULLIF(n.t_net_cpa_aff, 0), 2) AS Pct_aff_net_CPA_Val,
+    ROUND(100 * n.net_rs_val_aff / NULLIF(n.t_net_rs_aff, 0), 2) AS Pct_aff_net_RS_Val,
+    ROUND(100 * n.net_total_comm_aff_incl_adj / NULLIF(n.t_net_tot_aff, 0), 2) AS Pct_aff_net_Total_comm,
+    ROUND(100 * n.Beneficio / NULLIF(n.t_beneficio, 0), 2) AS Pct_Beneficio
+  FROM numbered n
+)
+SELECT * FROM (
+',
+IF(v_Meta = 'YES', CONCAT(
+'SELECT "setting" AS Meta,
+  "', IF(v_Mode = 'DETAIL', 'width=90px,right=true,sortable=yes', 'omit=yes'), '" AS Publisher_id,
+  "width=220px,sortable=yes" AS Operator,
+  "omit=yes"    AS Affiliate_id,
+  "width=160px,sortable=yes" AS Affiliate,
+  "width=80px,right=true,sortable=yes"  AS CPA,
+  "width=100px,right=true,sortable=yes" AS `CPA Value`,
+  "width=100px,right=true,sortable=yes" AS `RS Value`,
+  "width=110px,right=true,sortable=yes" AS `Total Commiss`,
+  "width=80px,right=true,sortable=yes"  AS `CPA Aff`,
+  "width=100px,right=true,sortable=yes" AS `CPA Value Aff`,
+  "width=100px,right=true,sortable=yes" AS `RS Value Aff`,
+  "width=100px,right=true,sortable=yes" AS `Total Commiss Aff`,
+  "width=100px,right=true,sortable=yes" AS `Manual Adj`,
+  "width=120px,right=true,sortable=yes" AS `Total Comm Aff + Adj`,
+  "width=110px,right=true,sortable=yes" AS `Gross Margin`,
+  "width=70px,right=true,sortable=yes" AS `Pct CPA`,
+  "width=90px,right=true,sortable=yes" AS `Pct CPA Value`,
+  "width=90px,right=true,sortable=yes" AS `Pct RS Value`,
+  "width=90px,right=true,sortable=yes" AS `Pct Total Commiss`,
+  "width=70px,right=true,sortable=yes" AS `Pct CPA Aff`,
+  "width=90px,right=true,sortable=yes" AS `Pct CPA Value Aff`,
+  "width=90px,right=true,sortable=yes" AS `Pct RS Value Aff`,
+  "width=90px,right=true,sortable=yes" AS `Pct Total Commiss Aff`,
+  "width=80px,right=true,sortable=yes" AS `Pct Gross Margin`
+ FROM DUAL
+UNION ALL
+'), ''),
+'SELECT * FROM data_rows
+',
+IF(v_Meta = 'YES',
+'UNION ALL
+SELECT
+  ''total'' AS Meta,
+  NULL AS Publisher_id,
+  ''TOTAL'' AS Publisher_name,
+  NULL AS Affiliate_id,
+  "" AS Affiliate_username,
+  (SELECT IFNULL(SUM(g3.cpa_ges), 0) FROM ges g3) AS cpa_ges,
+  (SELECT IFNULL(SUM(g3.net_cpa_val_ges), 0) FROM ges g3) AS net_cpa_val_ges,
+  (SELECT IFNULL(SUM(g3.net_rs_val_ges), 0) FROM ges g3) AS net_rs_val_ges,
+  (SELECT IFNULL(SUM(g3.net_total_comm_ges), 0) FROM ges g3) AS net_total_comm_ges,
+  (SELECT IFNULL(SUM(d.cpa_aff), 0) FROM data_rows d) AS cpa_aff,
+  (SELECT IFNULL(SUM(d.net_cpa_val_aff), 0) FROM data_rows d) AS net_cpa_val_aff,
+  (SELECT IFNULL(SUM(d.net_rs_val_aff), 0) FROM data_rows d) AS net_rs_val_aff,
+  (SELECT IFNULL(SUM(d.net_total_comm_aff), 0) FROM data_rows d) AS net_total_comm_aff,
+  (SELECT IFNULL(SUM(d.manual_adj_alloc), 0) FROM data_rows d) AS manual_adj_alloc,
+  (SELECT IFNULL(SUM(d.net_total_comm_aff_incl_adj), 0) FROM data_rows d) AS net_total_comm_aff_incl_adj,
+  ROUND(
+    (SELECT IFNULL(SUM(g3.net_total_comm_ges), 0) FROM ges g3)
+    - (SELECT IFNULL(SUM(d.net_total_comm_aff_incl_adj), 0) FROM data_rows d),
+    2
+  ) AS Beneficio,
+  100 AS Pct_ges_CPA,
+  100 AS Pct_ges_net_CPA_Val,
+  100 AS Pct_ges_net_RS_Val,
+  100 AS Pct_ges_net_Total_comm,
+  100 AS Pct_aff_CPA,
+  100 AS Pct_aff_net_CPA_Val,
+  100 AS Pct_aff_net_RS_Val,
+  100 AS Pct_aff_net_Total_comm,
+  100 AS Pct_Beneficio
+FROM DUAL
+', ''),
+') z;');
+
+    IF v_Debug = 'YES' THEN
+        SELECT v_stmt AS Sql_generado;
+        LEAVE fra_dash_label;
+    END IF;
+
+    SET @fra_dash_sql = v_stmt;
+    PREPARE stmt_fra_dash FROM @fra_dash_sql;
+    EXECUTE stmt_fra_dash;
+    DEALLOCATE PREPARE stmt_fra_dash;
+
+END$$
+DELIMITER ;

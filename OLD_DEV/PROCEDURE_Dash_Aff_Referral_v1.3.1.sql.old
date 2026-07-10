@@ -1,0 +1,176 @@
+/* 
+PROCEDURE_Dash_Aff_Referral.sql() - Dash affiliate Referral 
+  
+Keys:
+
+Affiliate_id    =[id del Affiliate_id]. Id del Referral. OBLIGATORIO.
+Month           =[AAAA-MM | CM | LM ]. OPCIONAL. Default=Current Month
+Meta            =[No | Yes]. Default [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Dash_Aff_Referral('');                                    -- ERROR Sin Affiliate_id
+call Dash_Aff_Referral('Affiliate_id=ALL,Month=LM');           -- ERROR Affiliate_id=ALL
+call Dash_Aff_Referral('Affiliate_id=130,Month=LM');           -- OK
+call Dash_Aff_Referral('Month=LM');                            -- ERROR Affiliate_id=""
+
+06.06.2023 V1     Primera version
+28.10.2023 v1.1   Agregado filter por Month
+19.09.2024 v1.2   Agregado nombre y apellido afiliado (Affiliate Rev)
+05.11.2024 v1.3   Utiliza monthly_comms_affiliate_v5 en lugar de Snapshot_day_by_day_fact2
+07.01.2025 v1.3.1 Fix GROUP BY M.Sub_Affiliate_id
+
+*/
+
+DROP PROCEDURE IF EXISTS Dash_Aff_Referral;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_Aff_Referral`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Dash_Aff_Referral'
+     
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version      ='v1.3.1 07.01.2025';
+SET @Month        =LEFT(CURDATE(),7);
+SET @Affiliate_id ='';
+
+SET @Filters      ='NO';
+SET @Meta         ='YES';
+SET @Debug        ='NO';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit
+-- @InputCommLine: ----5----0----5----0----5----0----5----0--
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='month'         THEN SET @Month        =UPPER(@v); END IF;
+   IF lower(@k)='Affiliate_id'  THEN SET @Affiliate_id =UPPER(@v); END IF;
+   IF lower(@k)='debug'         THEN SET @Debug        =UPPER(@v); END IF;
+   IF lower(@k)='meta'          THEN SET @Meta         =UPPER(@v); END IF;
+   IF lower(@k)='filters'       THEN SET @Filters      =UPPER(@v); END IF;   
+
+END WHILE;
+
+/************ VALIDACION PARAMETROS ************************************************/
+
+IF @Month='CM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 0 MONTH),7); END IF;
+IF @Month='LM' THEN SET @Month=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
+
+SET @Month_Report=@Month;
+   
+-- En views de Afiliado impide pedir @Affiliate_id="ALL"  
+IF   @Affiliate_id IN ("","ALL")
+THEN
+    Select 'data' as Meta,'Affiliate_id mandatory' as '' from dual;
+    LEAVE proc_label;
+END IF; 
+
+/* **************************************************/
+
+-- SET SESSION group_concat_max_len = 100000;
+
+SET @SQLreport=concat('
+WITH Master_Sub AS (
+SELECT Master_Affiliate_id,MC.username AS `Master`
+		,Sub_Affiliate_id,AC.username AS `Affiliate`
+		,M.Status_id
+		,M.Valid_From,M.Valid_To
+		,M.Deal_id
+		,MD.Deal_Name 
+		,MD.Commissions_Percentage AS `Com%`
+		,MD.CPA_Value AS `ComByCPA`
+      ,MD.RS_Percentage AS `RS%`
+      ,CONCAT(AC.last_name,", ",AC.first_name) AS `LongName`
+from master_affiliate_deals_per_affiliate M
+LEFT  JOIN `account_account` AC on M.Sub_Affiliate_id=AC.id
+LEFT  JOIN `account_account` MC on M.Master_Affiliate_id=MC.id
+LEFT  JOIN `master_affiliate_deals` MD on M.Deal_id=MD.id
+WHERE Master_Affiliate_id="',@Affiliate_id,'" 
+GROUP BY M.Sub_Affiliate_id
+)
+SELECT  
+   "setting" as `Meta`
+   ,"width=100px"            as `Month`
+   ,"omit=true"              as `Master`
+   ,"width=120px"            as `Affiliate`
+   ,"width=200px"            as `Aff name`
+   ,"width=100px,right=true" as `CPA Aff`
+   ,"width=100px,right=true" as `Referral Comission`
+   ,"width=300px"            as `Referral Deal`
+	FROM DUAL WHERE "',@Meta,'"="YES"
+UNION ALL 
+SELECT  "data" as `Meta`
+   ,D.`Month`
+	,MS.MASTER
+	,MS.Affiliate
+	,MS.LongName
+	,SUM(CPA) as `CPA Aff`
+	,SUM(net_Total_comm) as `Referral Commission`
+   ,MS.Deal_Name AS `Referral Deal`
+FROM monthly_comms_affiliate_v5 D
+INNER JOIN Master_Sub MS ON MS.Sub_Affiliate_id=D.Sub_Affiliate_id
+WHERE D.`Month`="',@Month_Report,'" 
+GROUP BY D.Affiliate,D.Sub_Affiliate_id having `Referral Commission`<>0
+ORDER BY Meta desc, Affiliate
+;');
+
+-- FILTERS --------------------------------------------
+SET @SQLfilters=CONCAT('
+WITH RECURSIVE MonthFilter AS (
+  SELECT CURDATE() AS `Date`
+  UNION ALL
+  SELECT DATE_SUB(`Date`, INTERVAL 1 MONTH) FROM MonthFilter
+  WHERE DATE_SUB(`Date`, INTERVAL 1 MONTH) >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
+)
+SELECT "01" as "Korder","Date" AS "Key",LEFT(`Date`,7) AS "Value"
+                                       ,"Month" AS `CallKey`,LEFT(`Date`,7) AS `CallValue`,"" AS "Rows" FROM MonthFilter
+ORDER BY 1, case when `CallKey`="Month" then `CallValue` else "" end desc, 3                                       
+;'
+);
+
+-- ----------------------------------------------------
+IF @Filters="YES" THEN SET @SQLreport=@SQLfilters; END IF;
+
+IF @Debug!="NO" THEN SELECT @SQLreport; END IF;   
+IF @Debug!="NO" THEN SELECT @Debug,@Month_Report,@Affiliate_id; END IF;
+
+IF @Debug != "YES" THEN 
+	PREPARE stmt1 FROM @SQLreport;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;   
+END IF;
+ 
+END$$
+DELIMITER ;
+
+/* Testing
+
+call Dash_Aff_Referral('');                                    -- ERROR Sin Affiliate_id
+call Dash_Aff_Referral('Affiliate_id=ALL,Month=LM');           -- ERROR Affiliate_id=ALL
+call Dash_Aff_Referral('Affiliate_id=130,Month=LM');           -- OK
+call Dash_Aff_Referral('Affiliate_id=130,Month=LM,meta=no');   -- OK
+call Dash_Aff_Referral('Month=LM');                            -- ERROR Affiliate_id=""
+
+call Dash_Aff_Referral('Affiliate_id=553,Month=lm,filters=ye,debug=non');  
+
+*/

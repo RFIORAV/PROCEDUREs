@@ -1,0 +1,135 @@
+/* 
+PROCEDURE_Aff_Favorites.sql - AFFILIATES - Dash Favorites
+
+Descripción:
+  Procedimiento Aff_Favorites.
+  
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id    =[ALL | id del Affiliate_id]. 
+Checked         =[YES | NO ]. OPCIONAL. Default=YES
+Procedures      =[Procedure | ALL ]. OPCIONAL. Default=ALL
+Groups          =[Group | ALL ]. OPCIONAL. Default=ALL
+Meta            =[No | Yes]. Default [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+Call Aff_Favorites('Affiliate_id=39,Procedures=ALL,Groups=all,Checked=yes');  -- OK
+
+15.08.2023 V1     Karen. Primera version
+
+*/
+
+DROP PROCEDURE IF EXISTS Aff_Favorites;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Aff_Favorites`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'AFFILIATES - Dash Favorites'
+    
+proc_label:BEGIN
+
+
+SET @Version         ='v1.0 15.08.2023';
+SET @Affiliate_id    ='';
+SET @Checked         ='ALL';
+SET @Procedures      ='ALL';
+SET @Groups          ='ALL';
+SET @Debug           ='NO';
+SET @Filters         ='NO';
+SET @Meta            ='YES';
+
+SET @InputCommLine=Concat(InputCommLine ,',');      
+SET @InputCommLine=replace(@InputCommLine,'"','');  
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+
+   SET @e=INSTR(@InputCommLine,'=');    				   
+   SET @c=INSTR(@InputCommLine,','); 					   
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =      @v;  END IF;
+	IF lower(@k)='checked'         THEN SET @Checked       =      @v;  END IF;
+	IF lower(@k)='procedures'      THEN SET @Procedures    =      @v;  END IF;
+	IF lower(@k)='groups'          THEN SET @Groups        =      @v;  END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+
+END WHILE;
+
+IF @Debug!="NO" THEN SELECT @Mode,@View,@Affiliate_id,@Checked,@Procedures,@Groups,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereChecked = "";
+IF @Checked = "YES" THEN SET @WhereChecked = " AND is_checked=1"; END IF;
+
+SET @WhereProcedures = "";
+IF @Procedures != "ALL" THEN SET @WhereProcedures = CONCAT(" AND `Procedure` IN ('",@Procedures,"')"); END IF;
+
+SET @WhereGroups = "";
+IF @Groups != "ALL" THEN SET @WhereGroups = CONCAT(" AND `Group` IN ('",@Groups,"')"); END IF;
+
+SET SESSION group_concat_max_len = 100000;
+
+SET @CTE=CONCAT('
+WITH Main_Table_Data as (
+SELECT 
+    d.`id`               
+	 ,d.`Name`
+	 ,d.`Procedure`
+	 ,d.`Route`
+	 ,IF(da.`is_checked` IS NULL, 0, da.`is_checked`)
+FROM dash_favorite d 
+LEFT JOIN dash_favorite_account da ON d.id=da.Favorite_id AND da.Affiliate_id=',@Affiliate_id,'
+WHERE d.Status_id=1 ',@WhereChecked, @WhereProcedures, @WhereGroups,')'
+);
+
+SET @SQLmeta=CONCAT(
+'(
+SELECT
+   "setting" as Meta
+   ,"omit=yes"                as `id` 
+	,"width=300px"             as `name`
+	,"omit=yes"                as `procedure`
+	,"omit=yes"                as `route`
+	,"omit=yes"                as `checked`
+FROM DUAL WHERE @Meta="YES")
+UNION ALL '
+);
+
+SET @SQL=CONCAT(
+@CTE,
+@SQLmeta,
+'
+SELECT "data" as `Meta`
+	,MT.* 
+FROM Main_Table_Data MT
+;');
+
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+Call Aff_Favorites('Affiliate_id=39,Procedures=ALL,Groups=all,Checked=yes');
+
+*/

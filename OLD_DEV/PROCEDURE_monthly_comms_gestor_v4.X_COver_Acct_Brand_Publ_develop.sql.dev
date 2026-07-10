@@ -1,0 +1,275 @@
+/* PROCEDURE_monthly_comms_gestor_v4_COver - COMISIONES del GESTOR
+
+	22.02.2022 Calculos sobre Snapshot_day_by_day_fact1
+	02.04.2022 Se agrega Tracker_ID para estadisticas
+	19.04.2022 Tratamiento de Deal por producto y fecha
+	27.07.2022 Multimoneda
+	13.09.2022 incluye Product
+   10.10.2022 V3.1   incluye group by deal
+   27.10.2022 V3.2   Nuevo cálculo de RS (acumula por Adv Account)
+   28.10.2022 V3.2   Utiliza Brand_Group y Brand_Group_Acum
+-- 28.11.2022 v3.3   Se trata nuevos campos is_indirect,Advertiser_indirect_id,Advertiser_indirect
+   21.01.2023 v3.4   Trata nuevo concepto Publisher (pagador)
+   31.01.2023 v3.5   `Area`
+   10.03.2023 v4     PROCEDURE_monthly_comms_gestor_v4_COver.sql - C.Over
+   10.03.2023 v4     PROCEDURE_monthly_comms_affiliate_v4_COver.sql - C.Over
+   27.03.2023 v4.5   Variantes de base para acumulación en cálculo de RS
+**/
+
+DROP PROCEDURE IF EXISTS monthly_comms_gestor45;
+
+DELIMITER $$
+
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE monthly_comms_gestor45()
+   COMMENT 'Commissiona calc using C.Over and CPAminusRS'
+   LANGUAGE SQL
+ 
+BEGIN
+-- Defaults
+SET @Version         ='v4.5 26.03.2023';
+SET @CurrentDay      =curdate();
+
+IF CURDATE()<='2023-03-27' THEN DROP TABLE IF EXISTS `monthly_comms_gestor45`; END IF;
+
+CREATE TABLE IF NOT EXISTS `monthly_comms_gestor45` (
+	`Month`           VARCHAR(7)    NOT NULL DEFAULT '0000-00',
+	`Publisher`       VARCHAR(150)  NOT NULL DEFAULT '',
+	`Brand`           VARCHAR(150)  NOT NULL DEFAULT '',
+	`Username`        VARCHAR(150)  NOT NULL DEFAULT '',
+	`RS_base_acum_key` VARCHAR(150) NOT NULL DEFAULT '',
+	`Publisher_id`    INT(10)       NOT NULL DEFAULT '0',
+	`Advertiser_id`   INT(10)       NOT NULL DEFAULT '0',
+	`Username_id`     INT(10)       NOT NULL DEFAULT '0',
+	`CPA`             DECIMAL(12,0) NOT NULL DEFAULT '0',
+	`net_CPA_Val`     DECIMAL(12,2) NOT NULL DEFAULT '0',
+	`net_RS_Val`      DECIMAL(12,2) NOT NULL DEFAULT '0',
+	`net_Total_comm`  DECIMAL(12,2) NOT NULL DEFAULT '0',
+	`RS_carry_NCO`    DECIMAL(12,2) NOT NULL DEFAULT '0',
+	`Net_Revenue`     DECIMAL(12,2) NOT NULL DEFAULT '0',
+	`gross_RN_neg`    DECIMAL(12,2) NOT NULL DEFAULT '0',
+	`gross_RN_pos`    DECIMAL(12,2) NOT NULL DEFAULT '0',
+	`gross_CPA_Val`   DECIMAL(12,2) NOT NULL DEFAULT '0',
+	`gross_RS_Val`    DECIMAL(12,2) NOT NULL DEFAULT '0',
+	-- `CarryOver`       VARCHAR(2)    NOT NULL DEFAULT '0',
+	-- `CPAminusRS`      INT(10)       NOT NULL DEFAULT '0',
+	UNIQUE INDEX `Month` (`Month`, `Publisher_id`, `Advertiser_id`, `Username_id`) USING BTREE,
+	INDEX `Month_Username_id` (`Month`, `Username_id`) USING BTREE,
+	INDEX `Month_Advertiser_id` (`Month`, `Advertiser_id`) USING BTREE   
+)
+ENGINE=InnoDB
+;
+TRUNCATE TABLE `monthly_comms_gestor45`;
+
+-- INSERT IGNORE INTO `monthly_comms_gestor45`
+WITH DbD_Fact1_Account_monthly as (
+	SELECT
+		 LEFT(DATE,7) AS `Month`
+		,IFNULL(p.`Advertiser_name`,"_none_") AS `Publisher`
+      ,`Brand`
+      ,`Username`
+		,`Publisher_id`
+		,`Advertiser_id`
+		,`Username_id`
+		,SUM(IFNULL(`Qualified_Players`,0))  				AS `CPA`
+		,SUM(IFNULL(`Net_Revenue`,0))							AS `Net_Revenue`
+		,ROUND(SUM(IFNULL(`CPA_Value_Gestor`,0)),2)     AS `gross_CPA_Val`
+		,ROUND(SUM(IFNULL(`Revenue_Share_Gestor`,0)),2) AS `gross_RS_Val`
+		,SUM(CASE WHEN IFNULL(`Net_Revenue`,0)<0 
+            THEN IFNULL(`Net_Revenue`,0) 
+            ELSE 0 END)							            AS `gross_RN_neg`
+		,SUM(CASE WHEN IFNULL(`Net_Revenue`,0)>0 
+            THEN IFNULL(`Net_Revenue`,0)
+            ELSE 0 END)							            AS `gross_RN_pos`
+		,`Deal_Ges_id`
+		,`Deal_Ges_CPA`
+		,if(`Deal_Ges_Carry_Over`="1","1","0")          as `CarryOver`
+		,`Deal_Ges_RS_Against_CPA`                      as `CPAminusRS`
+		,`Deal_Ges_RS_Base`  -- account/brand/publisher/account+brand/account+publisher
+		,`Deal_Ges_RS`
+		,`Deal_Ges_Valid_From`
+		,`Data_Currency`
+		,(case when `Deal_Ges_RS_Base`="publisher"         then concat("P",`Publisher_id`)
+             when `Deal_Ges_RS_Base`="publisher/brand"   then concat("P",`Publisher_id` ,"A",`Advertiser_id`)
+             when `Deal_Ges_RS_Base`="publisher/account" then concat("P",`Publisher_id` ,"U",`Username`)
+             when `Deal_Ges_RS_Base`="brand"             then concat("A",`Advertiser_id`)
+             when `Deal_Ges_RS_Base`="account"           then concat("U",`Username_id`)
+             else concat("U",`Username_id`) end) as `RS_base_acum_key`
+		FROM `Snapshot_day_by_day_fact1` D
+      LEFT JOIN campaign_publisher p ON p.id=D.`Publisher_id`
+		GROUP BY LEFT(DATE,7)
+		,(case when `Deal_Ges_RS_Base`="publisher"         then concat("P",`Publisher_id`)
+             when `Deal_Ges_RS_Base`="publisher/brand"   then concat("P",`Publisher_id` ,"A",`Advertiser_id`)
+             when `Deal_Ges_RS_Base`="publisher/account" then concat("P",`Publisher_id` ,"U",`Username`)
+             when `Deal_Ges_RS_Base`="brand"             then concat("A",`Advertiser_id`)
+             when `Deal_Ges_RS_Base`="account"           then concat("U",`Username_id`)
+             else concat("U",`Username_id`) end)
+      ,`Deal_Ges_RS_Against_CPA`,`Deal_Ges_Carry_Over`
+),
+DbD_Fact1_Account_monthly_CPA_versus_RS as (
+   (
+   SELECT
+		 `Month`
+      ,`RS_base_acum_key`
+      ,`Publisher`
+      ,`Brand`
+      ,`Username`
+		,`Publisher_id`
+		,`Advertiser_id`
+		,`Username_id`
+		,`CPA`
+		,`Net_Revenue`
+		,`gross_CPA_Val`
+		,`gross_RS_Val`
+		,`gross_RN_neg`
+		,`gross_RN_pos`
+		,`CarryOver`
+		,`CPAminusRS`
+      ,(CASE WHEN `gross_CPA_Val`>0 THEN
+               (CASE WHEN `gross_RS_Val`<0 THEN 
+                       (CASE WHEN `gross_CPA_Val`>=ABS(gross_RS_Val) 
+                             THEN @net_CPA_Val:=`gross_CPA_Val`-ABS(gross_RS_Val)
+                             ELSE @net_CPA_Val:=0 END)
+                     ELSE @net_CPA_Val:=`gross_CPA_Val` END)
+             ELSE @net_CPA_Val:=`gross_CPA_Val` END)                  AS `net_CPA_Val`
+              
+      ,(CASE WHEN `gross_CPA_Val`>=ABS(gross_RS_Val)
+             THEN @net_RS_Val:=0
+             ELSE @net_RS_Val:=`gross_CPA_Val`-ABS(gross_RS_Val) END) AS `net_RS_Val`
+	FROM `DbD_Fact1_Account_monthly` D
+   WHERE `CPAminusRS`=1 AND `gross_RS_Val`<0
+   )
+   UNION ALL -- --------------------------------------------
+   (
+	SELECT
+		 `Month`
+      ,`RS_base_acum_key`
+      ,`Publisher`
+      ,`Brand`
+      ,`Username`
+		,`Publisher_id`
+		,`Advertiser_id`
+		,`Username_id`
+		,`CPA`
+		,`Net_Revenue`
+		,`gross_CPA_Val`
+		,`gross_RS_Val`
+		,`gross_RN_neg`
+		,`gross_RN_pos`
+		,`CarryOver`
+		,`CPAminusRS`
+      ,`gross_CPA_Val`           AS `net_CPA_Val`
+      ,`gross_RS_Val`            AS `net_RS_Val` 
+	FROM `DbD_Fact1_Account_monthly` D
+   WHERE (`CPAminusRS`=1 AND `gross_RS_Val`>=0) OR `CPAminusRS`=0
+   )   
+	ORDER BY `Username_id`,`Month`,`CarryOver`,`CPAminusRS`
+),
+DbD_Fact1_Account_monthly_CPA_versus_RS_acum as (
+   SELECT
+		 `Month`
+      ,`RS_base_acum_key`
+      ,`Publisher`
+      ,`Brand`
+      ,`Username`
+		,`Publisher_id`
+		,`Advertiser_id`
+		,`Username_id`
+		,sum(`CPA`          ) as `CPA`          
+		,sum(`Net_Revenue`  ) as `Net_Revenue`  
+		,sum(`gross_CPA_Val`) as `gross_CPA_Val`
+		,sum(`gross_RS_Val` ) as `gross_RS_Val` 
+      ,sum(`net_CPA_Val`  ) as `net_CPA_Val`  
+      ,sum(`net_RS_Val`   ) as `net_RS_Val`   
+      ,sum(`gross_RN_neg` ) as `gross_RN_neg`   
+      ,sum(`gross_RN_pos` ) as `gross_RN_pos`
+		,`CarryOver`    
+		-- ,`CPAminusRS`      
+	FROM `DbD_Fact1_Account_monthly_CPA_versus_RS`
+   GROUP BY `RS_base_acum_key`,`Month`,`CarryOver`
+	ORDER BY `RS_base_acum_key`,`Month`,`CarryOver`
+),
+DbD_Fact1_Account_monthly_CarryOver as (
+   SELECT
+		 `Month`
+      ,`RS_base_acum_key`
+      ,`Publisher`
+      ,`Brand`
+      ,`Username`
+		,`Publisher_id`
+		,`Advertiser_id`
+		,`Username_id`
+		,`CPA`
+		,`Net_Revenue`
+		,`gross_CPA_Val`
+		,`gross_RS_Val`
+		,`gross_RN_neg`
+		,`gross_RN_pos`      
+		,`CarryOver`
+      ,`net_CPA_Val`
+      ,`net_RS_Val`                                                                           as `Dummy0`
+      -- Inicializa o mantiene carry
+      ,(@RS_carry_NCO:=case when IFNULL(@Prev_Deal,"")!=CONCAT_WS(" ",RS_base_acum_key,CarryOver) 
+                            then 0 else @RS_carry_NCO END) 	                                  as `Dummy1` 
+      -- Calcula parte de `net_RS_Val` aportable a carry
+      ,(@aportable_a_carry:=(case when `CarryOver`=1 then @RS_carry_NCO+net_RS_Val else 0 END)) as `Dummy2`
+      ,(@rs_cobrable:=(case when `CarryOver`=1 then
+                           (case when @aportable_a_carry>0 then @aportable_a_carry else 0 end)
+                       else `net_RS_Val` END))                                                as `Dummy3` 
+      -- acumula carry cuando `net_RS_Val`<0
+      ,(@RS_carry_NCO:=case when @rs_cobrable>0 then 0 else @aportable_a_carry END)           as `RS_carry_NCO`
+      -- calcula Total_commission
+      ,(case when @rs_cobrable>=0 then @rs_cobrable+net_CPA_Val else net_CPA_Val end)         as `net_Total_comm`
+      ,(case when @rs_cobrable<0 then 0 else @rs_cobrable end)                                as `net_RS_Val` 
+      -- reserva carry
+      ,(@Prev_Deal:=CONCAT_WS(" ",RS_base_acum_key,CarryOver)) AS `Prev_Deal`     
+	FROM `DbD_Fact1_Account_monthly_CPA_versus_RS_acum` D
+)
+SELECT
+	 `Month`
+   ,`Publisher`
+   ,`Brand`
+   ,`Username`
+   ,`RS_base_acum_key`
+	,`Publisher_id`
+	,`Advertiser_id`
+	,CAST(`Username_id` AS UNSIGNED) AS `Username_id`
+   ,round(sum(`CPA`           ),0) as `CPA`  
+   ,round(sum(`net_CPA_Val`   ),2) as `net_CPA_Val`  
+   ,round(sum(`net_RS_Val`    ),2) as `net_RS_Val`   
+   ,round(sum(`net_Total_comm`),2) as `net_Total_comm`   
+   ,round(sum(`RS_carry_NCO`  ),2) as `RS_carry_NCO` 
+	,round(sum(`Net_Revenue`   ),2) as `Net_Revenue`  
+	,round(sum(`gross_RN_neg`  ),2) as `gross_RN_neg`
+	,round(sum(`gross_RN_pos`  ),2) as `gross_RN_pos`    
+	,round(sum(`gross_CPA_Val` ),2) as `gross_CPA_Val`
+	,round(sum(`gross_RS_Val`  ),2) as `gross_RS_Val` 
+	-- ,`CarryOver`
+	-- ,`CPAminusRS`
+   -- ,`net_RS_Value`
+	-- ,`Dummy0`,`Dummy1`,`Dummy2`,`Dummy3`
+	-- ,`Prev_Deal`
+FROM DbD_Fact1_Account_monthly_CarryOver
+GROUP BY `Publisher_id`,`Advertiser_id`,`Username_id`,`Month`
+ORDER BY `Publisher`,`Brand`,`Username`,`Month`
+;
+
+END$$
+DELIMITER ;
+
+/*
+call monthly_comms_gestor45;
+
+
+CALL Snapshot_day_by_day_fact1_upd_from_dbd('CM');
+CALL Snapshot_day_by_day_fact1_upd_from_dbd('LM');
+call Snapshot_day_by_day_fact1_upd_from_dbd('2023-01');
+call Snapshot_day_by_day_fact1_upd_from_dbd('2022-12');
+
+-- Para test
+update euroaffiliati_xx.`Snapshot_day_by_day_fact1`
+set `Deal_Ges_Carry_Over`=1
+    ,`Deal_Ges_RS_Against_CPA`=(case when Advertiser_id in ('17') then 1 else 0 end)
+where publisher_id in ('1','17')
+;
+
+*/

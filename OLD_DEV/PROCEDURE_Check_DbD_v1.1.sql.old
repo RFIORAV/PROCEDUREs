@@ -1,0 +1,131 @@
+/* PROCEDURE_Check_DbD_v1.sql - Check Main Table vs Raw data table (fact1/DbD)
+
+   05.09.2022 V1     COMPARA Snapshot_day_by_day contra Snapshot_day_by_day_fact1. Devuelve diferencias
+                     Mes corriente a partir de día 6. Antes del 6, Last Month
+   19.10.2022 V1.1   Columna Meta
+   23.10.2022        Traducción de mensajes. Warning por Deal_Aff=0
+   Parametros (none)
+*/
+
+DROP PROCEDURE IF EXISTS Check_DbD;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE Check_DbD()
+   COMMENT 'Check Main Table vs Raw data table (fact1/DbD)'
+   LANGUAGE SQL
+
+BEGIN
+
+SET @Version='v1.1 02.12.2022';
+SET @Meta="YES";
+
+SET @DateCM=LEFT(CURDATE(),7);
+
+IF DAY(CURDATE()) <= 5  
+THEN SET @DateFrom=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
+ELSE SET @DateFrom=LEFT(CURDATE(),7);
+END IF;
+    
+-- Difrerencias de CPA entre DbD y DbD_fact1
+WITH Detail_Fact1 as (
+  SELECT "" as Meta,
+     'Fact1' as Tabla,`Date`,Brand,Username_id,Username,Affiliate
+	  ,Tracker_ID,Tracker_Name,MS_ID
+		,CASE WHEN MS_ID IS NULL     
+				THEN '<<MS missing' 
+            ELSE CASE WHEN ifnull(Deal_Aff_id,0)=0
+							 THEN '<<DEAL missing'
+            			 ELSE '' END
+				END  as Warning
+      ,Product,Deal_Aff_id
+     ,SUM(Qualified_Players) AS CPA
+     ,SUM(Net_Revenue) AS NR
+     ,Hour_Update,Language
+  FROM Snapshot_day_by_day_fact1
+  WHERE left(Date,7)>=@DateFrom AND Qualified_Players<>0
+  GROUP BY Brand,username,Tracker_ID,Tracker_Name,Product HAVING Warning!=''
+  ORDER BY Brand,Affiliate,Tracker_ID,Tracker_Name
+  -- ,Language
+),
+ Tot_Fact1 as (
+ SELECT "" as Meta,
+     'Fact1' as Tabla,left(Date,7) `Month`,Brand,Username_id,Username,Affiliate
+	  ,Tracker_ID,Tracker_Name,MS_ID
+		,CASE WHEN MS_ID IS NULL            THEN '<<MS missing' 
+            WHEN MS_ID IS not NULL and ifnull(Deal_Aff_id,0)=0  THEN '<<DEAL missing'
+            ELSE '' END as Warning
+      ,Product,Deal_Aff_id
+     ,SUM(Qualified_Players) AS CPA
+     ,SUM(Net_Revenue) AS NR  
+     ,Hour_Update,Language
+  FROM Snapshot_day_by_day_fact1
+  WHERE left(Date,7)>=@DateCM AND (Qualified_Players<>0)
+)
+(
+SELECT "" as Meta,
+    Tabla,`Date`,Brand,Username_id,Username,Affiliate,Tracker_ID,Tracker_Name,MS_ID,Warning,Product
+   -- ,ROUND(if(Tabla='DbD',CPA,0),0) AS 'CPAs DbD'
+	-- ,ROUND(if(Tabla='DbD',0,CPA),0) AS 'CPAs Fact1'
+	,CPA AS 'CPAs'
+	,NR AS 'NR'
+	,Hour_Update,Language
+FROM Detail_Fact1
+-- WHERE Warning!=''
+-- GROUP BY left(Date,7),Brand,Username_id,Tracker_ID,Tracker_Name,Product,Language HAVING CPAs_DbD<>CPAs_Fa1
+-- ORDER BY Brand,Username_id,Affiliate,Tracker_ID,Tracker_Name
+)
+UNION ALL
+(
+SELECT "" as Meta,
+    Tabla,`Month`,'TOTAL Month' AS Brand
+	,'-------' AS Username_id,'-------' AS Username,'-------' AS Affiliate
+	,'-------' AS Tracker_ID,'-------' AS Tracker_Name
+	,'-------' AS MS_ID,'-------' AS Warning,'-------' AS Product
+   -- ,'-------' AS  CPAs_DbD
+	,ROUND(SUM(CPA),0) AS CPAs_Fa1
+	,ROUND(SUM(NR),0) AS NR_Fa1
+	,Hour_Update,Language
+from Tot_Fact1 WHERE Tabla='Fact1' GROUP BY Month
+)
+UNION ALL
+(
+SELECT "" as Meta,
+    Tabla,`Month`,'Month forecast' AS Brand
+	,'-------' AS Username_id,'-------' AS Username,'-------' AS Affiliate
+	,'-------' AS Tracker_ID,'-------' AS Tracker_Name
+	,'-------' AS MS_ID,'-------' AS Warning,'-------' AS Product
+   -- ,'-------' AS  CPAs_DbD
+	,ROUND(SUM(CPA)/DAY(curdate())*DAY(LAST_DAY(CURDATE())),0) AS CPAs_Fa1
+   ,''
+	,Hour_Update,Language
+from Tot_Fact1 WHERE Tabla='Fact1'
+)
+UNION ALL 
+(
+SELECT
+  "setting" as Meta
+  ,"width=80px,center=true" as Tabla
+  ,"width=100px" as `Month`
+  ,"width=130px" as Brand
+  ,"width=80px" as Username_id
+  ,"width=160px" as Username
+  ,"width=130px" as Affiliate
+  ,"width=100px" as Tracker_ID
+  ,"width=200px" as Tracker_Name
+  ,"width=80px" as MS_ID
+  ,"width=150px" as Warning
+  ,"width=160px" as Product
+--   ,"width=80px" as CPAs_DbD
+  ,"width=80px" as CPAs_Fa1
+  ,"width=80px" as NR_Fa1
+  ,"width=160px" as Hour_Update
+  ,"width=100px" as Language
+FROM DUAL WHERE @Meta="YES"
+)
+;
+
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call Check_DbD();

@@ -1,0 +1,113 @@
+
+/* Optimized PROCEDURE_monthly_comms_gestor for MySQL 8 */
+
+-- DROP PROCEDURE IF EXISTS monthly_comms_gestor;
+DROP PROCEDURE IF EXISTS monthly_comms_gestor;
+
+SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+
+DELIMITER $$
+
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE monthly_comms_gestor()
+   COMMENT 'Optimized commission calculation using C.Over and CPAminusRS'
+   LANGUAGE SQL
+
+BEGIN
+    -- Defaults
+    SET @VERSION = 'v5.3 Optimized 2024';
+    SET @CurrentDay = CURDATE();
+
+    -- Drop and create tables with proper checks and optimizations
+    IF NOW() <= '2024-08-03' THEN 
+        DROP TABLE IF EXISTS `monthly_comms_gestor_v5`; 
+    END IF;
+
+    CREATE TABLE IF NOT EXISTS `monthly_comms_gestor_v5` (
+        `Owner`             VARCHAR(150)  NULL DEFAULT '2',
+        `Area`              VARCHAR(150)  NULL DEFAULT 'gaming',
+        `Data_Currency`     VARCHAR(150)  NULL DEFAULT 'EUR',
+        `Comm_type`         VARCHAR(150)  NULL DEFAULT '',  
+        `Month`             VARCHAR(7)    NULL DEFAULT '0000-00',
+        `Publisher`         VARCHAR(150)  NULL DEFAULT '',
+        `Brand`             VARCHAR(150)  NULL DEFAULT '',
+        `Username`          VARCHAR(150)  NULL DEFAULT '',
+        `Publisher_id`      INT(10)       NULL DEFAULT '0',
+        `Advertiser_id`     INT(10)       NULL DEFAULT '0',
+        `Username_id`       INT(10)       NULL DEFAULT '0',
+        `CPA`               DECIMAL(12,0) NULL DEFAULT '0',
+        `Net_Revenue`       DECIMAL(12,2) NULL DEFAULT '0',
+        `gross_CPA_Val`     DECIMAL(12,2) NULL DEFAULT '0',
+        `gross_RS_Val`      DECIMAL(12,2) NULL DEFAULT '0',
+        `net_CPA_Val`       DECIMAL(12,2) NULL DEFAULT '0',
+        `net_RS_Val`        DECIMAL(12,2) NULL DEFAULT '0',
+        `net_Total_comm`    DECIMAL(12,2) NULL DEFAULT '0',
+        `RS_CarryOver_Pend` DECIMAL(12,2) NULL DEFAULT '0',
+        `CarryOver`         VARCHAR(2)    NULL DEFAULT '0',
+        `RS_Base`           VARCHAR(50)   NULL DEFAULT '',
+        `Product`           VARCHAR(50)   NULL DEFAULT '',
+        INDEX `Month_Username_id` (`Month`, `Username_id`) USING BTREE,
+        INDEX `Month_Advertiser_id` (`Month`, `Advertiser_id`) USING BTREE,
+        INDEX `Month` (`Month`, `Publisher_id`, `Advertiser_id`, `Username_id`) USING BTREE
+    ) ENGINE=InnoDB;
+
+    -- Creating bonus table with proper indexing
+    CREATE TABLE IF NOT EXISTS `campaign_deal_gestor_bonus` (
+        `id`                 INT(10)    NOT NULL AUTO_INCREMENT,
+        `Publisher_id`       INT(10)    NULL DEFAULT NULL,
+        `Username_id`        INT(10)    NULL DEFAULT NULL,
+        `Description`        VARCHAR(50) NULL DEFAULT '',
+        `Month_Valid_From`   VARCHAR(7)  NULL DEFAULT '',
+        `Month_Valid_to`     VARCHAR(7)  NULL DEFAULT NULL,
+        `Bonus_Value`        DECIMAL(10,0) NULL DEFAULT '0',
+        `Conditions`         VARCHAR(30) NULL DEFAULT 'ANY',
+        `CPA_min`            INT(10)     NULL DEFAULT '0',
+        `NR_min`             INT(10)     NULL DEFAULT '0',
+        `FTD_min`            INT(10)     NULL DEFAULT '0',
+        `Status_id`          SMALLINT(5) NULL DEFAULT '1',
+        `Status`             VARCHAR(30) NULL DEFAULT 'Active',
+        `Currency`           VARCHAR(5)  NULL DEFAULT 'EUR',
+        `Creation_Date`      DATETIME    NULL DEFAULT CURRENT_TIMESTAMP,
+        `Last_Update`        DATETIME    NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        `Operator`           VARCHAR(30) NULL DEFAULT 'SysOp',
+        PRIMARY KEY (`id`) USING BTREE
+    ) ENGINE=InnoDB;
+
+    -- Main logic using optimized CTEs for commission calculation
+    WITH DbD_Fact1_Account_monthly AS (
+        SELECT
+            LEFT(DATE, 7) AS `Month`,
+            IFNULL(p.`Advertiser_name`, "_none_") AS `Publisher`,
+            `Brand`,
+            `Username`,
+            `Publisher_id`,
+            `Advertiser_id`,
+            CAST(`Username_id` AS UNSIGNED) AS `Username_id`,
+            SUM(IFNULL(`Qualified_Players`, 0)) AS `CPA`,
+            SUM(IFNULL(`Net_Revenue`, 0)) AS `Net_Revenue`,
+            ROUND(SUM(IFNULL(`CPA_Value_Gestor`, 0)), 2) AS `gross_CPA_Val`,
+            ROUND(SUM(IFNULL(`Revenue_Share_Gestor`, 0)), 2) AS `gross_RS_Val`,
+            IF(`Deal_Ges_Carry_Over` = "1", "1", "0") AS `CarryOver`,
+            IF(`Deal_Ges_RS_Against_CPA` = "1", "1", "0") AS `CPAminusRS`,
+            `Deal_Ges_id`,
+            `Deal_Ges_CPA`,
+            `Deal_Ges_RS_Base` AS `RS_Base`,
+            `Deal_Ges_RS`,
+            `Deal_Ges_Valid_From`,
+            `Data_Currency`,
+            IFNULL(NULLIF(`Product`, ""), `Product_Real`) AS `Product`,
+            CASE
+                WHEN `Deal_Ges_RS_Base` = "publisher" THEN CONCAT(`Publisher_id`, "0", "_prod_")
+                WHEN `Deal_Ges_RS_Base` = "account" THEN CONCAT(`Publisher_id`, `Username_id`, "_prod_")
+                WHEN `Deal_Ges_RS_Base` = "product" THEN CONCAT(`Publisher_id`, `Username_id`, IFNULL(NULLIF(`Product`, ""), `Product_Real`))
+                ELSE CONCAT(`Publisher_id`, `Username_id`, "_prod_")
+            END AS `KeyGrupoControl`
+        FROM `Snapshot_day_by_day_fact1` D
+        LEFT JOIN `campaign_publisher` p ON p.id = D.`Publisher_id`
+        GROUP BY LEFT(DATE, 7), `Username_id`, `Deal_Ges_RS_Against_CPA`, `Deal_Ges_Carry_Over`, `Deal_Ges_RS_Base`, IFNULL(NULLIF(`Product`, ""), `Product_Real`)
+    )
+
+    -- More CTEs or logic continuation if needed...
+
+$$
+
+DELIMITER ;

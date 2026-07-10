@@ -1,0 +1,22 @@
+/* PROCEDURE_MS_Switch_Accounts.sql
+
+   Observaciones: 
+      No invoca API de Rebrandly
+   
+   Parámetros ( [MS_id_orig]        , [MS_id_new | ''] 
+				  , [Username_id_orig]  , [Username_id_new] 
+              , [Tracklink_new]
+              , [Tracker_ID]
+              , [Tracker_Name]
+				  , [ NEW | UPDATE ] )
+   
+   Ejemplos:
+      call Total_FACT2_AFFILIATE_NRbyMonth_BrandMatrix('ALL','2022-09','ALL','ROLLUP');
+      call Total_FACT2_AFFILIATE_NRbyMonth_BrandMatrix('ALL','2022-09','ALL','');
+      call Total_FACT2_AFFILIATE_NRbyMonth_BrandMatrix('ALL','2022-06','2','ROLLUP');
+      call Total_FACT2_AFFILIATE_NRbyMonth_BrandMatrix('39','2022-08','ALL','');
+
+   06.09.2022 V1
+*/   
+
+SELECT * FROM campaign_marketing_source;

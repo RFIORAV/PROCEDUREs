@@ -1,0 +1,346 @@
+/*
+PROCEDURE_Calculate_Operations_Commission_v1.1_advanced.sql - Cálculo avanzado de comisiones de operaciones
+
+Descripción:
+Este procedimiento calcula las comisiones de operaciones con parámetros configurables
+basándose en los movimientos de la tabla DBD_movements y aplicando las reglas definidas 
+en la tabla Deals.
+
+Tablas utilizadas:
+- DBD_movements: Contiene los movimientos de operaciones con campos Date, Tracker_id, Product, Deposits
+- Deals: Contiene las reglas de comisión con campos Product, Criteria, Threshold, Level, CPA
+
+Lógica del cálculo:
+1. Agrupa los movimientos por Tracker_id y Product
+2. Suma el campo Criteria (ej: Deposits) para cada grupo
+3. Aplica las reglas de la tabla Deals según el Threshold alcanzado
+4. Calcula la comisión CPA correspondiente al Level alcanzado
+
+Parámetros de entrada (formato: 'key=value,key2=value2'):
+- start_date: Fecha de inicio para el cálculo (formato YYYY-MM-DD)
+- end_date: Fecha de fin para el cálculo (formato YYYY-MM-DD)
+- tracker_id: ID del tracker específico (opcional, default=ALL)
+- product: Producto específico (opcional, default=ALL)
+- criteria: Tipo de criterio a evaluar (opcional, default=Deposits)
+- output_type: Tipo de salida (summary, detail, all, debug)
+- save_results: Guardar resultados en tabla permanente (yes/no, default=no)
+- currency: Moneda para los cálculos (opcional, default=EUR)
+
+Ejemplos de uso:
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31');
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,tracker_id=123,product=Sport');
+call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,output_type=detail,save_results=yes');
+
+Historial de Versiones:
+13.01.2025 V1     Primera versión operativa
+13.01.2025 V1.1   Versión avanzada con parámetros configurables
+
+*/
+
+SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+DROP PROCEDURE IF EXISTS Calculate_Operations_Commission_Advanced;
+
+DELIMITER $$
+
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Calculate_Operations_Commission_Advanced`(
+    IN p_input_params VARCHAR(500)
+)
+COMMENT 'Cálculo avanzado de comisiones de operaciones con parámetros configurables'
+LANGUAGE SQL
+
+proc_label:BEGIN
+    -- Declaración de variables
+    DECLARE v_version VARCHAR(20) DEFAULT 'v1.1 13.01.2025';
+    DECLARE v_error_message VARCHAR(500);
+    DECLARE v_param_line VARCHAR(500);
+    DECLARE v_key VARCHAR(50);
+    DECLARE v_value VARCHAR(200);
+    DECLARE v_pos INT;
+    DECLARE v_comma_pos INT;
+    DECLARE v_equal_pos INT;
+    
+    -- Variables de parámetros
+    DECLARE v_start_date DATE DEFAULT NULL;
+    DECLARE v_end_date DATE DEFAULT NULL;
+    DECLARE v_tracker_id VARCHAR(20) DEFAULT 'ALL';
+    DECLARE v_product VARCHAR(80) DEFAULT 'ALL';
+    DECLARE v_criteria VARCHAR(50) DEFAULT 'Deposits';
+    DECLARE v_output_type VARCHAR(20) DEFAULT 'summary';
+    DECLARE v_save_results VARCHAR(10) DEFAULT 'no';
+    DECLARE v_currency VARCHAR(10) DEFAULT 'EUR';
+    
+    -- Manejo de errores
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        GET DIAGNOSTICS CONDITION 1
+            v_error_message = MESSAGE_TEXT;
+        SELECT CONCAT('Error en Calculate_Operations_Commission_Advanced: ', v_error_message) AS Error;
+        ROLLBACK;
+    END;
+    
+    -- Inicialización
+    SET v_param_line = CONCAT(p_input_params, ',');
+    
+    -- Parser de parámetros
+    WHILE v_param_line > ' ' DO
+        SET v_comma_pos = INSTR(v_param_line, ',');
+        SET v_equal_pos = INSTR(v_param_line, '=');
+        
+        IF v_equal_pos > 0 AND v_equal_pos < v_comma_pos THEN
+            SET v_key = TRIM(SUBSTRING(v_param_line, 1, v_equal_pos - 1));
+            SET v_value = TRIM(SUBSTRING(v_param_line, v_equal_pos + 1, v_comma_pos - v_equal_pos - 1));
+            
+            -- Asignación de valores
+            CASE LOWER(v_key)
+                WHEN 'start_date' THEN SET v_start_date = STR_TO_DATE(v_value, '%Y-%m-%d');
+                WHEN 'end_date' THEN SET v_end_date = STR_TO_DATE(v_value, '%Y-%m-%d');
+                WHEN 'tracker_id' THEN SET v_tracker_id = UPPER(v_value);
+                WHEN 'product' THEN SET v_product = v_value;
+                WHEN 'criteria' THEN SET v_criteria = v_value;
+                WHEN 'output_type' THEN SET v_output_type = LOWER(v_value);
+                WHEN 'save_results' THEN SET v_save_results = LOWER(v_value);
+                WHEN 'currency' THEN SET v_currency = UPPER(v_value);
+            END CASE;
+        END IF;
+        
+        SET v_param_line = SUBSTRING(v_param_line, v_comma_pos + 1);
+    END WHILE;
+    
+    -- Validación de parámetros obligatorios
+    IF v_start_date IS NULL OR v_end_date IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Las fechas de inicio (start_date) y fin (end_date) son obligatorias';
+    END IF;
+    
+    IF v_start_date > v_end_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La fecha de inicio no puede ser mayor que la fecha de fin';
+    END IF;
+    
+    -- Inicio de transacción
+    START TRANSACTION;
+    
+    -- Crear tabla temporal para almacenar resultados
+    DROP TEMPORARY TABLE IF EXISTS temp_operations_commission_advanced;
+    CREATE TEMPORARY TABLE temp_operations_commission_advanced (
+        tracker_id INT NOT NULL,
+        product VARCHAR(80) NOT NULL,
+        total_criteria_value DECIMAL(15,2) NOT NULL DEFAULT 0,
+        level_achieved VARCHAR(50) NULL,
+        commission_cpa DECIMAL(12,2) NOT NULL DEFAULT 0,
+        deal_id INT NULL,
+        criteria_used VARCHAR(50) NOT NULL,
+        currency VARCHAR(10) NOT NULL DEFAULT 'EUR',
+        calculation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_tracker_product (tracker_id, product),
+        INDEX idx_level (level_achieved)
+    ) ENGINE=InnoDB;
+    
+    -- Insertar datos calculados
+    INSERT INTO temp_operations_commission_advanced (
+        tracker_id,
+        product,
+        total_criteria_value,
+        level_achieved,
+        commission_cpa,
+        deal_id,
+        criteria_used,
+        currency
+    )
+    WITH movements_summary AS (
+        -- Agrupar movimientos por tracker y producto
+        SELECT 
+            m.tracker_id,
+            m.product,
+            SUM(CASE 
+                WHEN v_criteria = 'Deposits' THEN m.deposits
+                ELSE m.deposits -- Por defecto usa deposits
+            END) AS total_criteria_value,
+            COUNT(*) AS total_movements,
+            SUM(m.deposits) AS total_deposits
+        FROM DBD_movements m
+        WHERE m.date BETWEEN v_start_date AND v_end_date
+          AND (v_tracker_id = 'ALL' OR m.tracker_id = CAST(v_tracker_id AS UNSIGNED))
+          AND (v_product = 'ALL' OR m.product = v_product)
+        GROUP BY m.tracker_id, m.product
+        HAVING total_criteria_value > 0
+    ),
+    deals_applied AS (
+        -- Aplicar reglas de deals según el total del criterio
+        SELECT 
+            ms.tracker_id,
+            ms.product,
+            ms.total_criteria_value,
+            ms.total_movements,
+            ms.total_deposits,
+            d.id AS deal_id,
+            d.level,
+            d.cpa,
+            d.threshold,
+            d.criteria,
+            -- Encontrar el nivel más alto alcanzado
+            ROW_NUMBER() OVER (
+                PARTITION BY ms.tracker_id, ms.product 
+                ORDER BY d.threshold DESC
+            ) AS rn
+        FROM movements_summary ms
+        LEFT JOIN deals d ON (
+            (d.product = ms.product OR d.product = '' OR d.product IS NULL)
+            AND ms.total_criteria_value >= d.threshold
+            AND d.criteria = v_criteria
+        )
+        WHERE d.id IS NOT NULL
+    )
+    SELECT 
+        da.tracker_id,
+        da.product,
+        da.total_criteria_value,
+        da.level AS level_achieved,
+        da.cpa AS commission_cpa,
+        da.deal_id,
+        v_criteria AS criteria_used,
+        v_currency AS currency
+    FROM deals_applied da
+    WHERE da.rn = 1; -- Solo el nivel más alto alcanzado
+    
+    -- Guardar resultados en tabla permanente si se solicita
+    IF v_save_results = 'yes' THEN
+        -- Crear tabla permanente si no existe
+        CREATE TABLE IF NOT EXISTS operations_commission_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            tracker_id INT NOT NULL,
+            product VARCHAR(80) NOT NULL,
+            total_criteria_value DECIMAL(15,2) NOT NULL DEFAULT 0,
+            level_achieved VARCHAR(50) NULL,
+            commission_cpa DECIMAL(12,2) NOT NULL DEFAULT 0,
+            deal_id INT NULL,
+            criteria_used VARCHAR(50) NOT NULL,
+            currency VARCHAR(10) NOT NULL DEFAULT 'EUR',
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            calculation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_tracker_product (tracker_id, product),
+            INDEX idx_date_range (start_date, end_date),
+            INDEX idx_level (level_achieved)
+        ) ENGINE=InnoDB;
+        
+        -- Insertar resultados
+        INSERT INTO operations_commission_history (
+            tracker_id, product, total_criteria_value, level_achieved, 
+            commission_cpa, deal_id, criteria_used, currency, start_date, end_date
+        )
+        SELECT 
+            tracker_id, product, total_criteria_value, level_achieved,
+            commission_cpa, deal_id, criteria_used, currency, v_start_date, v_end_date
+        FROM temp_operations_commission_advanced;
+    END IF;
+    
+    -- Mostrar resultados según el tipo de salida solicitado
+    IF v_output_type IN ('summary', 'all') THEN
+        -- Información del cálculo
+        SELECT 
+            'INFORMACIÓN DEL CÁLCULO' AS titulo,
+            CONCAT('Período: ', v_start_date, ' a ', v_end_date) AS periodo,
+            CONCAT('Versión: ', v_version) AS version,
+            CONCAT('Criterio: ', v_criteria) AS criterio,
+            CONCAT('Moneda: ', v_currency) AS moneda,
+            CONCAT('Tracker ID: ', v_tracker_id) AS tracker_id,
+            CONCAT('Producto: ', v_product) AS producto,
+            NOW() AS fecha_calculo;
+        
+        -- Resumen general
+        SELECT 
+            'RESUMEN GENERAL' AS tipo_reporte,
+            COUNT(*) AS total_registros,
+            SUM(total_criteria_value) AS total_criterio,
+            SUM(commission_cpa) AS total_comisiones,
+            COUNT(CASE WHEN level_achieved IS NOT NULL THEN 1 END) AS registros_con_comision,
+            ROUND(AVG(commission_cpa), 2) AS promedio_comision
+        FROM temp_operations_commission_advanced;
+    END IF;
+    
+    IF v_output_type IN ('detail', 'all') THEN
+        -- Detalle por tracker y producto
+        SELECT 
+            'DETALLE POR TRACKER Y PRODUCTO' AS tipo_reporte,
+            tracker_id,
+            product,
+            total_criteria_value,
+            level_achieved,
+            commission_cpa,
+            deal_id,
+            criteria_used,
+            currency,
+            calculation_date
+        FROM temp_operations_commission_advanced
+        ORDER BY tracker_id, product;
+        
+        -- Resumen por nivel alcanzado
+        SELECT 
+            'RESUMEN POR NIVEL' AS tipo_reporte,
+            level_achieved,
+            COUNT(*) AS cantidad_registros,
+            SUM(total_criteria_value) AS total_criterio_nivel,
+            SUM(commission_cpa) AS total_comisiones_nivel,
+            ROUND(AVG(commission_cpa), 2) AS promedio_comision
+        FROM temp_operations_commission_advanced
+        WHERE level_achieved IS NOT NULL
+        GROUP BY level_achieved
+        ORDER BY level_achieved;
+        
+        -- Top 10 por comisión
+        SELECT 
+            'TOP 10 POR COMISIÓN' AS tipo_reporte,
+            tracker_id,
+            product,
+            total_criteria_value,
+            level_achieved,
+            commission_cpa
+        FROM temp_operations_commission_advanced
+        WHERE commission_cpa > 0
+        ORDER BY commission_cpa DESC
+        LIMIT 10;
+        
+        -- Registros sin comisión (para análisis)
+        SELECT 
+            'REGISTROS SIN COMISIÓN' AS tipo_reporte,
+            tracker_id,
+            product,
+            total_criteria_value,
+            'No aplica deal' AS motivo
+        FROM temp_operations_commission_advanced
+        WHERE level_achieved IS NULL
+        ORDER BY total_criteria_value DESC;
+    END IF;
+    
+    IF v_output_type = 'debug' THEN
+        -- Información de debug
+        SELECT 
+            'DEBUG - PARÁMETROS UTILIZADOS' AS tipo_reporte,
+            v_start_date AS start_date,
+            v_end_date AS end_date,
+            v_tracker_id AS tracker_id,
+            v_product AS product,
+            v_criteria AS criteria,
+            v_output_type AS output_type,
+            v_save_results AS save_results,
+            v_currency AS currency;
+        
+        -- Mostrar todos los resultados
+        SELECT * FROM temp_operations_commission_advanced;
+    END IF;
+    
+    -- Commit de la transacción
+    COMMIT;
+    
+    -- Limpiar tabla temporal
+    DROP TEMPORARY TABLE IF EXISTS temp_operations_commission_advanced;
+    
+END$$
+
+DELIMITER ;
+
+-- Ejemplos de uso:
+-- call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31');
+-- call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,tracker_id=123,product=Sport,output_type=detail');
+-- call Calculate_Operations_Commission_Advanced('start_date=2025-01-01,end_date=2025-01-31,output_type=debug,save_results=yes'); 

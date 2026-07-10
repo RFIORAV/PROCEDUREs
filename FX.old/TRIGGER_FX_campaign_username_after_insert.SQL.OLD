@@ -1,0 +1,54 @@
+/*
+***************************************************************
+** TRIGGER forex_advertiser_account_after_insert
+**
+** 25.02.2022 Instalado en euroaffiliati_test/euroaffiliati2 Remota
+** 16.08.2022 Inserta directamente en forex_deal_gestor_prod_date
+** 11.11.2022 No crea registro si datos básicos (Deal_Valid_From,Advertiser_id/Username_id) no vienen informados
+***************************************************************
+*/
+-- ---------------------------------------------------------------------
+DROP TRIGGER IF EXISTS forex_advertiser_account_after_insert;
+DELIMITER $$
+--
+CREATE TRIGGER forex_advertiser_account_after_insert
+AFTER INSERT
+ON forex_advertiser_account FOR EACH ROW
+--
+BEGIN
+
+DECLARE `Trigger_Version` VARCHAR (20) DEFAULT '14.11.2022';
+--
+/************************************
+	TRATAMIENTO DEL DEAL GESTOR
+*************************************/
+IF
+   NEW.`Valid_From`      IS NOT NULL AND
+   NEW.`Deal_Main_id`    IS NOT NULL
+--
+THEN 
+
+INSERT ignore INTO forex_deal_gestor_prod_date (
+    `Advertiser_id`
+   ,`Username_id`
+   ,`Product`
+   ,`Valid_From`
+   ,`Deal_id`
+   ,`is_active`
+	,`Operator`
+)
+VALUES (
+    NEW.`Advertiser_id`
+   ,NEW.`id`
+   ,NEW.`Product`
+   ,IFNULL(NEW.Valid_From,concat(left(curdate(),7),'-01'))
+   ,NEW.`Deal_Main_id`
+   ,'1'
+   ,NEW.`Operator`
+);
+END IF;
+
+END$$
+--
+DELIMITER ;
+

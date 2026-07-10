@@ -1,0 +1,77 @@
+/** Comprobacion de ultima actualizacion de datos y ejecucion de Bot
+-- 24.03.2022
+-- ----------------------------------------------------------------
+*/
+
+
+SELECT Brand,MAX(Last_Day_Data) as Last_Day_Data,MAX(Days_OLD) as Days_OLD,MAX(Status_API) as Status_API
+		,MAX(Last_Run_Bot) as Last_Run_Bot,MAX(Status_BOT) as Status_BOT
+		,if(MAX(Last_Day_CPA)=' ','>> 30+ dias <<',MAX(Last_Day_CPA)) as Last_Day_CPA
+		,MAX(Days_OLD_CPA) AS Days_OLD_CPA
+FROM (
+SELECT Brand
+	,max(Date) AS Last_Day_Data
+	,datediff(max(Hour_Update),max(Date)) as 'Days_OLD'
+	,(case when max(Date)<DATE_SUB(NOW(),INTERVAL 48 HOUR) then '<< Check' ELSE '' END) AS 'Status_API'
+	,max(Hour_Update) AS Last_Run_Bot
+	,(case when max(Hour_Update)<DATE_SUB(NOW(),INTERVAL 24 HOUR) then '<< Check' ELSE '' END) AS 'Status_BOT'
+	,'' AS Last_Day_CPA,''  as 'Days_OLD_CPA'
+FROM Snapshot_day_by_day
+WHERE Date>=DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+GROUP BY Brand
+UNION ALL 
+SELECT Brand,'','','','',''
+	,max(Date) AS Last_Day_CPA
+	,datediff(max(Hour_Update),max(Date)) as 'Days_OLD_CPA'
+FROM Snapshot_day_by_day
+WHERE Date>=DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND Qualified_Players<>0
+GROUP BY Brand
+) AS XX
+GROUP BY Brand
+ORDER BY Brand
+;
+
+WITH DbD as (
+SELECT `D`.`Portal`        as "Portal"
+   ,`P`.`Advertiser_Name`  as "Publisher"
+   ,`AD`.`Advertiser_Name` as "Brand"
+   ,`D`.`Username`         AS "Account_id"   
+   ,`CU`.`Username`        AS "Account"
+   ,`CU`.`Owner`           AS "Owner"
+	,max(`D`.Date) AS Last_Day_Data
+	,datediff(max(`D`.Hour_Update),max(`D`.Date)) as 'Days Last data'
+	,(case when max(`D`.Date)<DATE_SUB(NOW(),INTERVAL 48 HOUR) then '<< Check' ELSE '' END) AS 'Status_API'
+	,max(`D`.Hour_Update) AS Last_Run_Bot
+	,(case when max(`D`.Hour_Update)<DATE_SUB(NOW(),INTERVAL 48 HOUR) then '<< Check' ELSE '' END) AS 'Status_BOT'
+	,'' AS Last_Day_CPA,''  as 'Days_Last_CPA'
+FROM `Snapshot_day_by_day` `D`
+LEFT JOIN `campaign_username`   `CU` ON (`CU`.`id` = `D`.`Username`)
+LEFT JOIN `campaign_advertiser` `AD` ON (`AD`.`id` = `CU`.`Advertiser_id`)          
+LEFT JOIN `campaign_publisher`  `P`  ON (`P`.`id`  = `CU`.`Publisher_id`)          
+WHERE D.Date>=DATE_SUB(CURDATE(), INTERVAL 30 DAY) -- AND Qualified_Players=0
+GROUP BY `D`.`Portal`,`P`.`Advertiser_Name`,`AD`.`Advertiser_Name`,`CU`.`Username`
+
+-- UNION ALL 
+-- 
+-- SELECT `D`.`Portal`        as "Portal"
+--    ,`P`.`Advertiser_Name`  as "Publisher"
+--    ,`AD`.`Advertiser_Name` as "Brand"
+--    ,`D`.`Username`         AS "Account_id"   
+--    ,`CU`.`Username`        AS "Account"
+--    ,`CU`.`Owner`           AS "Owner"
+-- 	,max(`D`.Date) AS Last_Day_Data
+-- 	,datediff(max(`D`.Hour_Update),max(`D`.Date)) as 'Days Last data'
+-- 	,(case when max(`D`.Date)<DATE_SUB(NOW(),INTERVAL 48 HOUR) then '<< Check' ELSE '' END) AS 'Status_API'
+-- 	,max(`D`.Hour_Update) AS Last_Run_Bot
+-- 	,(case when max(`D`.Hour_Update)<DATE_SUB(NOW(),INTERVAL 48 HOUR) then '<< Check' ELSE '' END) AS 'Status_BOT'
+-- 	,'' AS Last_Day_CPA,''  as 'Days_Last_CPA'
+-- FROM `Snapshot_day_by_day` `D`
+-- LEFT JOIN `campaign_username`   `CU` ON (`CU`.`id` = `D`.`Username`)
+-- LEFT JOIN `campaign_advertiser` `AD` ON (`AD`.`id` = `CU`.`Advertiser_id`)          
+-- LEFT JOIN `campaign_publisher`  `P`  ON (`P`.`id`  = `CU`.`Publisher_id`)          
+-- GROUP BY `D`.`Portal`,`P`.`Advertiser_Name`,`AD`.`Advertiser_Name`,`CU`.`Username`
+
+)
+SELECT * FROM DbD 
+ORDER BY Portal ,Publisher ,Brand,Account
+;

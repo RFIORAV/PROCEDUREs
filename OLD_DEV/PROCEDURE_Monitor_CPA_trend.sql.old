@@ -1,0 +1,68 @@
+/* PROCEDURE_Monitor_CPA_trend.sql
+      Tendencia CPA en una quincena contra la misma quincena de los meses anteriores
+
+08.09.2023 v1  Primera versión operativa
+      
+*/
+
+
+DROP PROCEDURE IF EXISTS Monitor_CPA_trend;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Monitor_CPA_trend`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Monitor CPA trend'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version      ='v1 08.09.2023';
+
+SET @Mont_0_to  =CURDATE();
+SET @Mont_0_from=DATE_SUB(CURDATE(), INTERVAL 15 DAY);
+SET @Mont_1_to  =DATE_SUB(CURDATE(), INTERVAL 30 DAY);
+SET @Mont_1_from=DATE_SUB(CURDATE(), INTERVAL 45 DAY);
+SET @Mont_2_to  =DATE_SUB(CURDATE(), INTERVAL 60 DAY);
+SET @Mont_2_from=DATE_SUB(CURDATE(), INTERVAL 75 DAY);
+
+WITH
+SetFact1 AS (
+   SELECT 
+  	   Affiliate
+   	,Brand
+-- 	  ,Advertiser_id
+-- 	  ,Username_id
+     ,round(sum(IFNULL(Qualified_Players,0)/3),0) AS `Average`
+     ,SUM(CASE WHEN DATE BETWEEN @Mont_2_from AND @Mont_2_to THEN Qualified_Players ELSE 0 END) AS `60 days`
+     ,SUM(CASE WHEN DATE BETWEEN @Mont_1_from AND @Mont_1_to THEN Qualified_Players ELSE 0 END) AS `30 days`
+     ,SUM(CASE WHEN DATE BETWEEN @Mont_0_from AND @Mont_0_to THEN Qualified_Players ELSE 0 END) AS `This Month`	       
+   FROM Snapshot_day_by_day_fact1 G 
+--    LEFT JOIN account_account AC ON AC.id=G.Owner
+   WHERE 
+	  (DATE BETWEEN @Mont_0_from AND @Mont_0_to
+   OR DATE BETWEEN @Mont_1_from AND @Mont_1_to
+   OR DATE BETWEEN @Mont_2_from AND @Mont_2_to)
+   GROUP BY Brand,Affiliate HAVING `30 days`>15 AND `This Month`*1.3 <`30 days`
+   ORDER BY Affiliate,Brand
+)
+SELECT  
+   "setting"         as `Meta`
+   ,"width=140px"    as `Affiliate` 
+   ,"width=140px"    as `Brand` 
+   ,"width=100px,right=true"    as `CPA Average`
+   ,"width=100px,right=true"    as `CPA 60 days ago`
+   ,"width=100px,right=true"    as `CPA 30 days ago`
+   ,"width=100px,right=true"    as `CPA This Month`
+	FROM DUAL
+UNION ALL
+SELECT "data" as `Meta`,S.*
+   FROM SetFact1 S
+;
+
+END$$
+DELIMITER ;
+
+/*
+call Monitor_CPA_trend('x');
+*/

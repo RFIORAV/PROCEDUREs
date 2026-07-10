@@ -1,0 +1,132 @@
+/* 
+PROCEDURE_Dash_Gestor_TotalByAdvertiser.sql - Dashboard Gestor datos acumulados por Advertiser
+
+Observaciones: 
+   Parámetro 3=ByAcct agrupa info por Adv_Account
+   Parámetro 5=EUR/GBP/USD los resultados se expresan en esta moneda CON conversión
+   Parámetro 5=ALL los resultados se expresan en la moneda de origen SIN conversión
+   Parámetro 6=ROLLUP aplica la cláusula WITH ROLLUP al GROUP BY
+
+Parámetros ([AdvertiserID | ALL] , [Month] , [ByAcct | ''] , [Owner | ALL] , [Currency | ALL], [ROLLUP | ' '] )
+
+Ejemplos:
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','ByAcct','ALL','EUR','');
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','ByAcct','ALL','ALL','');   
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','      ','2'  ,'USD','ROLLUP');
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','ByAcct','ALL','GBP','ROLLUP');
+   call Dash_Gestor_TotalByAdvertiser('64' ,'2022-09','ByAcct','ALL','ALL','');      
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','      ','ALL','ALL','');            
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-06','      ','2'  ,'EUR','');
+
+09.09.2022 V1
+*/
+DROP PROCEDURE IF EXISTS Dash_Gestor_TotalByAdvertiser;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Dash_Gestor_TotalByAdvertiser`(IN
+   AdvertiserID VARCHAR(50),
+   Month VARCHAR(7),
+   ByAcct VARCHAR(6),
+   Owner VARCHAR(50),
+   Curr_result VARCHAR(3),
+   RollUp VARCHAR(6)
+   )
+    COMMENT 'Dashboard Gestor. Tot x AdvertiserID/ALL - Currency conversion'
+BEGIN
+   
+	IF LOWER(AdvertiserID)='all' THEN
+   	SET @AdvertiserID_from=0;
+      SET @AdvertiserID_until=9999999999999;
+   ELSE
+   	SET @AdvertiserID_from=AdvertiserID;
+      SET @AdvertiserID_until=AdvertiserID;
+	END IF;
+
+	IF LOWER(ifnull(Owner,'ALL'))='all' THEN
+   	SET @Owner_from=0;
+      SET @Owner_until=9999999999999;
+   ELSE
+   	SET @Owner_from=Owner;
+      SET @Owner_unti=Owner;
+	END IF;
+
+	IF Month is not null THEN
+      SET @Month_Report=Month;
+   ELSE
+      SET @Month_Report=LEFT(curdate(),7);
+	END IF;
+
+	IF LOWER(ByAcct)='byacct' THEN 
+      SET @ByAcct='yes';
+   ELSE 
+      SET @ByAcct='no';
+	END IF;   
+   
+	IF LOWER(ifnull(RollUp,''))='rollup' THEN
+      SET @RollUp=' WITH ROLLUP -- ';  -- Pone como comentario la claúsula ORDER BY
+   ELSE
+      SET @ROLLUP=' ';                 -- Habilita la claúsula ORDER BY
+	END IF;
+   -- ----------------------------------------------------
+   SET @Curr_result=upper(Curr_result);
+   
+SET SESSION group_concat_max_len = 100000;
+
+-- -----------------------------------------------------------------------------
+-- SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci'; 
+-- SET @Curr_result='EUR',@Month_Report=LEFT(curdate(),7),@Month_Report='2022-08',@ByAcct='yes'
+-- 	,@AdvertiserID_from=0,@AdvertiserID_until=9999999,@Owner_from='0',@Owner_until='9999';
+-- SELECT @Curr_result,@Month_Report,@ByAcct,@AdvertiserID_from,@AdvertiserID_until,@Owner_from,@Owner_until;
+-- -- -----------------------------------------------------------------------------
+
+SET @SQL=CONCAT('
+SELECT 
+ G.Owner
+,Date
+,Brand
+-- ,Coef
+,',IF(@ByAcct="yes","G.Username","'ALL'"),' as Username
+,',IF(@Curr_result="ALL","G.Data_Currency",CONCAT("'",@Curr_result,"'")),' as Data_Currency
+,CPA_Limit
+,sum(CPA             )          as CPA
+,round(sum(CPA_Value       )/xx.Coef,2) as CPA_Value       
+,round(sum(Net_Revenue     )/xx.Coef,2) as Net_Revenue     
+,round(sum(RS_AJUST        )/xx.Coef,2) as RS_AJUST        
+,round(sum(CPA_Val_AJ_RS   )/xx.Coef,2) as CPA_Val_AJ_RS   
+,round(sum(Total_Commission)/xx.Coef,2) as Total_Commission
+,round(sum(Ges_CPA         )/xx.Coef,2) as Ges_CPA         
+,round(sum(Ges_RS          )/xx.Coef,2) as Ges_RS          
+FROM view_monthly_fact_gestor3 G
+   LEFT JOIN LATERAL (SELECT
+     (SELECT Rate FROM exchange_rate x WHERE x.Currency=G.Data_Currency)/
+     (SELECT Rate FROM exchange_rate x WHERE x.Currency='
+     ,IF(@Curr_result="ALL","G.Data_Currency",CONCAT("'",@Curr_result,"'")),') as Coef) 
+      AS xx ON TRUE
+   LEFT JOIN campaign_username U ON U.id=G.Username_id
+WHERE Date=',CONCAT("'",@Month_Report,"'"),'
+   and G.Advertiser_id BETWEEN ',@AdvertiserID_from,' and ',@AdvertiserID_until,'
+   and G.OWNER BETWEEN ',CONCAT("'",@Owner_from,"'"),' and ',CONCAT("'",@Owner_until,"'"),'
+GROUP by Date',IF(@Curr_result="ALL",",G.Data_Currency",""),',G.Owner,Brand',IF(@ByAcct="yes",",G.Username",""),
+@ROLLUP,' ORDER by Date,G.Owner,Brand',IF(@Curr_result="ALL",",G.Data_Currency",""),IF(@ByAcct="yes",",G.Username"," "),
+';');
+-- 
+-- -----------------------------------------------------------------------------
+
+   
+-- SELECT @SQL;
+PREPARE stmt1 FROM @SQL;
+EXECUTE stmt1;
+DEALLOCATE PREPARE stmt1;
+
+END$$
+DELIMITER ;
+
+/*
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','ByAcct','ALL','EUR','');
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','ByAcct','ALL','ALL','');   
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','      ','2'  ,'USD','ROLLUP');
+*  call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','ByAcct','ALL','GBP','ROLLUP');
+   call Dash_Gestor_TotalByAdvertiser('64' ,'2022-09','ByAcct','ALL','ALL','');      
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-09','      ','ALL','ALL','');            
+   call Dash_Gestor_TotalByAdvertiser('ALL','2022-06','      ','2'  ,'EUR','');
+*/

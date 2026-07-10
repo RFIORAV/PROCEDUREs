@@ -1,0 +1,275 @@
+/*
+PROCEDURE_Aff_Channels.sql - Report Aff_Channel_DealMS
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+
+Affiliate_id    =[ALL | Affiliate_id ]. OPCIONAL. Default=ALL
+Channel_id      =[ALL | Channel_id ]. OBLIGATORIO.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]'])
+
+Ejemplos:
+
+call Aff_Channel_DealMS('MS_id=130,debug=no');
+
+26.07.2023 V1     Karen.
+19.10.2023 v1.1   RF. Descripción Deal
+19.01.2024 v1.2   Muestra Status efectivo en lugar del Status MS
+
+*/
+
+DROP PROCEDURE IF EXISTS Aff_Channel_DealMS;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Aff_Channel_DealMS`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Report Affiliate by Channel'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1.2 19.01.2024';
+SET @Mode            ='AFFILIATE';
+SET @Affiliate_id    ='ALL';
+SET @Channel_id      ='ALL';
+SET @Month           =left(curdate(),7);
+SET @Filters         ='NO';
+SET @Meta            ='NO';
+SET @Debug           ='NO';
+SET @View            ='VIEWGES';
+SET @DealbyProduct   ='NO';
+ 
+SET @InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET @InputCommLine=replace(@InputCommLine,' ','');  -- Elimina espacios
+SET @InputCommLine=replace(@InputCommLine,'"','');  -- Elimina comillas
+
+IF @Debug!="NO" THEN SELECT @InputCommLine; END IF;
+-- IF @Debug="YES" THEN SELECT @Owner,@Month,@Currency,@Advertiser_id,@ByAccount,@Debug,@Total,@TotLine,@OrderBy,@Order,@InputCommLine; END IF;
+
+WHILE @InputCommLine>' ' DO
+-- @InputCommLine: Month=2022-08,ByAccount=yes,OrderBy=Profit,Product=Sport!-!Footbol,Filter=yes
+-- @InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET @e=INSTR(@InputCommLine,'=');    				   -- 6
+   SET @c=INSTR(@InputCommLine,','); 					   -- 14
+   SET @k=SUBSTRING(@InputCommLine,1,@e-1); 			   -- Month
+   SET @v=SUBSTRING(@InputCommLine,@e+1,@c-(@e+1)); 	-- 2022-08
+   SET @InputCommLine=SUBSTRING(@InputCommLine,@c+1);
+   SET @k=TRIM(@k);
+   SET @v=TRIM(@v);   
+
+   IF lower(@k)='affiliate_id'    THEN SET @Affiliate_id  =UPPER(@v); END IF;
+   IF lower(@k)='channel_id'      THEN SET @Channel_id    =UPPER(@v); END IF;
+   IF lower(@k)='debug'           THEN SET @Debug         =UPPER(@v); END IF;
+   -- IF lower(@k)='filters'         THEN SET @Filters       =UPPER(@v); END IF;
+   IF lower(@k)='meta'            THEN SET @Meta          =UPPER(@v); END IF;
+   IF lower(@k)='mode'            THEN SET @Mode          =UPPER(@v); END IF;
+   IF lower(@k)='month'           THEN SET @Month         =UPPER(@v); END IF;
+   IF lower(@k)='view'            THEN SET @View          =UPPER(@v); END IF;
+
+END WHILE;
+
+/*
+IF @Mode!='GESTOR' THEN
+   SET @Mode='AFFILIATE';
+   SET @View='VIEWAFF';
+END IF;
+*/
+
+IF @Debug!="NO" THEN SELECT @Mode,@Month,@View,@Filters,@OWNER,@Affiliate_id,@Channel_id,@Debug,@Meta,InputCommLine; END IF;
+
+SET @WhereAffiliate_id  ='';
+SET @WhereChannel_id    ='';
+SET @WhereStatus        ='';     
+     
+IF @Affiliate_id  !="ALL" THEN SET @WhereAffiliate_id  =CONCAT(" AND M2.Affiliate_id  =",@Affiliate_id  ); END IF;
+IF @Channel_id    !="ALL" THEN SET @WhereChannel_id    =CONCAT(" AND M.Channel_id	  =",@Channel_id);     END IF;
+   
+IF @Mode ='AFFILIATE' THEN SET @WhereStatus  =CONCAT(" AND M.`Status_id`<>9 ");  END IF;
+
+/**************************************************************************************************************/
+
+SET SESSION group_concat_max_len = 200000;
+
+/*
+IF @Mode='AFFILIATE' AND @Affiliate_id="ALL" THEN
+    Select 'data' as Meta,'Affiliate_id mandatory when Mode=Affiliate' as '' from dual;
+    LEAVE proc_label;
+END IF; 
+*/
+
+IF @Debug!="NO" THEN SELECT @WhereAffiliate_id,@WhereChannel_id, @WhereStatus; END IF;
+
+
+SET @CTEJoinFactX='FactX as (
+	SELECT
+       D.MS_id
+      ,D.`Product`
+      ,ROUND(SUM(IFNULL(D.`Qualified_Players`  	    ,0)),0) AS `CPA`
+      ,ROUND(SUM(IFNULL(D.`First_Time_Deposit`      ,0)),0) AS `FTD`
+      ,ROUND(SUM(IFNULL(D.`Views`                   ,0)),0) AS `Views`
+      ,ROUND(SUM(IFNULL(D.`Clicks`                  ,0)),0) AS `Clicks`
+      ,ROUND(SUM(IFNULL(D.`Signups`                 ,0)),0) AS `Signups`
+      ,ROUND(SUM(IFNULL(D.`Impressions`             ,0)),0) AS `Impress`
+      ,ROUND(SUM(IFNULL(D.`Deposits`                ,0)),2) AS `Deposits`
+      ,ROUND(SUM(IFNULL(D.`Depositing_Customers`    ,0)),0) AS `Dep Cust`
+      ,ROUND(SUM(IFNULL(D.`Active_Customers`        ,0)),0) AS `Act Cust`
+      ,ROUND(SUM(IFNULL(D.`New_Depositing_Customers`,0)),0) AS `New Dep Cust`
+      ,ROUND(SUM(IFNULL(D.`New_Active_Customers`    ,0)),0) AS `New Act Cust`
+      ,D.`Language`                                         AS `Country`
+      ,D.`Deal_Aff`
+      ,D.`Deal_Aff_id`
+      ,D.`Deal_Aff_Valid_From`
+      ,D.`Channel_id`
+   FROM Snapshot_day_by_day_fact2 D
+   WHERE LEFT(D.DATE,7)=LEFT(CURDATE(),7) -- AND D.MS_id=M.id
+   GROUP by D.MS_id -- ,D.Product,D.Deal_Aff_id
+)';
+
+/*IF @Mode='GESTOR' THEN
+   SET @CTEJoinFactX=REPLACE(@CTEJoinFactX,"Snapshot_day_by_day_fact2","Snapshot_day_by_day_fact1");
+END IF;*/
+
+IF @DealbyProduct='NO' THEN
+   SET @CTEJoinFactX=REPLACE(@CTEJoinFactX,"GROUP by D.MS_id,D.Product,D.Deal_Aff_id","GROUP by D.MS_id");
+END IF;
+
+SET @Count=0;
+
+SET @Kforex=(
+   SELECT COUNT(*) FROM `campaign_marketing_source` `M`
+   LEFT JOIN `campaign_username` `CU` ON `CU`.`id` = `M`.`Username_id`
+   WHERE CU.Area="forex"
+);
+
+
+SET @SQLmetaAff=concat(
+'(
+SELECT
+   "setting" as Meta
+   ,"width=100px,action=2" as `Logo`
+   ,"omit=true"   as MS_id
+   ,"width=120px" as Brand
+	 ,if(@Product!="ALL","omit=true","width=100px") Product
+	 ,"width=100px"  `Country`
+	 ,"width=100px" `Operative Status`                -- 19.01.2024
+	 ,"width=120px" `Code`
+	 ,"width=250px,action=1" as Shortlink
+	 ,"omit=true" `CPA Value`
+	 ,"omit=true" `Baseline`
+	 ,"width=090px" `CPA Current`
+	 ,"width=090px,center=true" `CPA Limit`
+	 ,"width=100px" as `Deal From`
+	 ,"width=250px" as `Deal`
+    ,"omit=true" Affiliate_id
+    ,"omit=true" Channel_id
+	 ,"omit=true"   as Account
+	FROM DUAL WHERE @Meta="YES")'
+);
+
+SET @CTE=CONCAT('WITH ',
+@CTEJoinFactX,' 
+,
+campaign_marketing_source_updated AS (
+SELECT '
+   ,IF(@Meta="YES","'data' as `Meta`,'...' as `Action`,",""),'
+   M.`id`                  AS MS_id
+   ,AD.Advertiser_Name      as `Brand`
+	,(case when M1.Product is null then "any"
+	 		 when M1.Product=""		 then "any"
+		    else M1.Product end
+		) AS `Product`
+	,ifnull(D1.`Country`,"Global")
+	,case when M.`Status_id`!=M.`Stat_aggreg`          -- 19.01.2024
+         then case when M.`Status_id`=1               -- 19.01.2024
+                   then "Paused"                      -- 19.01.2024
+                   else M.`Status`                    -- 19.01.2024
+              end                                     -- 19.01.2024
+         else M.`Status`                              -- 19.01.2024
+     end                                        as `MStatus`
+	 ,M.`Code_To_Affiliate`      as `Tracker Aff`
+	 ,M.`Shortlink`
+	 ,FORMAT(CDA.CPA_Value,2)           --    `CPA Value`
+	 ,FORMAT(CDA.Baseline,2)            --    `BLine`
+	 ,ifnull(D1.CPA,0)        as `CPA`
+    ,M.`CPA_Limit`           --  `CPA Limit`
+    ,M1.`Deal_Valid_From`
+    ,CDA.`Deal_Name`
+	 ,`M2`.`Affiliate_id`
+	 ,`M`.`Channel_id`        
+	 ,CU.Username             as `Account`
+FROM `campaign_marketing_source` `M`
+-- ---Seleccion de Affiliate-----(tomado de Snapshot_day_by_day_fact1_upd_from_dbd)------
+LEFT JOIN LATERAL (
+	SELECT *,ROW_NUMBER() OVER(PARTITION BY MS_id ORDER BY Deal_Valid_From DESC,id DESC) AS RowNr  -- 15.02.2023
+	FROM `campaign_mkt_source_deal` WHERE `MS_id` = M.id AND `is_active` = 1
+--                                   AND `Deal_Valid_From` <= `D`.`Date`
+	ORDER BY RowNr LIMIT 1
+) AS M2 ON TRUE
+-- ---Seleccion de Product-------(tomado de Snapshot_day_by_day_fact1_upd_from_dbd)------
+LEFT JOIN LATERAL (
+	SELECT * FROM (
+      SELECT *,ROW_NUMBER() OVER(PARTITION BY Product ORDER BY Deal_Valid_From DESC,id DESC) AS RowNr  -- 15.02.2023
+      FROM `campaign_mkt_source_deal` WHERE `MS_id` = M.id AND Affiliate_id=M2.Affiliate_id AND `is_active` = 1
+--                                      AND `Deal_Valid_From` <= `D`.`Date`
+	) AS DbP
+	WHERE RowNr=1 -- AND IFNULL(DbP.`Product`,"") IN (IFNULL(M.product,""),""," ") -- 28.04.2023
+	ORDER BY DbP.`Product` DESC -- LIMIT 1
+) AS M1 ON TRUE
+LEFT JOIN FactX D1 								ON D1.MS_id  =M.id
+LEFT JOIN `account_account` `A`           ON `A`.`id`  = `M2`.`Affiliate_id`
+LEFT JOIN `account_account` `OW`          ON `OW`.`id` = `M`.`Owner`
+LEFT JOIN `campaign_deal_affiliate` `CDA` ON `CDA`.`id`= `M1`.`Deal_id`
+LEFT JOIN `account_landing_pages` `CH`    ON `CH`.`id` = `M`.`Channel_id`
+LEFT JOIN `campaign_username` `CU`        ON `CU`.`id` = `M`.`Username_id`
+LEFT JOIN `campaign_advertiser` `AD`      ON `AD`.`id` = `CU`.`Advertiser_id`
+LEFT JOIN `campaign_publisher` `P`        ON `P`.`id`  = `CU`.`Publisher_id`
+WHERE 1=1 -- and M.`Tracklink` > " " 
+'
+   ,@WhereAffiliate_id
+   ,@WhereChannel_id
+,')
+,
+MS_filtered AS (
+SELECT * FROM campaign_marketing_source_updated M 
+WHERE 1=1 )
+');
+
+SET @CloseQuery=';';
+
+SET @SQL=concat(
+@CTE,
+
+IF(@Meta="YES",@SQLmetaAff,""),
+IF(@Meta="YES"," UNION ALL ",""),'
+(SELECT * FROM MS_filtered M 
+)
+ORDER BY `Brand`,Account,MS_id',@CloseQuery)
+;
+
+IF @Debug!="NO" THEN SELECT @SQLfilters; END IF;
+IF @Debug!="NO" THEN SELECT @SQL; END IF;
+
+IF @Debug != "YES" THEN
+	PREPARE stmt1 FROM @SQL;
+	EXECUTE stmt1;
+	DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call Aff_Channel_DealMS('Channel_id=264,debug=non');
+
+*/

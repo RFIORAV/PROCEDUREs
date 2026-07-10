@@ -1,0 +1,121 @@
+SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+SET collation_connection = utf8mb4_0900_ai_ci;
+SET @Currency="USD";
+SET @flag="all";
+
+with Main_data as (
+SELECT Affiliate_id,ifnull(A.username,"_Unassigned") AS `Affiliate`,`Currency`
+	,round(sum(case when x.Status in (0,1,2)		then Amount ELSE 0 END),2) AS `Estimated`
+	,round(sum(case when x.Status IN (1,2)			then Amount ELSE 0 END),2) AS `Confirmed`
+	,round(sum(case when x.Status_21 IN (1,2)		then Amount ELSE 0 END),2) AS `Confirmed21`
+   ,@Currency                                                              as `Financial Currency`
+	,round(sum(case when x.Status IN (1,2)			then getCurrencyConversion(Amount,Currency,@Currency)
+                                                            ELSE 0 END),2) AS `Financial Confirmed`
+   ,A.Status,A.Status_id
+FROM (
+SELECT Affiliate_id,DATE,"CPA" AS Op_type,CONCAT_WS(" ",Brand,Product_Real) AS Description,sum(net_Total_comm) AS Amount
+	,IF(DATEDIFF(CURDATE(),LAST_DAY(CONCAT(DATE,"-20")))>=20,"1","0") AS Status
+	,IF(DATEDIFF(CURDATE(),LAST_DAY(CONCAT(DATE,"-20")))>=20,"Accepted","Provisional") AS StatusText
+	,0 as balance_est,0 as balance_conf
+	,IF(DATEDIFF(CONCAT(LEFT(CURDATE(),7),"-21"),LAST_DAY(CONCAT(DATE,"-20")))>=20,"1","0") AS Status_21
+   ,Data_Currency as `Currency`
+FROM view_monthly_fact_aff4 F WHERE (CPA_Val_AJ_RS)<>0 OR (RS_AJUST)<>0
+GROUP BY Affiliate_id,DATE,Data_Currency
+UNION ALL
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,sum(Amount_Debit*-1) AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est, 0 as balance_conf
+	,IFNULL(Status,0) AS Status_21
+   ,IFNULL(Currency,@Currency)  as "Currency"
+FROM account_financial_movement F WHERE ifnull(F.Status,0) IN (1,2)
+GROUP BY Affiliate_id,"DATE","Currency"
+UNION ALL
+SELECT Affiliate_id,LEFT(Date,10) AS "Date",Op_type,Description,sum(Amount_Credit) AS Amount,IFNULL(Status,0) AS Status
+	,CASE IFNULL(Status,0) WHEN 0 THEN "Pending" WHEN 1 THEN "Accepted" WHEN 2 THEN "Paid" WHEN 3 THEN "Denied" END AS StatusText
+	,0 as balance_est,0 as balance_conf
+	,IFNULL(Status,0) AS Status_21
+   ,IFNULL(Currency,@Currency)  as "Currency"
+FROM account_manual_adjustments F WHERE ifnull(F.Status,0) in (1,2)
+GROUP BY Affiliate_id,"DATE","Currency"
+) AS x
+LEFT JOIN account_account A ON Affiliate_id	=A.id
+ WHERE A.`Status_id`=1 
+-- GROUP BY CONCAT(Affiliate,Currency) WITH ROLLUP
+GROUP BY Affiliate,Currency -- WITH ROLLUP
+),
+Latest_operation as (
+SELECT Affiliate_id as `Aff_id`,IFNULL(A.username,"_Unassigned") AS `username`
+      ,max(DATE) as `Latest_op`
+FROM view_monthly_fact_aff4 F 
+LEFT JOIN account_account A ON F.Affiliate_id=A.id
+WHERE (CPA_Val_AJ_RS)<>0 OR (RS_AJUST)<>0
+GROUP by Affiliate_id
+),
+Latest_withdraw as (
+SELECT Affiliate_id as `Aff_id`,IFNULL(A.username,"_Unassigned") AS `username`
+      ,`Currency`,SUM(Amount_Debit) AS `Withdraw`
+FROM account_financial_movement F 
+LEFT JOIN account_account A ON F.Affiliate_id=A.id
+WHERE IFNULL(F.Status,0) IN (1,2) AND LEFT(Date,10)>=@LatestMovFin
+GROUP by Affiliate_id
+),
+Main_dataRollUp AS (
+SELECT 
+       IF(GROUPING(M.Affiliate), '___ GRAND TOTAL ___', M.Affiliate) AS Affiliate
+      ,IF(GROUPING(M.Currency), 'T.Curr', M.Currency) AS Currency
+      ,`Estimated`
+      ,`Confirmed`
+      ,`Confirmed21`
+      ,`Financial Currency`
+      ,`Financial Confirmed`
+      ,IF(L.`username` IS NULL,"",L.`Latest_op`) AS `Latest_op`
+      ,IF(W.`username` IS NULL,"",W.`Currency`)  AS `Curr`
+      ,IF(W.`username` IS NULL,"",W.`Withdraw`)  AS `Withdraw`
+      ,Status
+FROM Main_data M 
+LEFT JOIN Latest_operation L ON L.username=M.Affiliate
+LEFT JOIN Latest_withdraw  W ON W.username=M.Affiliate
+WHERE @flag="all" AND (`Estimated`<>0 OR `Confirmed`<>0 OR `Confirmed21`<>0)
+GROUP BY M.Affiliate,M.Currency WITH ROLLUP
+)
+
+-- SELECT * FROM Main_data;         -- Test
+-- SELECT * FROM Main_dataRollUp;   -- Test
+-- SELECT * FROM Latest_operation;  -- Test
+-- SELECT * FROM Latest_withdraw;   -- Test
+
+(
+SELECT
+   "setting" as Meta
+   ,"width=200px"            `Affiliate`
+   ,"width=90px"             `Curr`
+   ,"width=110px,right=true" `Estimated`
+   ,"width=110px,right=true" `Confirmed today`
+   ,"width=110px,right=true" as `Confirmed 2024-08-20`
+   ,IF(@MultiCurrency="YES","width=110px,right=true","omit=true") AS `Financial Currency`
+   ,IF(@MultiCurrency="YES","width=110px,right=true","omit=true") AS `Financial Confirmed`
+   ,"width=110px,center=true" `Latest operation`
+   ,"width=50px"              ` `
+   ,"width=120px,right=true"  `Withdraw last 30 days`
+   ,"width=110px,center=true" `Status Affiliate`
+FROM DUAL WHERE @Meta="YES"
+   )
+UNION ALL
+(
+SELECT IF(`Affiliate`="___ GRAND TOTAL ___","total","data") as `Meta`
+      ,`Affiliate`
+      ,`Currency`
+      ,`Estimated`
+      ,`Confirmed`
+      ,`Confirmed21`
+      ,`Financial Currency`
+      ,`Financial Confirmed`
+      ,`Latest_op`
+      ,`Curr`
+      ,`Withdraw`
+      ,Status
+FROM Main_dataRollUp  
+WHERE `Currency`!="T.Curr" -- `Subtot`="xx"
+)
+ORDER BY `Affiliate`
+;

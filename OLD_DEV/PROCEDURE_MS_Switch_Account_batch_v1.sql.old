@@ -1,0 +1,157 @@
+/* PROCEDURE_MS_Switch_Account_batch_v1.sql
+
+Funcionalidades principales:
+
+Lectura de registros origen: Utiliza un cursor para leer todos los registros donde Username_id = @Account_origen, Status_id = '1' y Product = @Product
+Actualización condicional: Para cada registro leído, intenta actualizar un registro que cumpla Username_id = @Account_destino, Affiliate_id = 84 y Product = @Product
+Transferencia de campos: Actualiza todos los campos especificados desde el registro origen al destino
+
+Características técnicas:
+
+Usa un cursor para iterar sobre los registros origen
+Implementa manejo de errores con CONTINUE HANDLER
+Utiliza LIMIT 1 en el UPDATE para asegurar que solo se actualice un registro por iteración
+Si no existe un registro destino que cumpla los criterios, automáticamente pasa al siguiente registro origen
+
+09.06.2025 v1     Primera versión operativa
+  
+*/
+
+DROP PROCEDURE IF EXISTS MS_Switch_Account_batch;
+
+DELIMITER $$
+
+CREATE PROCEDURE MS_Switch_Account_batch(
+    IN Account_origen INT,
+    IN Account_destino INT,
+    IN Product VARCHAR(50)
+)
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE v_id INT;
+    DECLARE v_code_to_affiliate VARCHAR(50);
+    DECLARE v_product VARCHAR(50);
+    DECLARE v_status VARCHAR(30);
+    DECLARE v_status_id VARCHAR(2);
+    DECLARE v_affiliate_id INT;
+    DECLARE v_channel_id INT;
+    DECLARE v_deal_id INT;
+    DECLARE v_country_deal VARCHAR(2);
+    DECLARE v_product_deal VARCHAR(50);
+    DECLARE v_deal_valid_from DATE;
+    DECLARE v_shortlink VARCHAR(150);
+    DECLARE v_shortlink_id VARCHAR(150);
+    
+    -- Cursor para leer registros origen
+    DECLARE cur_origen CURSOR FOR 
+        SELECT id, Code_To_Affiliate, Product, Status, Status_id, Affiliate_id, 
+               Channel_id, Deal_id, Country_Deal, Product_Deal, 
+               Deal_Valid_From, Shortlink, Shortlink_id
+        FROM campaign_marketing_source 
+        WHERE Username_id = Account_origen 
+          AND Status_id = '1' 
+          AND Product = Product;
+    
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    -- Abrir cursor
+    OPEN cur_origen;
+    
+    read_loop: LOOP
+        FETCH cur_origen INTO v_id, v_code_to_affiliate, v_product, v_status, 
+                             v_status_id, v_affiliate_id, v_channel_id, v_deal_id,
+                             v_country_deal, v_product_deal, v_deal_valid_from,
+                             v_shortlink, v_shortlink_id;
+        
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+        
+        -- Intentar actualizar registro destino
+        UPDATE campaign_marketing_source 
+        SET Code_To_Affiliate = v_code_to_affiliate,
+            Product           = v_product,
+            Status            = v_status,
+            Status_id         = v_status_id,
+            Affiliate_id      = v_affiliate_id,
+            Channel_id        = v_channel_id,
+            Deal_id           = v_deal_id,
+            Country_Deal      = v_country_deal,
+            Product_Deal      = v_product_deal,
+            Deal_Valid_From   = v_deal_valid_from,
+            Shortlink         = v_shortlink,
+            Shortlink_id      = v_shortlink_id,
+            Description       = concat_ws(" ","Batch switch acct",NOW(),"Accnt origin:",Account_origen) 
+        WHERE Username_id  = Account_destino 
+          AND Affiliate_id = 84 
+          AND Product      = Product
+        LIMIT 1;
+        
+        -- Si se actualizó correctamente el registro destino, actualizar el registro origen
+        IF ROW_COUNT() > 0 THEN
+            UPDATE campaign_marketing_source 
+            SET   Status_id   ='9',
+                  Description =concat_ws(" ","Switch acct",NOW(),"Shortlink origin:",Shortlink,"Shortlink_id:",Shortlink_id), 
+                  Shortlink   ='',
+                  Shortlink_id=''
+            WHERE id = v_id;
+        END IF;
+        
+    END LOOP;
+    
+    CLOSE cur_origen;
+    
+END$$
+
+DELIMITER ;
+
+-- Ejemplo de uso del procedimiento:
+-- CALL TransferCampaignData(@Account_origen, @Account_destino, @Product);
+
+-- O directamente con valores:
+-- CALL TransferCampaignData(123, 456, 'ProductoEjemplo');
+
+/*
+Escribir un script mysql 8 que, dada la tabla `campaign_marketing_source`, haga lo siguiente:
+1) Leer registros de la tabla cuya valor Username_id=@Account_origen, y además Status_id=1 y Product=@Product
+2) Por cada registro seleccionado en 1) actualizar otro que sea Username_id=@Account_destino, Affiliate_id=84, Product=@Product
+   Si no existe ningún registro que cumpla el requisito, pasar al siguiente de 1)
+3) Los campos a actualizar (que transfieren el valor desde cada registro leidos en 1) a los de 2) son:
+
+   `Code_To_Affiliate`
+   `Product`          
+   `Status`           
+   `Status_id`        
+   `Affiliate_id`     
+   `Channel_id`       
+   `Deal_id`          
+   `Country_Deal`     
+   `Product_Deal`     
+   `Deal_Valid_From`  
+   `Shortlink`        
+   `Shortlink_id`     
+
+CREATE TABLE `campaign_marketing_source` (
+   `id` INT NOT NULL AUTO_INCREMENT,
+   `Code` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Code_To_Affiliate` VARCHAR(50) NULL DEFAULT '0' COLLATE 'utf8mb4_0900_ai_ci',
+   `Product` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Status_id` VARCHAR(2) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Description` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Affiliate_id` INT NULL DEFAULT NULL,
+   `Username_id` INT NULL DEFAULT NULL,
+   `Channel_id` INT NULL DEFAULT NULL,
+   `Deal_id` INT NULL DEFAULT NULL,
+   `Country_Deal` VARCHAR(2) NULL DEFAULT '' COLLATE 'utf8mb4_0900_ai_ci',
+   `Product_Deal` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Deal_Valid_From` DATE NULL DEFAULT NULL,
+   `Shortlink` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Shortlink_id` VARCHAR(150) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   PRIMARY KEY (`id`) USING BTREE,
+   UNIQUE INDEX `ms_Tracker_ID` (`Tracker_ID`, `Username_id`) USING BTREE,
+   INDEX `ms_Code_id` (`Code`, `Username_id`) USING BTREE,
+   INDEX `ms_Tracker_Name_ID` (`Tracker_Name`, `Username_id`) USING BTREE,
+)
+;
+*/

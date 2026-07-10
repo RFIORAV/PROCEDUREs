@@ -1,0 +1,96 @@
+/* VIEW view_monthly_fact_gestor3 - COMISIONES del GESTOR
+	
+	22.02.2022 Calculos sobre forex_day_by_day_fact1_2
+	02.04.2022 Se agrega Tracker_ID para estadisticas
+	19.04.2022 Tratamiento de Deal por producto y fecha
+	27.07.2022 Multimoneda
+	13.09.2022 incluye Product
+   10.10.2022 V3.1 incluye group by deal
+   27.10.2022 V3.2 Nuevo cálculo de RS (acumula por Adv Account)
+   28.10.2022 V3.2 Utiliza Brand_Group y Brand_Group_Acum
+-- 28.11.2022 v3.3 Se trata nuevos campos is_indirect,Advertiser_indirect_id,Advertiser_indirect
+   21.01.2023 v3.4 Trata nuevo concepto Publisher (pagador)
+**/
+
+CREATE OR REPLACE VIEW view_monthly_fact_gestor3 as
+SELECT 
+	XX.Owner,LEFT(DATE,7) as Date,Brand,Username,Advertiser_id,Username_id
+	,'' as Product -- 27.10.2022 para compatibilidad con vers 3.1
+   -- Product_Real -- ,Tracker_ID -- ,Channel_id,Chanel_Name
+	,CPA		
+	,Data_Currency
+	,is_indirect                                                             -- 28.11.2022
+   ,Advertiser_indirect_id                                                  -- 28.11.2022
+   ,AD.Advertiser_Name AS Advertiser_indirect                               -- 28.11.2022
+	,round(CPA_Value,2)         AS 'CPA_Value'
+	,round(Net_Revenue,2)       AS 'Net_Revenue'
+	,round(RS_Value,2)          AS 'RS_Value'
+	,round((CASE WHEN RS_Value>=0 or Ges_RS_Against_CPA=1 or XX.Brand_Group_Acum=1 THEN RS_Value ELSE 0 END),2) AS 'RS_AJUST'
+	,round(CPA_Val_AJ_RS,2)     AS 'CPA_Val_AJ_RS'
+	,round((CASE WHEN RS_Value>=0 or Ges_RS_Against_CPA=1 or XX.Brand_Group_Acum=1 THEN RS_Value ELSE 0 END)
+	+ (CPA_Val_AJ_RS),2) 		 AS Total_Commission
+	,`Ges_id_Deal`
+	,`Ges_CPA`
+	,`Ges_Carry_Over`
+	,`Ges_RS_Against_CPA`
+	,`Ges_RS_Base`
+	,`Ges_RS`
+	,`Ges_Valid_From`
+FROM (
+	SELECT 
+		Owner,LEFT(DATE,7) as Date,Brand,Username,Advertiser_id,Username_id
+      ,Brand_Group,Brand_Group_Acum
+      -- ,`MS_id`,Product,Product_Real,Tracker_ID -- ,Channel_id,Chanel_Name
+		,SUM(CPA) 						AS 'CPA'
+		,SUM(CPA_Value) 				AS 'CPA_Value'
+		,SUM(Net_Revenue) 			AS 'Net_Revenue'
+		,SUM(RS_Value) 				AS 'RS_Value'
+		,0 								AS 'RS_AJUST'
+		,SUM(CPA_Value) 				AS 'CPA_Val_AJ_RS'
+		,0 								AS Total_Commission
+		,`Deal_Ges_id`             AS `Ges_id_Deal`
+		,`Deal_Ges_CPA`            AS `Ges_CPA`
+		,`Deal_Ges_Carry_Over`     AS `Ges_Carry_Over`
+		,`Deal_Ges_RS_Against_CPA` AS `Ges_RS_Against_CPA`
+		,`Deal_Ges_RS_Base`        AS `Ges_RS_Base`
+		,`Deal_Ges_RS`             AS `Ges_RS`
+		,`Deal_Ges_Valid_From`     AS `Ges_Valid_From`
+		,Data_Currency
+	   ,is_indirect                                                             -- 28.11.2022
+      ,Advertiser_indirect_id                                                  -- 28.11.2022
+   FROM (
+		SELECT 
+			D.`Owner`
+			,MAX(D.DATE) AS 'Date'	
+			,if(Brand_Group_Acum=1,Brand_Group,D.`Brand`) AS `Brand`	-- 28.10.2022
+         ,Brand_Group,Brand_Group_Acum
+			,D.`Advertiser_id`
+			,if(Brand_Group_Acum=1,D.`Brand`,D.Username) as `Username`   -- 28.10.2022
+			,D.`Username_id`
+			,D.`Product`	
+			,D.`Product_Real`
+			,D.Channel_id
+			,D.Channel                          												AS 'Chanel_Name'
+			,D.Tracker_ID
+			,IFNULL(MS_id,0)                                                        AS `MS_id`
+			,sum(ifnull(D.`Qualified_Players`,0))  											AS 'CPA'
+			,ROUND(sum(ifnull(D.`Qualified_Players`,0)*ifnull(D.Deal_Ges_CPA,0)),2) AS 'CPA_Value'
+			,SUM(ifnull(D.`Net_Revenue`,0))														AS 'Net_Revenue'
+			,ROUND(SUM(ifnull(D.`Net_Revenue`,0)*ifnull(D.`Deal_Ges_RS`,0)/100),2)  AS 'RS_Value'
+			,`Deal_Ges_id`
+			,`Deal_Ges_CPA`
+			,`Deal_Ges_Carry_Over`
+			,`Deal_Ges_RS_Against_CPA`
+			,`Deal_Ges_RS_Base`
+			,`Deal_Ges_RS`
+			,`Deal_Ges_Valid_From`
+			,D.Data_Currency
+         ,D.is_indirect                                                             -- 28.11.2022
+         ,D.Advertiser_indirect_id                                                  -- 28.11.2022
+			FROM
+				`forex_day_by_day_fact1_2` `D` 
+			GROUP BY D.Owner,LEFT(D.DATE,7),D.`Brand`,D.`Username_id`,`Deal_Ges_id`,IFNULL(MS_id,0),Product having CPA<>0 or Net_Revenue<>0  -- 27.10.2022
+	) AS x GROUP BY Owner,LEFT(DATE,7),`Brand`,Username
+) AS XX 
+LEFT JOIN `forex_advertiser` `AD` ON XX.is_indirect=1 and `AD`.`id` = `XX`.`Advertiser_indirect_id`
+;

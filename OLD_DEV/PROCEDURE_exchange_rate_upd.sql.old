@@ -1,0 +1,40 @@
+/*
+PROCEDURE_exchange_rate_upd.sql - Update tabla exchange_rate desde euroaffiliati2.exchange_rate
+
+Ejemplos:
+
+call exchange_rate_upd();
+
+25.07.2024 V1     Primera versión operativa
+
+*/
+
+DROP PROCEDURE IF EXISTS exchange_rate_upd;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `exchange_rate_upd`()
+    COMMENT 'Update tabla exchange_rate desde euroaffiliati2.exchange_rate'
+    
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET @Version         ='v1 25.07.2024';
+SET @CurrentDay      =curdate();
+SET @Month           =left(curdate(),7);
+SET @Debug           ='NO';
+SET @Meta            ='YES';
+SET @DB              =DATABASE();
+
+
+IF @DB!="euroaffiliati2" THEN
+   CREATE TABLE if NOT EXISTS exchange_rate  LIKE euroaffiliati2.exchange_rate;
+   TRUNCATE exchange_rate;
+   INSERT IGNORE INTO exchange_rate SELECT * FROM euroaffiliati2.exchange_rate;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+call exchange_rate_upd();
+*/

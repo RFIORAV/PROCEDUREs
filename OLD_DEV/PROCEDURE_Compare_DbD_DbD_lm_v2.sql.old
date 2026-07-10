@@ -1,0 +1,112 @@
+/* PROCEDURE_Compare_DbD_DbD_lm.sql
+   05.09.2022 V1 COMPARA Snapshot_day_by_day contra Snapshot_day_by_day_lm. Devuelve diferencias
+   10.09.2022 v2 Identifica Afiliado
+   Parametros (none)
+   
+*/
+
+DROP PROCEDURE IF EXISTS Compare_DbD_DbD_lm;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE Compare_DbD_DbD_lm()
+   COMMENT 'COMPARA Snapshot_day_by_day contra Snapshot_day_by_day_lm. Devuelve diferencias'
+   LANGUAGE SQL
+    
+BEGIN
+
+SELECT
+	left(DATE,7) AS Month,Owner,Date,Brand,`Username`
+	,Tracker_Name,Tracker_ID,Product,Affiliate
+	,SUM(CPA_lm)               AS 'CPA_lm'
+   ,SUM(CPA_DbD)              AS 'CPA_DbD'
+	,SUM(CPA_lm)-SUM(CPA_DbD)  AS 'CPA_LM-DbD'
+	,case when SUM(CPA_lm)<>SUM(CPA_DbD) then '*' else '' end AS 'Dif'
+	,SUM(NR_lm)                AS 'NR_lm'
+   ,SUM(NR_DbD)               AS 'NR_DbD'
+	,SUM(NR_lm)-SUM(NR_DbD)    AS 'NR_LM-DbD'
+   ,case when SUM(NR_lm)<>SUM(NR_DbD)   then '*' else '' end AS 'Dif'
+   ,case when SUM(CPA_lm)<>SUM(CPA_DbD) then 
+      CONCAT('INSERT IGNORE INTO Snapshot_day_by_day (Owner,Date,Username,Portal,Brand,Tracker_Name,Tracker_ID,Product,Qualified_Players,Net_Revenue)
+      VALUES ("',Owner,'","',Date,'","',Username,'","',Portal,'","',Brand,'","',Tracker_Name,'","',Tracker_ID,'","'
+      ,Product,'","',SUM(CPA_lm)-SUM(CPA_DbD),'","',SUM(NR_lm)-SUM(NR_DbD),'");')
+      else '' END as 'Result INSERT'
+FROM (
+SELECT
+	 max(D.`Date`) as Date
+   ,D.Owner,D.Portal
+	,D.`Brand`
+	,D.`Username`
+	,D.`Tracker_Name`,D.`Tracker_ID`
+   ,D.Product
+   ,A.username AS Affiliate
+	,SUM(D.`Qualified_Players`)  AS 'CPA_lm'
+	,SUM(D.`Net_Revenue`)        AS 'NR_lm'
+	,0 AS 'CPA_DbD'
+	,0 AS 'NR_DbD'
+FROM
+	`Snapshot_day_by_day_lm` D
+        LEFT JOIN `campaign_username` `CU` ON (`CU`.`id` = `D`.`Username`)
+        -- LEFT JOIN `campaign_advertiser` `AD` ON (`AD`.`Advertiser_Name` = `D`.`Brand`)
+						-- AND (`AD`.`Owner` = `D`.`Owner`)                                           -- 10.08.2022
+        LEFT JOIN `campaign_marketing_source` `M` ON `M`.`Username_id` = `D`.`Username` AND     -- 12.07.2022
+						(`M`.`Tracker_ID` = `D`.`Tracker_ID`                                          -- 12.07.2022
+					OR  `M`.`Tracker_Name` = `D`.`Tracker_Name`                                      -- 12.07.2022
+					OR  `M`.`Code` = `D`.`Tracker_Name`)                                             -- 12.07.2022
+        LEFT JOIN `campaign_mkt_source_deal` `M1` ON `M1`.`id` = (
+				   SELECT  `M2`.`id` FROM `campaign_mkt_source_deal` `M2`
+					WHERE   `M2`.`MS_id` = `M`.`id`
+					   AND  `M2`.`is_active` = 1
+					   AND  `M2`.`Deal_Valid_From` <= `D`.`Date`
+					   AND (`M2`.`Product`=`D`.`Product`              											-- 30.07.2022 (estaba en vers 2022.06.02)
+						OR   IFNULL(`M2`.`Product`,' ')=' ')
+					ORDER BY `M2`.`Deal_Valid_From` DESC , `M2`.`id` DESC  LIMIT 1)
+        LEFT JOIN `account_account` `A` ON `A`.`id` = IF((`M1`.`id` IS NOT NULL), `M1`.`Affiliate_id`, `M`.`Affiliate_id`) 
+   
+WHERE LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7) -- and Tracker_Name = 'a47mou'
+GROUP BY left(DATE,7),Username,Tracker_Name,Tracker_ID,Product
+
+UNION ALL -- -----------------------------------------------------------------
+
+SELECT
+	 max(D.`Date`) as Date
+   ,D.Owner,D.Portal
+	,D.`Brand`
+	,D.`Username`
+	,D.`Tracker_Name`,D.`Tracker_ID`
+   ,D.Product
+   ,A.username AS Affiliate
+	,0 AS 'CPA_lm'
+	,0 AS 'NR_lm'
+	,SUM(D.`Qualified_Players`)  AS 'CPA_DbD'
+	,SUM(D.`Net_Revenue`)        AS 'NR_DbD'
+-- 	,SUM(`Qualified_Players`)  AS 'Qualified_Players'
+-- 	,SUM(`Net_Revenue`)        AS 'Net_Revenue'
+FROM
+	`Snapshot_day_by_day` D
+        LEFT JOIN `campaign_username` `CU` ON (`CU`.`id` = `D`.`Username`)
+        -- LEFT JOIN `campaign_advertiser` `AD` ON (`AD`.`Advertiser_Name` = `D`.`Brand`)
+						-- AND (`AD`.`Owner` = `D`.`Owner`)                                           -- 10.08.2022
+        LEFT JOIN `campaign_marketing_source` `M` ON `M`.`Username_id` = `D`.`Username` AND     -- 12.07.2022
+						(`M`.`Tracker_ID` = `D`.`Tracker_ID`                                          -- 12.07.2022
+					OR  `M`.`Tracker_Name` = `D`.`Tracker_Name`                                      -- 12.07.2022
+					OR  `M`.`Code` = `D`.`Tracker_Name`)                                             -- 12.07.2022
+        LEFT JOIN `campaign_mkt_source_deal` `M1` ON `M1`.`id` = (
+				   SELECT  `M2`.`id` FROM `campaign_mkt_source_deal` `M2`
+					WHERE   `M2`.`MS_id` = `M`.`id`
+					   AND  `M2`.`is_active` = 1
+					   AND  `M2`.`Deal_Valid_From` <= `D`.`Date`
+					   AND (`M2`.`Product`=`D`.`Product`              											-- 30.07.2022 (estaba en vers 2022.06.02)
+						OR   IFNULL(`M2`.`Product`,' ')=' ')
+					ORDER BY `M2`.`Deal_Valid_From` DESC , `M2`.`id` DESC  LIMIT 1)
+        LEFT JOIN `account_account` `A` ON `A`.`id` = IF((`M1`.`id` IS NOT NULL), `M1`.`Affiliate_id`, `M`.`Affiliate_id`) 
+        
+WHERE LEFT(DATE,7)=LEFT(DATE_SUB(curdate(), INTERVAL 1 MONTH),7) -- and Tracker_Name = 'a47mou'
+GROUP BY left(DATE,7),Username,Tracker_Name,Tracker_ID,Product
+) AS XX
+GROUP BY left(DATE,7),Username,Tracker_Name,Tracker_ID,Product HAVING SUM(CPA_lm)<>SUM(CPA_DbD)-- WITH ROLLUP 
+;
+END$$
+DELIMITER ;
+
+-- TEST --------------
+-- call Compare_DbD_DbD_lm();
