@@ -1,7 +1,0 @@
-Modificar el procedure monthly_comms_affiliate_v5 que está en 
-D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_monthly_comms_affiliate_v5.5_incremental.sql
-creando o modificando otro file D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_monthly_comms_affiliate_v5.6.sql
-para que reciba como parámetro el mes a procesar en formato YYYY-MM
-
-Debe modificarse esta línea para que se utilce CURDATE() solo si el parámetro de entrada no viene informado o es inválido:
-SET @LMonth=LEFT(DATE_SUB(CURDATE(), INTERVAL 2 MONTH),7);

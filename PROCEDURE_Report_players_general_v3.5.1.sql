@@ -40,11 +40,14 @@ call Report_players_general_dev('debug=ye,filters=ye,Advertiser="Bet 365",show_p
 call Report_players_general_dev('debug=ye,filters=ye,Advertiser=Bwin,show_products=yes');
 call Report_players_general_dev('debug=ye,filters=ye,CPA_Month=2025-05,Advertiser=Bwin');
 call Report_players_general_dev('debug=ye,filters=yes,Affiliate_id=39');
-call Report_players_general_dev('genidx=yes,debug=YE');
+call Report_players_general('genidx=yes,debug=YE');
+call Report_players_general('data_month=2026-07,Advertiser="Sisal",debug=ye,filters=ye');
 
 17.06.2026 v3.3 Advertiser admite espacios si el valor viene entre comillas dobles
 17.06.2026 v3.4 CallValue de filtro Brand con comillas dobles via CHAR(34)
 24.06.2026 v3.5 Añade columna Deposits a players_general_API_idx_dev
+28.07.2026 v3.5.1 Cambia la tabla players_flutter por player_flutter_affilyn
+
 */
 
 DROP PROCEDURE IF EXISTS Report_players_general;
@@ -54,7 +57,7 @@ DELIMITER $$
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_players_general`(IN
    InputCommLine    VARCHAR(250)
    )
-    COMMENT 'v3.5 24.06.2026 - Report Affiliate Interactions'
+    COMMENT 'v3.5.1 28.07.2026: Report Affiliate Interactions'
 
 proc_label:BEGIN
 DECLARE v_Version            VARCHAR(50);
@@ -101,7 +104,7 @@ DECLARE v_SQLfilters_where   LONGTEXT;
 DECLARE v_SQLfilters         LONGTEXT;
 -- --------------------------------------------------------------------------------------------
 -- Defaults
-SET v_Version         ='v3.4 17.06.2026';
+SET v_Version         ='v3.5.1 28.07.2026';
 SET v_CurrentDay      =CURDATE();
 SET v_Data_Month      ='ALL';
 SET v_Signup_month    ='ALL';
@@ -192,7 +195,7 @@ SET v_WhereTracker_name='';
 SET v_GROUPBY=CASE WHEN v_Show_products="YES"
                   THEN ' GROUP BY LEFT(`Date`,7),p.`Username_id`,`Customer_Reference_ID`,`Prodotto` '
                   ELSE ' GROUP BY LEFT(`Date`,7),`Username_id`,`Customer_Reference_ID` '
-             END;
+              END;
 
 -- IF v_Data_Month    ="ALL"  AND v_Filters!="YES" THEN SET v_WhereDataMonth=CONCAT(" AND Left(p.`Date`,7)='",v_Data_Month,"'");   END IF;
 IF v_Affiliate_id  !="ALL" THEN SET v_WhereAffiliate    =CONCAT(" AND M.Affiliate_id=",v_Affiliate_id );   END IF;
@@ -314,7 +317,7 @@ SET v_SQLgenidx=CONCAT('
                 THEN LEFT(p.`Date`,7)
                 ELSE NULL
            END)                          `CPA_Processed_Date`
-      ,round(SUM(p.`Deposits`         ),2) `Deposits`
+      ,round(SUM(p.`Deposits` ),2)       `Deposits`
       ,M.id                              `MS_id`
    FROM players_referon_API p  
    LEFT JOIN `campaign_marketing_source` `M` ON `M`.`Username_id`=p.`Username_id` 
@@ -326,28 +329,26 @@ SET v_SQLgenidx=CONCAT('
    UNION ALL  -- -------------------------------------------------------------------------------
    SELECT 
       "flutter"                          `API`
-      ,Left(p.`Date`,7)                  `Date`
+      ,Left(p.`Report_Date`,7)           `Date`
       ,ifnull(M.`Advertiser_id`,0)       `Advertiser_id`
-      ,p.`Advertiser`                    `Advertiser`
+      ,p.`Brand`                         `Advertiser`
       ,p.`Username_id`                   `Username_id`
-      ,p.`Username`                      `Username`
-      ,p.`ID_riferimento_cliente`        `Customer_Reference_ID`
-      ,MAX(left(DATE_FORMAT(STR_TO_DATE(Data_di_iscrizione, "%d-%m-%Y"), "%Y-%m-%d"),7)
-         )                               `Signup_Date`
-      ,p.`Codice_campagna`               `Marketing_Source_Name`
+      ,p.`Affiliate_Username`            `Username`
+      ,p.`Player_ID`                     `Customer_Reference_ID`
+      ,MAX(LEFT(ifnull(p.`Created_On`,""),7)) `Signup_Date`
+      ,p.`Source_Description`            `Marketing_Source_Name`
       ,ifnull(M.Affiliate_id,0)          `Affiliate_id`
       ,ifnull(a.Username ,"_OldData")    `Affiliate`
-      ,MAX(left(DATE_FORMAT(STR_TO_DATE(Data_elaborazione_CPA, "%d-%m-%Y"), "%Y-%m-%d"),7)
-         )                              `CPA_Processed_Date`
-      ,round(SUM(CAST(REPLACE(REPLACE(REGEXP_REPLACE(p.`Versamenti`, "[^0-9,-]", ""),".", ""),",", ".") AS DECIMAL(10,2))),2) AS `Deposits` 
+      ,MAX(LEFT(ifnull(p.`Date_In_CPA`,""),7)) `CPA_Processed_Date`
+      ,round(SUM(p.`Deposits`),2)        `Deposits` 
       ,M.id                              `MS_id`
-   FROM players_flutter p  
+   FROM player_flutter_affilyn p  
    LEFT JOIN `campaign_marketing_source` `M` ON `M`.`Username_id`=p.`Username_id` 
-                                             AND  (M.`Tracker_ID`=p.`Codice_campagna`
-                                                OR M.`Tracker_Name`=p.`Codice_campagna`)
+                                             AND  (M.`Tracker_ID`=p.`Source_Code`
+                                                OR M.`Tracker_Name`=p.`Source_Description`)
    LEFT JOIN account_account     a     ON a.id=M.Affiliate_id 
    LEFT JOIN campaign_username   u     ON u.id=p.`Username_id` 
-   GROUP BY `Advertiser_id`,p.`Username_id`,p.`ID_riferimento_cliente`,p.`Codice_campagna`   
+   GROUP BY `Advertiser_id`,p.`Username_id`,p.`Player_ID`,p.`Source_Description`   
    ;
 ');
 
@@ -404,11 +405,11 @@ LEFT JOIN `campaign_marketing_source` `M` ON `M`.`Username_id`=p.`Username_id`
 LEFT JOIN account_account     a     ON a.id=M.Affiliate_id 
 
 WHERE 1=1  AND ',v_First_pass,'=0 '
-   ,v_WhereDataMonth
-   ,v_WhereAdvertiser
-   ,v_WhereAffiliate
-   ,v_WhereAccount
-   ,v_WhereTracker_name
+   ,REPLACE(v_WhereDataMonth,"p.`Date`","p.`Date`")
+   ,REPLACE(v_WhereAdvertiser,"p.`Advertiser`","p.`Advertiser`")
+   ,REPLACE(v_WhereAffiliate,"p.`Affiliate_id`","M.`Affiliate_id`")
+   ,REPLACE(v_WhereAccount,"p.`Username_id`","p.`Username_id`")
+   ,REPLACE(v_WhereTracker_name,"p.`Marketing_Source_Name`","p.`Marketing_Source_Name`")
 ,v_GROUPBY,
 '
 UNION ALL -- -------------------------------------------------------------------------------
@@ -455,11 +456,11 @@ FROM players_mexos_API p
 WHERE Periodo_di_riferimento NOT IN ("Totali") AND Periodo_di_riferimento IS NOT NULL
       AND p.Date <= "2026-05-31"
  AND ',v_First_pass,'=0 '
-   ,v_WhereDataMonth
-   ,v_WhereAdvertiser
-   ,v_WhereAffiliate
-   ,v_WhereAccount
-   ,v_WhereTracker_name
+   ,REPLACE(v_WhereDataMonth,"p.`Date`","p.`Periodo_di_riferimento`")
+   ,REPLACE(v_WhereAdvertiser,"p.`Advertiser`","p.`Advertiser`")
+   ,REPLACE(v_WhereAffiliate,"p.`Affiliate_id`","M.`Affiliate_id`")
+   ,REPLACE(v_WhereAccount,"p.`Username_id`","p.`Username_id`")
+   ,REPLACE(v_WhereTracker_name,"p.`Marketing_Source_Name`","p.`Profilo`")
 ,v_GROUPBY,
 '
 UNION ALL -- -------------------------------------------------------------------------------
@@ -506,66 +507,72 @@ LEFT JOIN `campaign_marketing_source` `M` ON `M`.`Username_id`=p.`Username_id`
 LEFT JOIN account_account     a     ON a.id=M.Affiliate_id 
 
 WHERE 1=1  AND ',v_First_pass,'=0 AND p.`Customer_ID` IS NOT NULL '
-   ,v_WhereDataMonth
-   ,v_WhereAdvertiser
-   ,v_WhereAffiliate
-   ,v_WhereAccount
-   ,v_WhereTracker_name
+   ,REPLACE(v_WhereDataMonth,"p.`Date`","p.`Date`")
+   ,REPLACE(v_WhereAdvertiser,"p.`Advertiser`","p.`Advertiser`")
+   ,REPLACE(v_WhereAffiliate,"p.`Affiliate_id`","M.`Affiliate_id`")
+   ,REPLACE(v_WhereAccount,"p.`Username_id`","p.`Username_id`")
+   ,REPLACE(v_WhereTracker_name,"p.`Marketing_Source_Name`","p.`Marketing_Source`")
 ,v_GROUPBY,
 '
 UNION ALL -- -------------------------------------------------------------------------------
 SELECT 
-    p.`Date`                          `Date`
-   ,p.`Advertiser`                    `Advertiser`
-   ,p.`Username`                      `Username`
+    p.`Report_Date`                   `Date`
+   ,p.`Brand`                         `Advertiser`
+   ,p.`Affiliate_Username`            `Username`
    ,p.`Username_id`                   `Username_id`
-   ,p.`Prodotto`                      `Prodotto`
-   ,p.`ID_riferimento_cliente`        `Customer_Reference_ID`
+   ,""                                `Prodotto`
+   ,p.`Player_ID`                     `Customer_Reference_ID`
    ,""                                `Country`
-   ,case when p.`Data_di_iscrizione` is not null
-         then DATE_FORMAT(STR_TO_DATE(Data_di_iscrizione, "%Y-%m-%d"), "%Y-%m-%d")
-         else null end                `Signup_Date`
-   ,p.`Piano_di_incentivazione`       `Reward_Plan`
-   ,p.`Codice_campagna`               `Marketing_Source_Name`
-   ,p.`Codice_campagna`               `Marketing_Source_ID`
+   ,MAX(LEFT(ifnull(p.`Created_On`,""),10)) `Signup_Date`
+   ,p.`Business_Profile_Name`         `Reward_Plan`
+   ,p.`Source_Description`            `Marketing_Source_Name`
+   ,p.`Source_Code`                   `Marketing_Source_ID`
    ,M.id                              `MS_id`
    ,M.Affiliate_id                    `Affiliate_id`
    ,a.Username                        `Affiliate`
    ,""                                `Customer_Type`
    ,""                                `Customer_Level`
-   ,MAX(CASE WHEN IFNULL(p.`CPA_scattata`,"no") > "si"
-               THEN DATE_FORMAT(STR_TO_DATE(Data_elaborazione_CPA, "%d-%m-%Y"), "%Y-%m-%d")
-               ELSE NULL
-         END)                         `CPA_Processed_Date`  
-   ,p.`Advertiser`                    `Brand`
+   ,MAX(LEFT(ifnull(p.`Date_In_CPA`,""),7)) `CPA_Processed_Date`  
+   ,p.`Brand`                         `Brand`
    ,""                                `Customer_Signup_Source`
-   ,FORMAT(SUM(CAST(REPLACE(REPLACE(REGEXP_REPLACE(p.`Ricavo_netto_totale`, "[^0-9,-]", ""),".", ""),",", ".") AS DECIMAL(10,2))),2) AS `Gross_Revenue`
-   ,FORMAT(SUM(CAST(REPLACE(REPLACE(REGEXP_REPLACE(p.`Versamenti`, "[^0-9,-]", ""),".", ""),",", ".") AS DECIMAL(10,2))),2) AS `Deposits`
-   ,0 `Turnover`
-   ,0                                    `Payouts`
-   ,0                                    `Contributions`
-   ,0                                    `Transactions`
-   ,0                                    `Points`
-   ,0                                    `Adj_(Chargebacks)`
-   ,FORMAT(SUM(CAST(REPLACE(REPLACE(REGEXP_REPLACE(p.`Ricavo_netto_totale`, "[^0-9,-]", ""),".", ""),",", ".") AS DECIMAL(10,2))),2) AS `Total_Net_Revenue`
-   ,0                                    `Total_Net_Revenue_MTD`
-FROM players_flutter p  
+   ,FORMAT(SUM(p.`Net_Operating_Revenues`),2) `Gross_Revenue`
+   ,FORMAT(SUM(p.Deposits),2)         `Deposits`
+   ,0                                 `Turnover`
+   ,0                                 `Payouts`
+   ,0                                 `Contributions`
+   ,0                                 `Transactions`
+   ,0                                 `Points`
+   ,0                                 `Adj_(Chargebacks)`
+   ,FORMAT(SUM(p.`Net_Operating_Revenues`),2)        `Total_Net_Revenue`
+   ,FORMAT(MAX(p.`Net_Operating_Revenues_MTD`),2)    `Total_Net_Revenue_MTD`
+FROM player_flutter_affilyn p  
 LEFT JOIN `campaign_marketing_source` `M` ON `M`.`Username_id`=p.`Username_id` 
-                                          AND   (M.`Tracker_ID`=p.`Codice_campagna`
-                                              OR M.`Tracker_Name`=p.`Codice_campagna`)
+                                          AND   (M.`Tracker_ID`=p.`Source_Code`
+                                              OR M.`Tracker_Name`=p.`Source_Description`)
 LEFT JOIN account_account     a     ON a.id=M.Affiliate_id 
-
-WHERE 1=1  AND ',v_First_pass,'=0 AND p.`ID_riferimento_cliente` IS NOT NULL '
-   ,v_WhereDataMonth
-   ,v_WhereAdvertiser
-   ,v_WhereAffiliate
-   ,v_WhereAccount
-   ,v_WhereTracker_name
+WHERE 1=1  AND ',v_First_pass,'=0 AND p.`Player_ID` IS NOT NULL '
+   ,REPLACE(v_WhereDataMonth,"p.`Date`","p.`Report_Date`")
+   ,REPLACE(v_WhereAdvertiser," Advertiser="," p.`Brand`=")
+   ,REPLACE(v_WhereAffiliate,"p.`Affiliate_id`","M.`Affiliate_id`")
+   ,REPLACE(v_WhereAccount,"p.`Username_id`","p.`Username_id`")
+   ,REPLACE(v_WhereTracker_name,"p.`Marketing_Source_Name`","p.`Source_Description`")
 ,v_GROUPBY,
 '
 )
 ');
 -- ----------------------------------------------------------------
+-- SET v_GROUPBY=CASE WHEN v_Show_products="YES"
+--                   THEN ' GROUP BY LEFT(`Date`,7),p.`Username_id`,`Customer_Reference_ID`,`Prodotto` '
+--                   ELSE ' GROUP BY LEFT(`Date`,7),`Username_id`,`Customer_Reference_ID` '
+--               END;
+-- IF v_Affiliate_id  !="ALL" THEN SET v_WhereAffiliate    =CONCAT(" AND M.Affiliate_id=",v_Affiliate_id );   END IF;
+-- IF v_Data_Month    !="ALL" THEN SET v_WhereDataMonth    =CONCAT(" AND Left(p.`Date`,7)='",v_Data_Month,"'");   END IF;
+-- IF v_Signup_month  !="ALL" THEN SET v_WhereSignup_month =CONCAT(" AND Left(`Signup_Date`,7)='",v_Signup_month,"'");  END IF;
+-- IF v_CPA_month     !="ALL" THEN SET v_WhereCPAMonth     =CONCAT(" AND Left(`CPA_Processed_Date`,7)='",v_CPA_month,"'");  END IF;
+-- IF v_Customer_ID   !="ALL" THEN SET v_WhereCustomer_ID  =CONCAT(" AND Customer_Reference_ID='",v_Customer_ID,"'");   END IF;
+-- IF v_Advertiser    !="ALL" THEN SET v_WhereAdvertiser   =CONCAT(" AND Advertiser='",REPLACE(v_Advertiser,"'","''"),"'"); END IF;
+-- IF v_Account       !="ALL" THEN SET v_WhereAccount      =CONCAT(" AND p.`Username_id`='",v_Account,"'");          END IF;
+-- IF v_Tracker_name  !="ALL" THEN SET v_WhereTracker_name =CONCAT(" AND p.`Marketing_Source_Name`='",v_Tracker_name,"'"); END IF;
 -- ----------------------------------------------------------------
 SET v_SQLmeta_players=CONCAT(
 '(

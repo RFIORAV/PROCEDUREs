@@ -35,6 +35,7 @@
    16.06.2026 v1.8.14 Desvío de ejecución de Report_players_netrefer a Report_players_general
    19.06.2026 v1.8.15 Ejecución de Snapshot_day_by_day_fact1_upd_from_dbd_manual para CM y LM
    24.06.2026 v1.8.16 Cálculo y generación de movimientos DbD_manual para compensar CPA que no llegan al baseline del afiliado
+   20.07.2026 v1.8.18 Actualiza Product_Real=Product en Snapshot_day_by_day hasta que se actualicen los bots
 */
 
 DROP EVENT IF EXISTS Snapshot_day_by_day_fact1_event_AR;
@@ -44,11 +45,11 @@ DELIMITER //
 CREATE EVENT `Snapshot_day_by_day_fact1_event_AR`
 	ON SCHEDULE EVERY 30 MINUTE STARTS '2025-01-01 07:25:00'
 	ON COMPLETION PRESERVE ENABLE
-	COMMENT 'v1.8.16 24.06.2026: Recalcula datos de entrada y genera postbacks para Affiliate Revolution'
+	COMMENT 'v1.8.18 20.07.2026: Recalcula datos de entrada y genera postbacks para Affiliate Revolution+Actualiza Product_Real=Product en Snapshot_day_by_day hasta que se actualicen los bots'
    DO 
    
 Main_Label: BEGIN
-   SET @Version         ='v1.8.16 24.06.2026';
+   SET @Version         ='v1.8.18 20.07.2026';
    SET @CurrentDay      =curdate();
    
    -- Pasa actualizaciones tablas comunues desde ea2 a las otras db
@@ -69,7 +70,11 @@ Main_Label: BEGIN
    -- CALL Update_auto_from_dbd_manual('NO');      -- Datos manuales Sin información de debug - 11.09.2025
    CALL Snapshot_day_by_day_fact1_upd_from_dbd_manual('CM');   
    CALL Snapshot_day_by_day_fact1_upd_from_dbd_manual('LM');    
-   
+    
+   -- 20.07.2026 Actualiza Product_Real=Product en Snapshot_day_by_day hasta que se actualicen los bots
+   UPDATE Snapshot_day_by_day f SET f.Product_Real=f.Product,f.Product="" 
+   WHERE DATE>="2026-04-01" AND LEFT(f.Product, 20) REGEXP "[0-9]{2}";
+
    CALL Snapshot_day_by_day_fact1_upd();        -- Determina cuando debe procesal LM, además de CM
    CALL Snapshot_day_by_day_fact2_upd_cm();
    

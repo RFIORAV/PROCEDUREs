@@ -20,7 +20,7 @@ Historial de versiones:
   20.04.2026 v1.1 Se migra a util_settings_v2 y se agregan filtros Show_enabled/EditableOnly.
   21.04.2026 v1.2 Se agrega filtro por nombre de setting (Setting=...).
   27.04.2026      Se migra a util_settings y se agrega columna Show_enabled.
-  26.06.2026 v1.3 Se agrega columna Value_01_Options y edit_enabled.
+  26.06.2026 v1.3 Karen. Se agrega columna Value_01_Options y edit_enabled.
 
 Uso:
   CALL Report_Util_Settings_dev('');

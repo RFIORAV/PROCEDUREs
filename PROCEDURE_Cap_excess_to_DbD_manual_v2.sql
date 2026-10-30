@@ -20,7 +20,7 @@ Parámetros ('[Key=Value[,...]']')
 
 Ejemplos:
   call Cap_excess_to_DbD_manual('');
-  call Cap_excess_to_DbD_manual('Month=CM');
+  call Cap_excess_to_DbD_manual('Month=CM,Debug=Yes');
   call Cap_excess_to_DbD_manual('Month=LM,Debug=Yes');
   call Cap_excess_to_DbD_manual('Month=2024-05');
   call Cap_excess_to_DbD_manual('Debug=Yes');
@@ -31,6 +31,8 @@ Ejemplos:
 29.05.2026 v2    Parámetros Key=Value, SQL dinámico con PREPARE/EXECUTE, soporte Debug=Yes
 29.05.2026 v2    Añadido control de activación/desactivación de control de Cap
 12.06.2026 v2.1  Añadido cambio de Status_id de Marketing Source a "6" (Paused) 
+13.07.2026 v2.2  Cambio criterio de selección de movimientos para poner en Paused los MS Cuando CPA=>Cap
+                 Solo pone PAUSED para proceso del mes actual
 */
 
 DROP PROCEDURE IF EXISTS Cap_excess_to_DbD_manual_dev;
@@ -38,12 +40,12 @@ DROP PROCEDURE IF EXISTS Cap_excess_to_DbD_manual;
 
 DELIMITER $$
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Cap_excess_to_DbD_manual`(IN InputCommLine VARCHAR(250))
-COMMENT 'v2.1 12.06.2026 - Cálculo y generación de movimientos DbD_manual para compensar exceso de Cap'
+COMMENT 'v2.2 13.07.2026 - Cálculo y generación de movimientos DbD_manual para compensar exceso de Cap'
 SQL SECURITY DEFINER
 
 proc_label:BEGIN
 
-  DECLARE v_Version        VARCHAR(32)  DEFAULT 'v2.1 12.06.2026';
+  DECLARE v_Version        VARCHAR(32)  DEFAULT 'v2.2 13.07.2026';
   DECLARE v_Month          VARCHAR(7)   DEFAULT '';
   DECLARE v_Debug          VARCHAR(20)  DEFAULT 'NO';
   DECLARE v_SQL            TEXT         DEFAULT '';
@@ -142,7 +144,7 @@ IF  v_EnforceCapCPA='NO' THEN LEAVE proc_label; END IF;
         ,F.Affiliate, F.Affiliate_id, F.Area
         ,F.MS_id, F.Tracker_ID, F.Tracker_Name, F.Code_To_Affiliate      
         ,F.Product, F.Product_Real
-        ,SUM(Qualified_players)         AS Qualified_players
+        ,SUM(Qualified_players)         AS CPAacum
         ,IFNULL(C.Cap_Real,IFNULL(D.CPA_Limit,IFNULL(F.CPA_Limit,1000))) AS CPA_Limit_consolidated  
         ,D.CPA_Limit AS CPA_Limit_to_date
         ,D.Date_Valid            
@@ -155,35 +157,38 @@ IF  v_EnforceCapCPA='NO' THEN LEAVE proc_label; END IF;
                      WHERE D.is_active = 1 AND D.MS_id = F.MS_id AND D.Date_Valid <= F.Date
                      AND C.Affiliate_id IS NULL 
                      ORDER BY D.Date_Valid DESC ,D.id DESC LIMIT 1) AS D ON TRUE    
-  WHERE LEFT(Date,7) = @v_Month AND Origin="" AND F.Affiliate_id>1
+  WHERE LEFT(Date,7) = @v_Month AND Origin IN ("user","") AND F.Affiliate_id>1
   GROUP BY F.Date, F.Affiliate_id, F.MS_id, F.Code_To_Affiliate
-)
-/* para pruebas
-SELECT  max(F.Date), F.Brand,F.Affiliate
-        ,F.MS_id
-        ,SUM(Qualified_players)         AS CPAacum
-        ,F.CPA_Limit_consolidated
+  HAVING CPAacum>0
+),
+
+fact_acum_by_MS_date as (
+SELECT   f.MS_id,f.Username_id, f.Area, f.Brand, f.Affiliate
+        ,MAX(f.Date) as Date, f.Tracker_ID, f.Tracker_Name, f.Code_To_Affiliate
+        ,f.Product, f.Product_Real
+        ,SUM(CPAacum) AS CPAacum
+        ,f.CPA_Limit_consolidated
         ,CPA_Limit_to_date
         ,Date_Valid AS Rule_Date_Valid                   
-FROM fact_Date F
+FROM fact_by_Date f
 GROUP BY MS_id,CPA_Limit_consolidated
-HAVING CPAacum>CPA_Limit_consolidated;
-*/
+HAVING CPAacum>0 and CPAacum>=CPA_Limit_consolidated
+)
+-- SELECT * from fact_acum_by_MS_date;
 
 SELECT
       "autoCapExcess" AS Origin
       ,f.MS_id, f.Username_id, f.Area, f.Brand, f.Affiliate
       ,MAX(f.Date), f.Tracker_ID, f.Tracker_Name, f.Code_To_Affiliate
       ,f.Product, f.Product_Real
-      ,f.CPA_Limit_consolidated - SUM(f.Qualified_players) AS `CPAdifference`
+      ,f.CPA_Limit_consolidated - SUM(f.CPAacum) AS `CPAdifference`
       ,1 AS `deal_to_apply`
       ,1 AS `is_active`
-FROM fact_by_Date f
+FROM fact_acum_by_MS_date f
 GROUP BY MS_id,CPA_Limit_consolidated 
-HAVING CPAdifference<0
+HAVING CPAdifference<=0
 ; 
 ';
-
 
   SET v_SQL = CONCAT(v_SQLinsert, v_SQL_CTE);
   -- ── Ejecución o Debug ─────────────────────────────────────────────────────────
@@ -212,7 +217,7 @@ HAVING CPAdifference<0
     INNER JOIN `Snapshot_day_by_day_manual` d ON `MS_id`=m.id 
            AND d.Origin='autoCapExcess' AND d.is_active=1 AND LEFT(d.`Date`,7)=LEFT(CURDATE(),7)
     SET Status_id="6"
-    WHERE m.Status_id="1";   
+    WHERE m.Status_id="1" AND @v_Month = LEFT(CURDATE(), 7);   -- solo para el mes actual
  
   END IF;
 

@@ -6,10 +6,17 @@ Descripción:
 
 Keys:
   DB_destination = [valor]. Parámetro de entrada.
+  
+Examples:
+
+CALL CopyTablesToDEV('');
+CALL CopyTablesToDEV('affacc_dev');
+CALL CopyTablesToDEV('euroaffiliati_mkt');
 
 29.08.2024 v1
 05.06.2025 v1.1   DB destino como parámetro. Default=euroaffiliati_dev
 03.07.2026 v1.2   Añadidas nuevas tablas.
+15.07.2026 v1.3   Añadida comprobación de tablas a copiar según db destino.
 */
 
 DROP PROCEDURE IF EXISTS CopyTablesToDEV;
@@ -18,12 +25,12 @@ DROP PROCEDURE IF EXISTS CopyTablesToDEV;
 DELIMITER //
 
 CREATE PROCEDURE CopyTablesToDEV(IN DB_destination varchar (80))
-COMMENT 'v1.2 - 03.07.2026 Procedimiento CopyTablesToDEV.'
+COMMENT 'v1.3 - 15.07.2026 Procedimiento CopyTablesToDEV.'
 
 Proc_Main:BEGIN
+    DECLARE version VARCHAR(255) DEFAULT 'v1.3 - 15.07.2026';
     DECLARE done INT DEFAULT FALSE;
     DECLARE tableName VARCHAR(255);
-    DECLARE version VARCHAR(255) DEFAULT 'v1.2 - 03.07.2026';
 
     DECLARE cur CURSOR FOR 
         SELECT TABLE_NAME 
@@ -53,7 +60,7 @@ Proc_Main:BEGIN
 
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
     
-    SET @Debug="no";
+    SET @Debug="NO";
     
     IF DB_destination="" THEN SET DB_destination="euroaffiliati_dev"; END IF;
 
@@ -70,6 +77,51 @@ Proc_Main:BEGIN
         FETCH cur INTO tableName;
         IF done THEN
             LEAVE read_loop;
+        END IF;
+
+        IF  DB_destination="euroaffiliati_mkt" AND
+           (tableName="account_account" 
+         OR tableName="campaign_campaign" 
+         OR tableName="account_affiliate_interactions"
+         OR tableName="campaign_deal_affiliate"
+         OR tableName="campaign_deal_affiliate_bonus"
+         OR tableName="monthly_comms_affiliate_v5"
+         OR tableName="account_publisher_interactions"
+         OR tableName="campaign_publisher_proforma"
+         OR tableName="account_account_bills"
+         OR tableName="account_account_files"
+         OR tableName="account_account_filters"
+         OR tableName="account_account_groups"
+         OR tableName="account_account_referral"
+         OR tableName="account_account_table_setting"
+         OR tableName="account_account_tags"
+         OR tableName="account_account_tags_list"
+         OR tableName="account_dash_module_access"
+         OR tableName="account_dash_module_layouts"
+         OR tableName="account_financial_movement"
+         OR tableName="account_landing_pages"
+         OR tableName="account_manual_adjustments"
+         OR tableName="account_publisher_interactions"
+         OR tableName="campaign_log_dashboard"
+         OR tableName="campaign_publisher_%"
+         OR tableName="account_notifications%"
+         OR tableName="account_payment_method%"
+         OR tableName="campaign_bonus"
+         OR tableName LIKE "campaign_deal%"
+         OR tableName LIKE "campaign_mkt_source_%"
+         OR tableName LIKE "campaign_shortlink"
+         OR tableName LIKE "campaign_sub_username"
+         OR tableName LIKE "comm_%"
+         OR tableName LIKE "dash_%"
+         OR tableName LIKE "legal_entities"
+         OR tableName LIKE "master_affiliate_%"
+         OR tableName LIKE "monthly_comms_%"
+         OR tableName LIKE "multi_query"
+         OR tableName LIKE "setting_%"
+         OR tableName LIKE "util_%"
+         )
+        THEN
+            ITERATE read_loop;
         END IF;
         
         SET @K_fields_diff =(
@@ -95,24 +147,22 @@ Proc_Main:BEGIN
         SET @copyTableQuery      = CONCAT('CREATE TABLE IF NOT EXISTS ',DB_destination,'.', tableName, ' LIKE euroaffiliati2.', tableName);
         SET @truncateTableQuery  = CONCAT('TRUNCATE ',DB_destination,'.', tableName, ';');
         SET @insertDataQuery     = CONCAT('INSERT INTO ',DB_destination,'.', tableName, ' SELECT * FROM euroaffiliati2.', tableName);
-        
-        IF @Debug="YES" 
+              
+        IF @Debug="NO"        
         THEN
-            SELECT @K_fields_diff,@dropTableQuery,@copyTableQuery,@truncateTableQuery,@insertDataQuery;
-            LEAVE Proc_Main;
-        END IF;        
-        
-        PREPARE stmt FROM @copyTableQuery;
-        EXECUTE stmt;
-        DEALLOCATE PREPARE stmt;
+           PREPARE stmt FROM @copyTableQuery;
+           EXECUTE stmt;
+           DEALLOCATE PREPARE stmt;
 
-        PREPARE stmt FROM @truncateTableQuery;
-        EXECUTE stmt;
-        DEALLOCATE PREPARE stmt;
+           PREPARE stmt FROM @truncateTableQuery;
+           EXECUTE stmt;
+           DEALLOCATE PREPARE stmt;
+           
+           PREPARE stmt FROM @insertDataQuery;
+           EXECUTE stmt;
+           DEALLOCATE PREPARE stmt;     
+        END IF;
         
-        PREPARE stmt FROM @insertDataQuery;
-        EXECUTE stmt;
-        DEALLOCATE PREPARE stmt;
     END LOOP;
 
     CLOSE cur;

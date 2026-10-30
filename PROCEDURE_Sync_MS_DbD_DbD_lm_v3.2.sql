@@ -56,6 +56,7 @@ Modificaciones:
                      Refactoring para sync por Brand individual
    13.03.2026 v3.1   Añade modo FACT1 para recalcular Fact1 LM
    12.05.2026 v3.2   Añade comprobación de si hay datos en DbD para evitar pantalla vacía
+   13.07.2026 v3.3   Añade tooltip a columnas grid
 
 */
 
@@ -66,7 +67,7 @@ DELIMITER $$
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Sync_MS_DbD_DbD_lm`(
    IN p_InputCommLine VARCHAR(500)
 )
-   COMMENT 'v3.2 12.05.2026 Check/Sync LM Raw data: Stored data Vs New downloaded data (DbD vs DbD_lm)'
+   COMMENT 'v3.3 13.07.2026 Check/Sync LM Raw data: Stored data Vs New downloaded data (DbD vs DbD_lm)'
    LANGUAGE SQL
    SQL SECURITY DEFINER
 
@@ -108,7 +109,7 @@ BEGIN
 END;
 
 -- Defaults -------------------------------------------------------------------
-SET v_version                = 'v3.2 12.05.2026';
+SET v_version                = 'v3.3 13.07.2026';
 SET v_mode                   = 'VIEW';
 SET v_brand                  = '';
 SET v_filters                = 'NO';
@@ -336,12 +337,12 @@ SET v_sqlmeta = CONCAT('
    "setting" AS Meta
    ,"width=150px" AS `Brand`
    ,"width=80px"  AS `Acct id`
-   ,"width=150px" AS `Account`
+   ,"width=150px,tooltip=yes" AS `Account`
    ,"width=90px"  AS `MS id`
-   ,"width=100px" AS `Tracker ID`
-   ,"width=200px" AS `Tracker name`
-   ,"width=100px" AS `Product`
-   ,"width=150px" AS `Affiliate`
+   ,"width=100px,tooltip=yes" AS `Tracker ID`
+   ,"width=150px,tooltip=yes" AS `Tracker name`
+   ,"width=150px,tooltip=yes" AS `Product`
+   ,"width=150px,tooltip=yes" AS `Affiliate`
    ,"width=100px" AS `CPA our database`
    ,"width=100px" AS `CPA in Brand`
    ,"width=100px" AS `Difference`

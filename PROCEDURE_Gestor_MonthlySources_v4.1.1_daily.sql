@@ -66,6 +66,8 @@ call Gestor_MonthlySources('^affiliate_id=^39^506^450,filters=yes,debug=ye');
 call Gestor_MonthlySources('filters=yes,debug=ye');
 call Gestor_MonthlySources('^tag=^1^2^3,filters=ye,debug=ye');
 call Gestor_MonthlySources('^month=^2025-11^2025-12,^tag=^1,filters=ye,debug=ye');
+call Gestor_MonthlySources('mode=daily,^month=^2026-06,Brand=PlanetWin365,Affiliate_id=469,filters=yes,debug=ye');
+call Gestor_MonthlySources('mode=daily,^month=^2026-06,debug=ye,^day=^2026-06-01^2026-06-02^2026-06-03^2026-06-04^2026-06-05^2026-06-06^2026-06-07^2026-06-08^2026-06-09^2026-06-10^2026-06-11^2026-06-12^2026-06-13^2026-06-14^2026-06-15^2026-06-16^2026-06-17^2026-06-18^2026-06-19^2026-06-20^2026-06-21^2026-06-22^2026-06-23^2026-06-24^2026-06-25^2026-06-26^2026-06-27^2026-06-28^2026-06-29,^Brand=^PlanetWin365,^Affiliate_id=^469,filters=ye,debug=ye');
 
 29.09.2022 V2     Primera versión operativa
 01.10.2022 V2.2   Se agrega generación de filtros. Se agrega Key=Channel_id
@@ -123,6 +125,7 @@ call Gestor_MonthlySources('^month=^2025-11^2025-12,^tag=^1,filters=ye,debug=ye'
 07.05.2026 v4     Acumulación diaria y filtro Day multivalor
 11.05.2026 v4.1   Parametro Mode=Monthly/Daily. Monthly agrega por mes y oculta Day; Daily agrega por dia, habilita Day y muestra Date
 11.05.2026 v4.1.1 Date: muestra mes si es multivalor
+21.07.2026 v4.1.2 Fix tamaño de InputCommLine cuando se seleccionan muchos días
 
 */
 
@@ -132,13 +135,13 @@ DROP PROCEDURE IF EXISTS Gestor_MonthlySources_multiple;
 
 DELIMITER $$
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Gestor_MonthlySources`(IN
-   InputCommLine    VARCHAR(250)
+   InputCommLine    VARCHAR(550)
    )
-    COMMENT 'v4.1.1 11.05.2026 Monthly/Daily Sources PARAMETROS MULTIVALOR y Tags'
+    COMMENT 'v4.1.2 21.07.2026 Monthly/Daily Sources PARAMETROS MULTIVALOR y Tags. Fix tamaño de InputCommLine cuando se seleccionan muchos días'
 BEGIN
 -- --------------------------------------------------------------------------------------------
 -- Defaults
-SET @Version            ='v4.1.1 11.05.2026';
+SET @Version            ='v4.1.2 21.07.2026';
 SET @Month              =CONCAT('("',LEFT(CURDATE(),7),'")');
 -- SELECT @Month ;
 SET @MS_id              ='';

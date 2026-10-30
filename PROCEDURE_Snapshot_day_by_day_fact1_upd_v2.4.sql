@@ -19,7 +19,7 @@ Keys:
    06.01.2023 v2.1   Forex
    21.01.2023 v2.2   Manual
    09.06.2024 v2.3   Cap_excess_to_DbD_manual
-   11.10.2024 v2.4   Eliminados procesos FX
+   11.10.2025 v2.4   Eliminados procesos FX
                      Eliminado proceso Betmedia
 */
 
@@ -29,14 +29,14 @@ DROP PROCEDURE IF EXISTS Snapshot_day_by_day_fact1_upd;
 DELIMITER //
 
 CREATE PROCEDURE Snapshot_day_by_day_fact1_upd()
-COMMENT 'Actualiza FACT1 desde DbD - MES CORRIENTE/LAST MONTH. Considera Mes Cte hasta dia 5 del mes sigte'
+COMMENT 'v2.4 11.10.2025 Actualiza FACT1 desde DbD - MES CORRIENTE/LAST MONTH. Considera Mes Cte hasta dia 5 del mes sigte'
 DETERMINISTIC
 MODIFIES SQL DATA
 -- SQL SECURITY INVOKER
 
 BEGIN
 
-SET @Version      ='v2.4 11.10.2024';
+SET @Version      ='v2.4 11.10.2025';
 
 -- Last Month se ejecuta solamente entre los días 1 y 5 ----------- 
 IF DAY(CURDATE()) <= 5 THEN

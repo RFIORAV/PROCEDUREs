@@ -27,7 +27,7 @@ Parámetros ('[Key=Value[,...]'])
 Ejemplos:
 
 call Sync_Fact2_from_Fact1('');  -- Sync all curr month
-call Sync_Fact2_from_Fact1('MS_id=1581,debug=yes');  -- asume curr month
+call Sync_Fact2_from_Fact1('mode=view,month=LM,debug=yes');  -- asume curr month
 call Sync_Fact2_from_Fact1('month=2025-10,Affiliate_id=39,MS_id=allall,debug=YE');  -- error: falta db
 call Sync_Fact2_from_Fact1('month=2026-01,Affiliate_id=39,MS_id=allall,db=euroaffiliati_dev,debug=YE');  -- MS_id debe ser AllAll
 call Sync_Fact2_from_Fact1('month=2022-10,Affiliate_id=39,MS_id=allall,db=euroaffiliati2,debug=YES');
@@ -50,6 +50,8 @@ call Sync_Fact2_from_Fact1('mode=run,month=LM,Affiliate_id=ALL,MS_id=ALLALL,db=e
 12.02.2026 v1.6.1 Agregado Límite de proceso para datos afiliado
 28.02.2026 v1.6.2 Fix: eliminación de variables globales
 16.06.2026 v1.6.3 Producto en lugar de Product
+14.07.2026 v1.6.4 Fix: Value_02 vacío en Fact2_Date_Limit usa CURDATE()
+05.08.2026 v1.6.5 Agregado Límite de proceso para datos afiliados
 */
 
 DROP PROCEDURE IF EXISTS Sync_Fact2_from_Fact1;
@@ -58,7 +60,7 @@ DELIMITER $$
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Sync_Fact2_from_Fact1`(IN
    InputCommLine    VARCHAR(250)
    )
-   COMMENT 'Version 1.6.3 16.06.2026: Sync one/all MS for a given month and/of affiliate_id'
+   COMMENT 'Version 1.6.5 05.08.2026: Sync one/all MS for a given month and/of affiliate_id'
 
 proc_label:BEGIN
 DECLARE v_Version           VARCHAR(30);
@@ -82,6 +84,8 @@ DECLARE v_v                 VARCHAR(250);
 DECLARE v_Fact2_Date_Switch VARCHAR(10);
 DECLARE v_Fact2_Date_Limit  DATE;
 DECLARE v_exists            VARCHAR(128);
+DECLARE v_Fact2_Date_BeginToShow VARCHAR(10);
+DECLARE v_Fact2_Minimmum_Date DATE;
 
 DECLARE v_Where_Clause      LONGTEXT;
 DECLARE v_SQLdelete         LONGTEXT;
@@ -92,7 +96,7 @@ DECLARE v_SQLrun            LONGTEXT;
 
 -- --------------------------------------------------------------------------------------------
 -- Defaults
-SET v_Version         ='v1.6.3 16.06.2026';
+SET v_Version         ='v1.6.5 05.08.2026';
 SET v_CurrentDay      =CURDATE();
 SET v_CurrentMonth    =LEFT(CURDATE(),7);
 SET v_LastMonth       =LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
@@ -135,9 +139,16 @@ IF UPPER(v_Month)='CM'      THEN SET v_Month=v_CurrentMonth; END IF;
 IF UPPER(v_Month)='LM'      THEN SET v_Month=v_LastMonth;    END IF;
 IF UPPER(v_Month)='ALLALL'  THEN SET v_Month='2020-12';      END IF;
 
--- Obtiene Límite de proceso para datos afiliado
-SET v_Fact2_Date_Switch=(SELECT COALESCE(`Value_01`,'NO')      FROM `util_settings` WHERE Setting='Fact2_Date_Limit');
-SET v_Fact2_Date_Limit =(SELECT COALESCE(`Value_02`,CURDATE()) FROM `util_settings` WHERE Setting='Fact2_Date_Limit');
+-- Obtiene Límite de proceso para datos afiliados
+SET v_Fact2_Date_Switch=(SELECT COALESCE(NULLIF(TRIM(`Value_01`),''),'NO') FROM `util_settings` WHERE Setting='Fact2_Date_Limit' LIMIT 1);
+SET v_Fact2_Date_Limit =COALESCE(
+   (SELECT COALESCE(NULLIF(TRIM(`Value_02`),''),CURDATE()) FROM `util_settings` WHERE Setting='Fact2_Date_Limit' LIMIT 1),
+   CURDATE());
+SET v_Fact2_Date_BeginToShow=(SELECT COALESCE(NULLIF(TRIM(`Value_01`),''),'NO') FROM `util_settings` WHERE Setting='Fact2_Date_BeginToShow' LIMIT 1);
+SET v_Fact2_Minimmum_Date=CASE WHEN v_Fact2_Date_BeginToShow="YES" THEN
+   COALESCE((SELECT COALESCE(NULLIF(TRIM(`Value_02`),''),CURDATE()) FROM `util_settings` WHERE Setting='Fact2_Date_BeginToShow' LIMIT 1),"2021-01-01")
+   ELSE "2021-01-01" END;
+-- -----------------------------------------------------------------------------
 
 -- IF v_Debug!="NO" THEN SELECT v_InputCommLine; END IF;
 IF v_Debug!="NO" THEN SELECT v_Mode,v_Month,v_MS_id,v_DB,v_Affiliate_id,v_Fact2_Date_Switch,v_Fact2_Date_Limit,v_Debug,InputCommLine; END IF;
@@ -193,7 +204,7 @@ THEN SET v_SQLdelete=CONCAT('TRUNCATE ',v_DB,'.Snapshot_day_by_day_fact2;');
 ELSE SET v_SQLdelete=CONCAT('DELETE FROM ',v_DB,'.Snapshot_day_by_day_fact2 WHERE ',v_Where_Clause,';');
 END IF;
 
-IF v_Debug!="NO" THEN SELECT v_Mode,v_Month,v_MS_id,v_Affiliate_id,v_DB,v_Where_Clause,v_SQLdelete; END IF;
+IF v_Debug!="NO" THEN SELECT v_Mode,v_Fact2_Minimmum_Date,v_Month,v_MS_id,v_Affiliate_id,v_DB,v_Where_Clause,v_SQLdelete; END IF;
 
 SET v_SQLinsert=CONCAT('
 INSERT IGNORE INTO ',v_DB,'.Snapshot_day_by_day_fact2 (
@@ -219,7 +230,7 @@ SELECT
    ,Deal_Aff_CPA,Deal_Aff_Carry_Over,Deal_Aff_RS_Against_CPA,Deal_Aff_RS_Base,Deal_Aff_RS
    ,Deal_Aff_Valid_From,Data_Currency,NOW() as TimeGen
 FROM ',v_DB,'.Snapshot_day_by_day_fact1
-WHERE ',v_Where_Clause,' AND MS_id IS NOT NULL AND Affiliate!="_Unassigned" 
+WHERE ',v_Where_Clause,' AND Date>="',v_Fact2_Minimmum_Date,'" AND MS_id IS NOT NULL AND Affiliate!="_Unassigned" 
                         AND IF("',v_Fact2_Date_Switch,'"="YES",`Date` <= "',DATE_FORMAT(v_Fact2_Date_Limit,'%Y-%m-%d'),'",1=1)
 GROUP BY Owner,Date,Affiliate_id,ifnull(MS_id,0),Tracker_ID,Tracker_Name,Product,Deal_Aff_id  -- Deal_Aff_CPA,Deal_Aff_RS -- 29.07.2024
         ,`Username_id`                                                                        -- 01.08.2024
@@ -232,7 +243,7 @@ SELECT
     ,sum(Qualified_Players_Adjusted) AS CPA,sum(Net_Revenue) AS NR,sum(Revenue_Share_Affiliate) AS RS_Aff
     ,sum(CPA_Value_Affiliate) AS CPA_Val_Aff
 FROM ',v_DB,'.Snapshot_day_by_day_fact1 F1
-WHERE ',v_Where_Clause,' AND Affiliate!="_Unassigned" AND IF("',v_Fact2_Date_Switch,'"="YES",`Date` <= "',DATE_FORMAT(v_Fact2_Date_Limit,'%Y-%m-%d'),'",1=1)
+WHERE ',v_Where_Clause,' AND Date>="',v_Fact2_Minimmum_Date,'"  AND Affiliate!="_Unassigned" AND IF("',v_Fact2_Date_Switch,'"="YES",`Date` <= "',DATE_FORMAT(v_Fact2_Date_Limit,'%Y-%m-%d'),'",1=1)
 GROUP BY Owner,Brand,Affiliate_id,Username_id,ifnull(MS_id,0) -- ,Tracker_ID,Product
 ), fact2 AS (
 SELECT
@@ -240,7 +251,7 @@ SELECT
    ,sum(Qualified_Players) AS CPA,sum(Net_Revenue) AS NR,sum(Revenue_Share_Affiliate) AS RS_Aff
    ,sum(CPA_Value_Affiliate) AS CPA_Val_Aff
 FROM ',v_DB,'.Snapshot_day_by_day_fact2 F2
-WHERE ',v_Where_Clause,' AND Affiliate!="_Unassigned" 
+WHERE ',v_Where_Clause,' AND Date>="',v_Fact2_Minimmum_Date,'"  AND Affiliate!="_Unassigned" 
 GROUP BY Owner,Brand,Username_id,Affiliate_id,ifnull(MS_id,0) -- ,Tracker_ID,Product
 )
 SELECT

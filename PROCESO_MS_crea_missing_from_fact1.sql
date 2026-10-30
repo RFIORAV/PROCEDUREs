@@ -67,7 +67,7 @@ INSERT INTO `campaign_marketing_source` (
    , `Description`          
    , `Operator`          
 ) 
-;   
+   
 SELECT 
      CONCAT("https://wstc.lynmonkel.com/?mid=364418_",F.Tracker_ID) AS `Tracklink`
    , `Tracker_ID` 

@@ -61,11 +61,11 @@ call Report_Accounts_dev('Account=Euroaffiliati,debug=ye');
 23.06.2026 v1.6   Fila *Multi* por Operator+Account con >1 Brand; columna oculta Account_ids; filtro Account; sin *Multi* si Publisher_id+Account informados
 */
 
--- DROP PROCEDURE IF EXISTS Report_Accounts;
-DROP PROCEDURE IF EXISTS Report_Accounts_dev;
+DROP PROCEDURE IF EXISTS Report_Accounts;
+-- DROP PROCEDURE IF EXISTS Report_Accounts_dev;
 
 DELIMITER $$
-CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Accounts_dev`(IN
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Accounts`(IN
    InputCommLine    VARCHAR(250)
    )
     COMMENT 'v1.6 23.06.2026 - Report Accounts multibrand'

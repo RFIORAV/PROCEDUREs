@@ -58,6 +58,8 @@ call Edit_FinMov_ManAdj('Affiliate_id=39,debug=YE');
 11.05.2026 v.1.5.6   Utiliza LATERAL para obtener el balance por affiliate
 16.05.2026 v.1.5.7   Agregada columna "account_bills_id" y "Url_File"
 21.05.2026 v.1.5.8   Agregada columna "Legal_Entity" desde la tabla account_account (Owner)
+23.07.2026           Agregada columna "Estimated" y "Confirmed" redondeados a 2 decimales
+28.07.2026           Karen: condicionado la tabla account_account_bills por Status=1
 */
  
 DROP PROCEDURE IF EXISTS Edit_FinMov_ManAdj;
@@ -67,7 +69,7 @@ DELIMITER $$
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Edit_FinMov_ManAdj`(IN
    InputCommLine    VARCHAR(250)
    )
-    COMMENT 'v1.5.8 21.05.2026: Grid para Edit Financial Mov / Manual Adjustments'
+    COMMENT 'v1.5.8 28.07.2026: Grid para Edit Financial Mov / Manual Adjustments'
 BEGIN
 DECLARE v_Version           VARCHAR(30);
 DECLARE v_CurrentDay        DATE;
@@ -105,7 +107,7 @@ DECLARE v_SQLfilters        LONGTEXT;
 DECLARE v_Legal_Entity_nr   INT;
 -- --------------------------------------------------------------------------------------------
 -- Defaults
-SET v_Version         ='v1.5.8 21.05.2026';
+SET v_Version         ='v1.5.8 23.07.2026';
 SET v_CurrentDay      =CURDATE();
 SET v_Affiliate_id    ='ALL';
 SET v_DataLapse       ='-3';
@@ -281,7 +283,7 @@ SELECT '
    ,B.id AS account_bills_id
    ,B.Url_File AS Url_File    
 FROM account_financial_movement M
-LEFT JOIN `account_account_bills` `B` ON `B`.`Financial_Movement_id` = `M`.`id`
+LEFT JOIN `account_account_bills` `B` ON `B`.`Financial_Movement_id` = `M`.`id` and `B`.`Status`= 1
 LEFT JOIN `account_account` `A`  ON `A`.`id`  = `M`.`Affiliate_id`
 LEFT JOIN `account_account` `A1` ON `A1`.`id` = `M`.`Operator`
 LEFT JOIN `account_account` `A2` ON `A2`.`id` = ifnull(`M`.`Owner`,0)
@@ -367,9 +369,9 @@ v_SQLmeta,
    ,M.`Status` 
    ,M.`Extra`
    ,M.`Legal_Entity`
-   ,B.`Estimated`
-   ,B.`Confirmed`
-   ,B.`Confirmed21`
+   ,ROUND(IFNULL(B.`Estimated`,0.00),2) AS `Estimated`
+   ,ROUND(IFNULL(B.`Confirmed`,0.00),2) AS `Confirmed`
+   ,ROUND(IFNULL(B.`Confirmed21`,0.00),2) AS `Confirmed21`
    ,M.`Creation_Date`
    ,M.`Last_Update`
    ,M.`Operator`

@@ -32,7 +32,7 @@ Descripción:
                      Comm_type
    11.09.2025 v5.6   Agregado parámetro de entrada para especificar el mes a procesar
    01.04.2026 v5.6.1 Fix collation al comparar Month (uso de DATE)
-
+   04.08.2026 v5.6.2 Tratamiento de RS negativas
 Keys:
   p_month = [valor]. Parámetro de entrada.
                      
@@ -42,19 +42,19 @@ call monthly_comms_affiliate_v5(NULL);       -- Sin parámetro (usa CURDATE() - 
 call monthly_comms_affiliate_v5('');         -- Sin parámetro (usa CURDATE() - 2 meses)
 
 **/
-SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
--- DROP PROCEDURE IF EXISTS monthly_comms_affiliate_v5_dev;
+-- SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
+DROP PROCEDURE IF EXISTS monthly_comms_affiliate_v5_dev;
 DROP PROCEDURE IF EXISTS monthly_comms_affiliate_v5;
 
 DELIMITER $$
 
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE monthly_comms_affiliate_v5(IN p_month VARCHAR(7))
-   COMMENT 'Commission calc using C.Over and CPAminusRS with optional month parameter'
+   COMMENT 'v5.6.2 04.08.2026 - Commission calc using C.Over and CPAminusRS with optional month parameter'
    LANGUAGE SQL
 
 BEGIN
 -- Defaults
-SET @Version         ='v5.6.1 01.04.2026';
+SET @Version         ='v5.6.2 04.08.2026';
 SET @CurrentDay      =CURDATE();
 -- Modificación: Usar parámetro si está informado y es válido, sino usar CURDATE() - 2 meses
 SET @LMonth = CASE 
@@ -364,8 +364,8 @@ SELECT
    ,`Deal_Currency`
    ,round(sum(`CPA`          ),0) as `CPA`
    ,round(sum(`net_CPA_Val`  ),2) as `net_CPA_Val`
-   ,round(sum(`net_RS_Val`   ),2) as `net_RS_Val`
-   ,round(sum(`net_CPA_Val`+`net_RS_Val`),2) as `net_Total_comm`
+   ,round(case when SUM(`net_RS_Val`)>0 then SUM(`net_RS_Val`) ELSE 0 end ,2) as `net_RS_Val`
+   ,round(sum(`net_CPA_Val`)+case when SUM(`net_RS_Val`)>0 then SUM(`net_RS_Val`) ELSE 0 end ,2) as `net_Total_comm`
    -- ,round(sum(`RS_carry_NCO` ),2) as `RS_carry_NCO`
    ,0                             as `RS_carry_NCO`
 	,round(sum(`Net_Revenue`  ),2) as `Net_Revenue`
@@ -384,8 +384,8 @@ SELECT
 	-- ,`Prev_Deal`
 -- FROM DbD_Fact2_Account_monthly_CarryOver
 FROM DbD_Fact2_Account_monthly_CPA_versus_RS_acum
-GROUP BY `Owner`,`Account_id`,`Affiliate_id`,`Advertiser_id`,`Month`,`Deal_Currency`,`Product_Real`,`Channel_id`
-ORDER BY `Owner`,`Account_id`,`Affiliate_id`,`Advertiser_id`,`Month`,`Deal_Currency`,`Product_Real`,`Channel_id`
+GROUP BY `Account_id`,`Affiliate_id`,`Advertiser_id`,`Month`
+ORDER BY `Account_id`,`Affiliate_id`,`Advertiser_id`,`Month`
 ;
 -- -------------------------------------------------------------------
 -- ----------------COMISION MASTER AFF/REFERRER-----------------------

@@ -202,7 +202,7 @@ SELECT
    "setting" as Meta,"width=80px,action=2" as `Action`
    ,"width=050px"   as `id`
    -- ,"width=100px"   as `Owner`
-   ,"width=150px,route=_routePath"   as `Operator`   -- K18052026
+   ,"width=250px,route=_routePath"   as `Operator`   -- K18052026
    ,"width=080px,colorBg=[Active:green;Paused:orange;Other:red]"   as `Status`
    ,"omit=true"     as `Status id`
    ,"width=080px"   as `CPA Limit`
@@ -218,7 +218,7 @@ SELECT
    ,"width=130px"   as `Data Platform`
    ,"width=200px,tooltip=yes" as `Invoicing data`
    ,"width=100px"   as `Invoice By Accnt`
-   ,"width=300px"   as `Web page`
+   ,"width=300px,tooltip=yes"   as `Web page`
    ,"omit=true"     as `KYC`
    -- ,"width=100px"   as `Creation Date`
    ,"width=150px"   as `Last Update`

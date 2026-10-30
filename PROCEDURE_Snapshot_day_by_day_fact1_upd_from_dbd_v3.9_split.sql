@@ -37,6 +37,7 @@ Keys:
    12.03.2025 V3.8   Uso de tabla TEMP para mejorar performance en ejecución
    19.05.2025 v3.9   Inclusión de deal gestor y affiliate por Country
    16.06.2026 v3.9.2 Tracker_Name de DbD cuando es null en MS
+   20.07.2026 v3.9.3 Product_Real=Reward_plan en DbD
    
 CALL  Snapshot_day_by_day_fact1_upd_from_dbd_dev('');   
 CALL  Snapshot_day_by_day_fact1_upd_from_dbd('LM');   
@@ -48,14 +49,14 @@ DROP PROCEDURE IF EXISTS Snapshot_day_by_day_fact1_upd_from_dbd;
 DELIMITER //
 
 CREATE PROCEDURE Snapshot_day_by_day_fact1_upd_from_dbd(IN Curr_Last_Month varchar(7))
-COMMENT 'Version 3.9.2 16.06.2026: Actualiza FACT1 desde DbD - Last Month y Cte / AAAA-MM'
+COMMENT 'Version 3.9.3 20.07.2026: Actualiza FACT1 desde DbD - Last Month y Cte / AAAA-MM'
 DETERMINISTIC
 MODIFIES SQL DATA
 -- SQL SECURITY INVOKER
 
 proc_label:BEGIN
 
-SET @Version='v3.9.2 16.06.2026';
+SET @Version='v3.9.3 20.07.2026';
 SET @DateFrom=LEFT(CURDATE(),7);    -- Asume Curr Month por defecto
 
 IF UPPER(Curr_Last_Month)='LM' THEN SET @DateFrom=LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7); END IF;
@@ -117,14 +118,8 @@ SELECT
    `M`.`Code_To_Affiliate`                AS `Code_To_Affiliate`,
    IFNULL(`D`.`Product`, '')              AS `Product`,
    IFNULL(`M`.`Product`, '')              AS `Product_Real`,
+   IFNULL(`D`.`Product_Real`, '')         AS `Reward_plan`,
    -- `D`.`Qualified_Players` AS `Qualified_Players`,
-
--- @CPA :=(CASE WHEN IFNULL(`D`.`Qualified_Players`,0)=0            -- 18.11.2022
---               AND IFNULL(D.CPA_Value_Gestor,0)<>0                -- 18.11.2022
---               AND IFNULL(`CDG`.`CPA_Value`,0)>0                  -- 18.11.2022
---              THEN ROUND(D.CPA_Value_Gestor/`CDG`.`CPA_Value`,0)  -- 18.11.2022
---              ELSE IFNULL(`D`.`Qualified_Players`,0) END)         -- 18.11.2022
---                                        AS `Qualified_Players`,   -- 18.11.2022
    CASE WHEN IFNULL(`D`.`Qualified_Players`,0)=0
                  AND IFNULL(D.CPA_Value_Gestor,0)<>0
                  AND IFNULL(`CDG`.`CPA_Value`,0)>0
@@ -251,7 +246,8 @@ LEFT JOIN LATERAL (
       FROM `campaign_deal_gestor_prod_date`
       WHERE `Username_id` = `D`.`Username`
         AND `is_active` = 1  AND `Valid_From` <= `D`.`Date`
-        AND Product IN (IFNULL(D.Product,''),'')                                               -- 07.10.2024 coincide Product regla o catch all
+        AND (Product IN (IFNULL(D.Product,''),'')                                              -- 07.10.2024 coincide Product regla o catch all
+         OR  Product IN (IFNULL(D.Product_Real,''),''))                                        -- 20.07.2026 Product_Real=Reward_plan en DbD
         AND Country IN (IFNULL(D.Country,''),'')                                               -- 19.05.2025 coincide Country regla o catch all
 	) AS DbP                                                                                    -- 12.02.2025
    where RowNr=1                                                                               -- 12.02.2025
@@ -276,6 +272,7 @@ SELECT
    `Affiliate_id`,
    `Deal`,
    `Deal_Aff`,
+   `Reward_plan`,
    `Hour_Update`,
    `Date`,
    `Username`,
@@ -295,23 +292,6 @@ SELECT
    `Product_Real`,
    `CPA` AS `Qualified_Players`,
    `CPA` AS `Qualified_Players_Adjusted`,
-/*
--- @CPA :=(CASE WHEN IFNULL(`D`.`Qualified_Players`,0)=0            -- 18.11.2022
---               AND IFNULL(D.CPA_Value_Gestor,0)<>0                -- 18.11.2022
---               AND IFNULL(`CDG`.`CPA_Value`,0)>0                  -- 18.11.2022
---              THEN ROUND(D.CPA_Value_Gestor/`CDG`.`CPA_Value`,0)  -- 18.11.2022
---              ELSE IFNULL(`D`.`Qualified_Players`,0) END)         -- 18.11.2022
---                                        AS `Qualified_Players`,   -- 18.11.2022
-   CASE WHEN IFNULL(`D`.`Qualified_Players`,0)=0
-                 AND IFNULL(D.CPA_Value_Gestor,0)<>0
-                 AND IFNULL(`CDG`.`CPA_Value`,0)>0
-                THEN ROUND(D.CPA_Value_Gestor/`CDG`.`CPA_Value`,0)
-                ELSE IFNULL(`D`.`Qualified_Players`,0) END)
-                                          AS `CPA`,
--- `D`.`Qualified_Players_Adjusted`       AS `Qualified_Players_Adjusted`,
--- @CPA                                   AS `Qualified_Players_Adjusted`,
-   0                                      AS `Qualified_Players_Adjusted`,
-*/
    `First_Time_Deposit`,
    `Views`,
    `Clicks`,
@@ -330,16 +310,6 @@ SELECT
    `New_Active_Customers`,
    `First_Time_Active_Customers`,
    `Turnover`,
-/*
--- -- `D`.`Net_Revenue` AS `NR_DbD`,CU.RSasNR,`CDG`.`RS_Percentage`,    -- para Debug -- 22.11.2022
--- @NR :=(CASE WHEN CU.RSasNR=1 AND IFNULL(`CDG`.`RS_Percentage`,0)>0                 -- 22.11.2022
---             THEN ROUND(`D`.`Net_Revenue` / `CDG`.`RS_Percentage` * 100,2)          -- 22.11.2022
---        ELSE IFNULL(`D`.`Net_Revenue`, 0) END) as `Net_Revenue`,                    -- 22.11.2022
-
-    CASE WHEN CU.RSasNR=1 AND IFNULL(`CDG`.`RS_Percentage`,0)>0
-         THEN ROUND(`D`.`Net_Revenue` / `CDG`.`RS_Percentage` * 100,2)
-         ELSE IFNULL(`D`.`Net_Revenue`, 0) END) AS `NR`
-*/
    `NR` as `Net_Revenue`,
    `Shortlink`,
    `CPA_Limit`,
@@ -442,7 +412,9 @@ SET @D_Date='2023-10-17',@D_Product="sport";
       SELECT *,ROW_NUMBER() OVER(PARTITION BY Product ORDER BY Deal_Valid_From DESC) AS RowNr
       FROM campaign_mkt_source_deal WHERE MS_id = @M_id AND Affiliate_id=@M2_Affiliate_id
                                         AND is_active = 1 AND Deal_Valid_From <= @D_Date
-                                        AND Product IN (IFNULL(@D_Product, ''),'',' ')
+                                        AND (Product IN (IFNULL(@D_Product, ''),'',' ')
+                                        or Product IN (IFNULL(@D_Product_Real,''),'')
+                                        )
                                         AND Country IN (IFNULL(@D_Country,''),'')
 	) AS DbP
    -- )

@@ -1,0 +1,21 @@
+Modificar el procedure monthly_comms_affiliate_v5 (archivo
+PROCEDURE_monthly_comms_affiliate_v5.7.sql) para:
+
+1) Recibir mes a procesar (YYYY-MM); si NULL/vacío/inválido usar CURDATE()-2 meses.
+2) Calcular CPA + Revenue Share del afiliado sobre Snapshot_day_by_day_fact2.
+3) Modalidades RS:
+   - Deal_Aff_RS=0 → sin RS (gross/net RS = 0)
+   - Deal_Aff_RS_Against_CPA=1 → RS negativa se resta de gross_CPA_Val sin dejar CPA neto negativo
+   - RS acumulado negativo → net_RS_Val=0
+   - net_RS_Val nunca negativo: RS negativas se absorben en positivas del mismo KeyRSAcum
+     (prorrateo del neto acumulado ≥ 0)
+   - Acumulación según campaign_deal_affiliate.RS_Base
+     (fallback Snapshot.Deal_Aff_RS_Base; default brand):
+       account        → Affiliate_id + Account_id
+       Operator       → Affiliate_id + Publisher_id
+       brand          → Affiliate_id + Brand (default)
+       Operator/brand → Affiliate_id + Publisher_id + Brand
+4) Mantener cálculo de comisión referrer (Comm_type=REFER).
+5) Preferir CASE unificado (sin UNION de ramas CPA-vs-RS) y KeyRSAcum para acumulación.
+6) No usar Owner en GROUP BY / ORDER BY (sí MAX(Owner) en SELECT).
+7) Desde rs_acum en adelante, todo GROUP BY debe incluir Affiliate_id.

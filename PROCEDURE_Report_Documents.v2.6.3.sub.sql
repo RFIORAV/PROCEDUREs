@@ -49,6 +49,7 @@ call Report_Documents('Mode=Gestor,filters=yes,debug=non');
 28.02.2026 v2.6.1 Fix: eliminación de variables globales
 26.03.2026 v2.6.2 Agrega tabla temporal tmp_balance_by_affiliate    
 27.05.2026 v2.6.3 Añadida opción colorBg=[Pending:orange;Accepted:green;Paid:green;Blocked:red;Other:orange] a columna Action taken
+28.07.2026 v2.6.4 Karen: condicionado la tabla account_account_bills por Status=1
 */
 
 DROP PROCEDURE IF EXISTS Report_Documents;
@@ -57,7 +58,7 @@ DELIMITER $$
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Documents`(IN
    InputCommLine    VARCHAR(250)
    )
-    COMMENT 'v2.6.3 27.05.2026 - Report Documents - Gestor/Affiliate'
+    COMMENT 'v2.6.4 28.07.2026: Report Documents - Gestor/Affiliate'
 
 proc_label:BEGIN
 DECLARE v_version             VARCHAR(30);
@@ -97,7 +98,7 @@ DECLARE v_col_action_taken    VARCHAR(100);
 DECLARE v_col_reviewed_on     VARCHAR(100);
 DECLARE v_col_remarks         VARCHAR(100);
 
-SET v_version         ='v2.6.3 27.05.2026';
+SET v_version         ='v2.6.4 28.07.2026';
 SET v_current_day     =CURDATE();
 SET v_affiliate_id    ='';
 SET v_masteraff_id    ='';
@@ -239,7 +240,7 @@ FROM account_account_bills b
 LEFT JOIN account_account            a ON b.Account_id=a.id
 LEFT JOIN account_financial_movement f ON b.Financial_Movement_id=f.id
 LEFT JOIN tmp_balance_by_affiliate tba ON b.Account_id=tba.Affiliate_id
-WHERE 1=1 '
+WHERE b.Status = 1 '
    ,v_whereop_type
    ,v_whereaffiliate_id
    ,v_wheremonth
