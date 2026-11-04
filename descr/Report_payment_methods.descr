@@ -1,0 +1,43 @@
+/*
+PROCEDURE_Report_Payment_methods_v2.2.sql - Report métodos de pago normalizados
+
+Descripción, cometido y funciones:
+Cometido: Reporte de payment methods. Devuelve filas para consulta/exportación. Muestra una tabla de payment methods a la vez (invoicing, card, bank, crypto, paypal), cada una con su propia fila setting y columnas de datos. Sin Table_Type (vacío o ALL) o con Filters=Yes: solo devuelve filtros. Con Table_Type concreto (y Affiliate_id opcional): datos de ese tipo. SQL estático (sin PREPARE). Incluye columna oculta table_type (omit=yes). v2.2 22.07.2026 - Report payment methods — tablas normalizadas por tipo
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Action, Affiliate, Description, Fiscal ID, VAT ID, Fiscal name, Address, Country, Verified, Status, Last Update, User, Invoicing Company, Card company, Owner name, Card number, Expiry date, CVV, Affiliate id, Bank name, IBAN, Swift, Recipient, Wallet address, Network, Memo tag, PayPal email.
+Tablas clave: account_payment_method_invoicing, FilterSource, account_payment_method_bank, account_payment_method_card, account_payment_method_crypto, account_payment_method_paypal.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_payment_methods('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id (no ALL). Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas
+  Cada par Key=Value debe ir seguido de una COMA
+  El conjunto de pares debe ir entre '' (comillas simples)
+
+Keys:
+Affiliate_id = [ALL | id]. OPCIONAL. Default=ALL. Filtra por afiliado si se indica.
+  Table_Type   = [ALL | invoicing | card | bank | crypto | paypal]. Default=ALL.
+                 Con ALL/vacío solo filtros; valor concreto requerido para ver datos.
+  Status       = [ALL | Status_value]. OPCIONAL. Default=ALL. Solo aplica a datos.
+  Meta         = [No | Yes]. Default=Yes. Fila setting en datos.
+  Filters      = [Yes | No]. Default=No. Si Yes (o Table_Type ALL/vacío), solo filtros.
+  Debug        = [No | Yes | KeyValues]. Default=No.
+                 Yes = mensaje de depuración sin datos; KeyValues =
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_payment_methods('filters=yes');
+call Report_payment_methods('Table_Type=bank');
+call Report_payment_methods('Affiliate_id=39,Table_Type=bank,filters=yes');
+call Report_payment_methods('Affiliate_id=39,Table_Type=invoicing');
+call Report_payment_methods('Affiliate_id=39,Table_Type=card,debug=yes');
+call Report_payment_methods('Affiliate_id=39,Table_Type=paypal,Status=Active,debug=KeyValues');
+
+*/

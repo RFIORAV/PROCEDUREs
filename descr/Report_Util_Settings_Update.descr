@@ -1,0 +1,43 @@
+/*
+PROCEDURE_Report_Util_Settings_Update_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Util Settings Update. Devuelve filas para consulta/exportación. v1.0 27.04.2026 - Update de util_settings por id
+Categoría: reporte tabular / exportación para grids dinámicos.
+Tablas clave: util_settings, v_Exists.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Transaccional: START TRANSACTION / COMMIT / ROLLBACK.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Util_Settings_Update('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+id        = id de la fila a actualizar (obligatorio)
+    Value_01  = nuevo valor para Value_01 (opcional)
+    Value_02  = nuevo valor para Value_02 (opcional)
+    Value_03  = nuevo valor para Value_03 (opcional)
+    User      = usuario/operador que realiza el cambio (opcional)
+    Debug     = [NO | YES] opcional. Default NO.
+
+Resultado:
+  Devuelve una fila con:
+    Status = 0  -> OK
+    Status = 1  -> Error
+
+Historial de versiones:
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Util_Settings_Update('Debug=KeyValues');
+call Report_Util_Settings_Update('Filters=Yes');
+
+*/

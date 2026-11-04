@@ -1,0 +1,34 @@
+/*
+PROCEDURE_Analisys_customer_report_v6.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Analisys_customer_report_v6` del dominio Analisys_customer_report. Procedimiento Analisys_customer_report_v6. Jugadores con depósito único <= 50% Baseline y CPA triggered v6
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: customer_report_API_4_analysis.
+Cuándo proponer el CALL: Construir `call Analisys_customer_report_v6('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+p_SignUp = [valor]. Parámetro de entrada.
+
+Tabla fuente: customer_report_API_4_analysis
+Objetivo: Detectar jugadores con un único depósito que no supera el 50% del Baseline (CPA),
+          con CPA procesado, dentro de un rango de Signup_Date por mes.
+          Indicador de posible CPA farming: depósito mínimo único para disparar CPA.
+
+Compatibilidad: MySQL 8.0.37 / 8.4
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Analisys_customer_report_v6(NULL);              -- mes actual
+CALL Analisys_customer_report_v6('2026-02-01');
+CALL Analisys_customer_report_v6('2026-01-01');
+
+*/

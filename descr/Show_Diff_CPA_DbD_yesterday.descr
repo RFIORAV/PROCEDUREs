@@ -1,0 +1,37 @@
+/*
+PROCEDURE_Show_Diff_CPA_DbD_yesterday.sql - Check Raw Data: CPA missing from yesterday
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Show_Diff_CPA_DbD_yesterday` del dominio Show_Diff_CPA_DbD_yesterday. Procedimiento Show_Diff_CPA_DbD_yesterday. Check Raw Data: CPA missing from yesterday
+Categoría: datos day-by-day (DbD).
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): DATE, Brand, Account, Account id, Affiliate, MS id, Tracker ID, Tracker Name, Product, CPA yesterday, CPA today, CPA Missing.
+Tablas clave: tmp_Snapshot_day_by_day_diff_today, yesterday, CURRENT_TIMESTAMP, Day_by_Day, Day_by_Day_Yesterday, Snapshot_day_by_day_diff, Snapshot_day_by_day_fact1, account_notifications, tmp_Snapshot_day_by_day_diff_today_1.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Show_Diff_CPA_DbD_yesterday('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Action          =[View | SET | Debug | Notify]. Modifica datos o solo muestra. OPCIONAL. Default=VIEW.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Show_Diff_CPA_DbD_yesterday_dev('Action=VIEW');
+CALL Show_Diff_CPA_DbD_yesterday('Action=VIEW');
+CALL Show_Diff_CPA_DbD_yesterday('Action=SET'); -- ejecutado por EVENT a partir de las 23
+CALL Show_Diff_CPA_DbD_yesterday_dev('Action=debug');
+CALL Show_Diff_CPA_DbD_yesterday_dev('Action=notify');
+
+*/

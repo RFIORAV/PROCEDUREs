@@ -1,0 +1,49 @@
+/*
+PROCEDURE NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix() - NR x Month/Day x Affiliate - Currency - Matriz por Brand
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix` del dominio NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix.sql. Procedimiento NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix. NR [ViewGES/ViewAFF] x [Affiliate/ALL] [Month] x [Owner/ALL] [Currency/ALL] - Matriz por Brand
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: Snapshot_day_by_day_fact1, exchange_rate, Snapshot_day_by_day_fact2.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Columnas Brands variables. 
+   Doble columna de Totales
+   Parámetro 1=ViewGES PARA VIEWS DEL GESTOR    (usa FACT1)
+   Parámetro 1=ViewAFF PARA VIEWS DEL AFILIADO  (usa FACT2)
+   Parámetro 4=ByDay agrupa info por DIA. 4<>ByDay agrupa por MES
+   Parámetro 6=EUR/GBP/USD los resultados se expresan en esta moneda luego de su conversión
+   Parámetro 6=ALL los resultados se expresan en la moneda de origen SIN conversión
+   Parámetro 7=ROLLUP aplica la cláusula WITH ROLLUP al GROUP BY
+
+Keys:
+AreaUser = [valor]. Parámetro de entrada.
+
+Observaciones: 
+   Columnas Brands variables. 
+   Doble columna de Totales
+   Parámetro 1=ViewGES PARA VIEWS DEL GESTOR    (usa FACT1)
+   Parámetro 1=ViewAFF PARA VIEWS DEL AFILIADO  (usa FACT2)
+   Parámetro 4=ByDay agrupa info por DIA. 4<>ByDay agrupa por MES
+   Parámetro 6=EUR/GBP/USD los resultados se expresan en esta moneda luego de su conversión
+   Parámetro 6=ALL los resultados se expresan en la moneda de origen SIN conversión
+   Parámetro 7=ROLLUP aplica la cláusula WITH ROLLUP al GROUP BY
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','ALL','2022-09','ByDay','ALL','EUR','ROLLUP');
+call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-09',''     ,'ALL','ALL','');
+call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewGES','ALL','2022-06',''     ,'2'  ,'USD','ROLLUP');
+call NR_ByAFFILIATE_by_MonthOrDay_BrandMatrix('ViewAFF','39' ,'2022-08','ByDay','ALL','EUR','rollup');
+
+*/

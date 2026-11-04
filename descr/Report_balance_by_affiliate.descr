@@ -1,0 +1,45 @@
+/*
+PROCEDURE_Report_balance_by_affiliate.sql - Report balance by affiliate
+
+Descripción, cometido y funciones:
+Cometido: Reporte de balance by affiliate. Devuelve filas para consulta/exportación. Procedimiento Report_balance_by_affiliate. Report balance by affiliate
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Status Affiliate.
+Tablas clave: account_account, monthly_comms_affiliate_v5, Latest_operation, Latest_withdraw, Main_data, Main_dataRollUp, Main_data_origen, account_financial_movement, tmp_balance_by_affiliate, util_settings.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_balance_by_affiliate('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+IncludeInactives=[Yes | No]. Muestra Afiliados Status<>1. OPCIONAL. Default=No.
+ShowInactives   =[Yes | No]. Muestra Sólo Afiliados Status<>1. OPCIONAL. Default=No.
+ShowActive      =[Yes | No]. Muestra Sólo Afiliados Status=1. OPCIONAL. Default=No.
+Omit0           =[Yes | No]. Omite Afiliados con Saldo=0. OPCIONAL. Default=yes.
+Tmptable        =[Yes | No]. Guarda resultados en tabla temporal. OPCIONAL. Default=no.
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+InputCommLine = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL  Report_balance_by_affiliate_dev('debug=ye');  -- asum defaults: LMonth
+CALL  Report_balance_by_affiliate('filters=yes,debug=non');
+CALL  Report_balance_by_affiliate('filters=ye,omit0=no,debug=non');
+CALL  Report_balance_by_affiliate('filters=yes,debug=YE');
+CALL  Report_balance_by_affiliate('tmptable=yes,debug=ye');
+
+*/

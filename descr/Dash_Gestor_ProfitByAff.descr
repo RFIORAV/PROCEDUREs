@@ -1,0 +1,39 @@
+/*
+PROCEDURE_Dash_Gestor_ProfitByAff.sql - Dashboard Gestor Profit/CPA/NR/FTD by Affiliate
+
+Descripción, cometido y funciones:
+Cometido: Dashboard: Gestor ProfitByAff. Agrega métricas para visualización en panel. Procedimiento Dash_Gestor_ProfitByAff. v1.4.1 22.05.2026: Dashboard Gestor. PERFORMANCE - Profit/CPA/NR/FTD by Affiliate
+Categoría: dashboard con KPIs y agregaciones para paneles.
+Tablas clave: grossCommByMonth_fact1, Snapshot_day_by_day_fact1, campaign_publisher.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Dash_Gestor_ProfitByAff('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Param           =[ALL | Profit | CPA | NR | FTD]. OPCIONAL. Default=Profit
+Area            =[ALL | forex | gaming ]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | Publisher_id]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Affiliate_id    =[ALL | id del Affiliate_id]. OPCIONAL. Default=ALL
+Brand           =[ALL | NOMBRE de Brand]. OPCIONAL. Default=ALL
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query. [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Dash_Gestor_ProfitByAff('filters=yes,debug=ye'); -- Asumirá todos los defaults
+
+*/

@@ -1,0 +1,48 @@
+/*
+PROCEDURE_Report_ip_log_v1.1.sql - Report IP Tracking User IP Log
+
+Descripción, cometido y funciones:
+Cometido: Reporte de ip log. Devuelve filas para consulta/exportación. Procedimiento Report_ip_log. Report IP Tracking User IP Log
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): month, ip address, country, city, device type, risk level, risk score, Affiliate, indicator type, description, severity.
+Tablas clave: Main_Table_Data, ip_tracking_user_ip_log, account_account, ip_tracking_ip_fraud_indicator.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Report_ip_log('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Device_type    =[ALL | device_type]. OPCIONAL. Default=ALL
+Risk_level     =[ALL | risk_level]. OPCIONAL. Default=ALL
+Risk_score     =[ALL | risk_score]. OPCIONAL. Default=ALL
+Severity       =[ALL | severity]. OPCIONAL. Default=ALL
+User_id        =[ALL | id del account_account]. OPCIONAL. Default=ALL
+Month          =[ALL | YYYY-MM]. OPCIONAL. Default=ALL. Formato: 2024-01
+Month_Day      =[ALL | YYYY-MM-DD]. OPCIONAL. Default=ALL. Formato: 2024-01-15
+Filters        =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta           =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug          =[No | Yes | KeyValues]. OPCIONAL. Default=No
+               [No] NO EJECUTA QUERY y devuelve el código del Query.
+               [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_ip_log('');
+call Report_ip_log('debug=ye');
+call Report_ip_log('debug=ye,filters=yes');
+call Report_ip_log('device_type=mobile,risk_level=high');
+call Report_ip_log('user_id=123,month=2024-01');
+call Report_ip_log('month_day=2024-01-15,risk_score=50');
+
+*/

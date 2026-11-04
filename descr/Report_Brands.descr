@@ -1,0 +1,42 @@
+/*
+PROCEDURE_Report_Brands.sql - AFFILIATE Report Brands (Advertiser)
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Brands. Devuelve filas para consulta/exportación. Procedimiento Report_Brands. DEBERIA LLAMARSE PROCEDURE_Aff_Report_Brands v1.5.3 27.05.2026 - Report Brands
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): id, Operator, Brand Name, Brand Status, Derived Status, CPA Limit, Last_Update, User.
+Tablas clave: Main_Table_Data, account_account, campaign_advertiser, campaign_publisher.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Report_Brands('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Advertiser_name =[ALL | Name del Advertiser]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Status_id       =[ALL | 1 | 0 | N]. OPCIONAL. Default=ALL. 1=Active 0=Inactive 4=Paused 6=Paused NM N=Other inactiv
+Stat_aggreg     =[ALL | 1 | 0 | N]. OPCIONAL. Default=ALL. 1=Active 0=Inactive 4=Paused 6=Paused NM N=Other inactiv
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [Yes]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Brands('debug=yes'); -- Devuelve todas las MS
+call Report_Brands('debug=ye,filters=yes');
+call Report_Brands('debug=ye,filters=no,status=active');
+
+*/

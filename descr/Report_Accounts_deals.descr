@@ -1,0 +1,37 @@
+/*
+PROCEDURE_Report_Accounts_deals.sql - Report Accounts (campaign_username)
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Accounts deals. Devuelve filas para consulta/exportación. Procedimiento Report_Accounts_deals. Report Accounts Deals
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Action, Rule, Status, Rule Status, Product, Deal id, Deal, Country, Valid From, Last Update, Operator.
+Tablas clave: Main_Table_Data, campaign_deal_gestor_prod_date, campaign_deal_gestor.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Accounts_deals('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Account_id      =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Accounts_deals('Account_id=2,debug=no');
+
+*/

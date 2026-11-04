@@ -1,0 +1,60 @@
+/*
+PROCEDURE_Update_auto_from_dbd_manual_v1.1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Update_auto_from_dbd_manual` del dominio Update_auto_from_dbd_manual. Procedimiento Update_auto_from_dbd_manual. Funcionalidades principales: v1.1 20.06.2026 - Procedimiento Update_auto_from_dbd_manual.
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: Snapshot_day_by_day_manual, tmp_manual_months, pendiente, v_date_formatted, v_month_count.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Update_auto_from_dbd_manual('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Debug = [valor]. Parámetro de entrada.
+
+- Procesamiento automático de registros manuales: Ejecuta automáticamente una secuencia de procedimientos cuando se detectan registros no procesados en la tabla Snapshot_day_by_day_manual
+- Actualización de facturas: Procesa datos manuales y actualiza las tablas de hechos correspondientes
+- Sincronización de datos: Mantiene la consistencia entre las diferentes tablas de hechos del sistema
+- Actualización de comisiones: Recalcula las comisiones mensuales tanto para gestores como para afiliados
+- Control de procesamiento: Marca los registros como procesados para evitar ejecuciones duplicadas
+
+Características técnicas:
+
+- Carga de meses distintos pendientes en tabla temporal (sin cursor sobre Snapshot_day_by_day_manual)
+- Bucle por mes distinto (YYYY-MM) para Snapshot y Sync_Fact2_from_Fact1
+- Recálculo global de comisiones ges/aff al final del ciclo
+- Validación de estado de procesamiento antes de ejecutar procedimientos
+- Trigger automático para resetear el estado de procesamiento cuando se modifican datos
+
+Secuencia de ejecución:
+1. Por cada mes distinto pendiente (YYYY-MM):
+   a. Snapshot_day_by_day_fact1_upd_from_dbd_manual
+   b. Sync_Fact2_from_Fact1 (mode=run,month=YYYY-MM)
+2. total_monthy_comm_ges_upd('')
+3. total_monthy_comm_aff_upd('')
+
+Test:
+- Verificar que los registros con is_proccessed=0 se procesen correctamente
+- Confirmar que solo se invoca una vez por mes distinto
+- Validar que is_proccessed se actualice a 1 después del procesamiento
+- Probar que el trigger resetee is_proccessed a 0 cuando se modifiquen datos
+
+1. Ejecutar manualmente:
+   CALL Update_auto_from_dbd_manual('NO');  -- Sin información de debug
+   CALL Update_auto_from_dbd_manual('YES'); -- Con información de debug
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Update_auto_from_dbd_manual('Debug=KeyValues');
+call Update_auto_from_dbd_manual('Filters=Yes');
+
+*/

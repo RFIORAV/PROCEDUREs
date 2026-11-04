@@ -1,0 +1,39 @@
+/*
+PROCEDURE_Report_bonus_gestor_v1.sql - Reporte: reglas bonus gestor (campaign_deal_gestor_bonus)
+
+Descripción, cometido y funciones:
+Cometido: Reporte de bonus gestor. Devuelve filas para consulta/exportación. Procedimiento Report_bonus_gestor. v1.1 16.05.2026: Report: bonus gestor (campaign_deal_gestor_bonus)
+Categoría: reporte tabular / exportación para grids dinámicos.
+Tablas clave: campaign_deal_gestor_bonus, campaign_publisher, campaign_username, VARCHAR.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_bonus_gestor('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Month_Valid_From = [ALL | CM | LM | AAAA-MM | AAAA-MM^...]  OPCIONAL. Default ALL
+  Publisher_id     = [ALL | id | id^id^...]                   OPCIONAL. Default ALL
+  Username_id      = [ALL | id | id^id^...]                   OPCIONAL. Default ALL
+  Filters          = [Yes | No]                               OPCIONAL. Default No. Yes = devuelve filas de filtros (Korder, Key, Value, CallKey, CallValue, Rows)
+  Meta             = [No | Yes]                               OPCIONAL. Default Yes. Fila Meta=setting con anchos/grid; filas de datos Meta=data.
+  Debug            = [No | Yes]                               OPCIONAL. Default No. Distinto de No = variables de filtro; no ejecuta listado ni Filters.
+  InputCommLine = [valor]. Parámetro de entrada.
+
+Historial de versiones:
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_bonus_gestor('Debug=KeyValues');
+call Report_bonus_gestor('Filters=Yes');
+
+*/

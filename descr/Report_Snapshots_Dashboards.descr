@@ -1,0 +1,45 @@
+/*
+PROCEDURE_Report_Dashboards_v1.sql - Report Snapshots Dashboards
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Snapshots Dashboards. Devuelve filas para consulta/exportación. Procedimiento Report_Snapshots_Dashboards. Report Snapshots Dashboards
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Date, Month, Time dashbrd, Owner, CPA, diff CPA, diff CPA val, RS VAL, diff RS, GROSS MARGIN, diff GM, MARGIN Trend.
+Tablas clave: Main_Table_Data, MonthFilter, campaign_log_dashboard_temp, tu_tabla, Main_Table, campaign_log_dashboard, diff_data.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Report_Snapshots_Dashboards('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Mode            =[Lite | Full ]. Muestra todas las columnas o una selección reducida. OPCIONAL. Default=Full
+Owner           =[ALL | Owner]. OPCIONAL. Default=ALL
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month.
+Time            =[ALL | Midday | Midnight]. OPCIONAL. Default=ALL
+
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Snapshots_Dashboards('debug=ye'); -- Devuelve todas las MS
+call Report_Snapshots_Dashboards_dev('debug=ye'); -- Devuelve todas las MS
+call Report_Snapshots_Dashboards('debug=ye,month=lm');
+call Report_Snapshots_Dashboards('debug=ye,filters=yes');
+call Report_Snapshots_Dashboards('debug=ye,meta=yes,filters=no');
+
+*/

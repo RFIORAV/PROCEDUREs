@@ -1,0 +1,48 @@
+/*
+PROCEDURE_FM_edit_info_fact1_v1.sql - Grilla mensual Fact1 por Affiliate
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `FM_edit_info_fact1` del dominio FM_edit_info_fact1. Permite editar la grilla mensual Fact1 por Affiliate generando movimientos en tabla Snapshot_day_by_day_manual. También permite procesar las modificaciones realizadas en la grilla y setear en tabla util_settings la fecha de último proceso de datos para el filtro de fecha de Fact2. v1.1 27.04.2026 - Grilla editable Fact1 - genera movimientos y ajustes
+Categoría: procedimiento almacenado euroaffiliati.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Date, Affiliate, Brand, Account, MS_id, Tracker Name, Status, Mod, CPA, CPAadj, FTD, Sign ups, Clicks, NR, Deposits, CPA Val Gestor, CPA Value Aff, RS Gestor, RS Affiliate.
+Tablas clave: util_settings, BaseCount, DateFilter, MainDataDetail, MonthFilter, Snapshot_day_by_day_fact1, MainDataTotal, Snapshot_day_by_day_manual, account_account, campaign_marketing_source.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call FM_edit_info_fact1('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Solo cuando el requerimiento implica modificar datos; confirmar keys antes de ejecutar.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada
+
+Keys:
+Month         =[AAAA-MM]. OPCIONAL. Default=Current Month.
+SET_Last_Processed_Date =[AAAA-MM-DD]. OPCIONAL. Default=CURDATE().
+Affiliate_id  =[ALL | id del Affiliate]. OPCIONAL. Default=ALL
+Brand         =[ALL | Brand]. OPCIONAL. Default=ALL
+Advertiser_id =[ALL | Advertiser_id]. OPCIONAL. Default=ALL
+Username_id   =[ALL | Username_id]. OPCIONAL. Default=ALL
+MS_id         =[ALL | id de la MS]. OPCIONAL. Default=ALL
+Tracker_ID    =[ALL | Tracker_ID]. OPCIONAL. Default=ALL
+Tracker_Name  =[ALL | Tracker_Name]. OPCIONAL. Default=ALL
+Code_to_affiliate=[ALL | Code_to_affiliate]. OPCIONAL. Default=ALL
+Filters       =[Yes | No]. OPCIONAL. Default=No
+Meta          =[No | Yes]. OPCIONAL. Default=Yes
+Debug         =[No | Yes]. OPCIONAL. Default=No
+InputCommLine = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call FM_edit_info_fact1('filters=yes,debug=ye');
+call FM_edit_info_fact1('filters=yes,set_last_processed_date=2026-02-20,debug=ye');
+call FM_edit_info_fact1('month=2026-02,affiliate_id=1059,debug=ye');
+call FM_edit_info_fact1('month=2026-01,affiliate_id=39,brand=GoldBet,debug=ye');
+call FM_edit_info_fact1('month=2026-01,affiliate_id=450,debug=ye');
+
+*/

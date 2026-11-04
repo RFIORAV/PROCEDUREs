@@ -1,0 +1,32 @@
+/*
+PROCEDURE_PseudoBOT_Indirect_account.sql -  ACTUALIZAR Snapshot_day_by_day from dbOrigen.Snapshot_day_by_day_fact2
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `PseudoBOT_Indirect_account` del dominio PseudoBOT_Indirect_account. Procedimiento PseudoBOT_Indirect_account. Update Snapshot_day_by_day from dbOrigen.Snapshot_day_by_day_fact2
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: Snapshot_day_by_day, dbOrigen, campaign_advertiser, campaign_username.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call PseudoBOT_Indirect_account('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call PseudoBOT_Indirect_account('Debug=KeyValues');
+call PseudoBOT_Indirect_account('Filters=Yes');
+
+*/

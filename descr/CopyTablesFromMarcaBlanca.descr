@@ -1,0 +1,33 @@
+/*
+PROCEDURE_CopyTablesFromMarcaBlanca.sql -  Copia tablas con datos básicos desde MarcaBlanca a una db nueva
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `CopyTablesFromMarcaBlanca` del dominio CopyTablesFromMarcaBlanca.sql. Procedimiento CopyTablesFromMarcaBlanca. Procedimiento CopyTablesFromMarcaBlanca.
+Categoría: copia de tablas entre entornos.
+Tablas clave: marca_blanca, tablas_basicas_marca_blanca, tablas_nueva_db, tableName.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call CopyTablesFromMarcaBlanca('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+CONDICIONES DE EJECUCION:
+   ESTE PROCEDURE NO SE EJECUTARA SI LA TABLA DESTINO NO ESTA VACIA, PARA EVITAR ERRORES.
+   1. Crear una nueba db con la estructura (tablas,views,triggers,procedures) de euraffiliati2 SIN DATOS
+   2. Ejecutar este procedure desde la nueva db
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call CopyTablesFromMarcaBlanca('Debug=KeyValues');
+call CopyTablesFromMarcaBlanca('Filters=Yes');
+
+*/

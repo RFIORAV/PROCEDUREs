@@ -1,0 +1,43 @@
+/*
+PROCEDURE_Report_Affiliate_Tags_v1.sql - Reporte de Tags de Affiliates
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Affiliate Tags. Devuelve filas para consulta/exportación. Procedimiento Report_Affiliate_Tags. Report_Tags
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): id, Tag, Status.
+Tablas clave: Main_Table_Data, account_account_tags, account_account_tags_list.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Affiliate_Tags('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+ 
+Affiliate_id    =[ALL | id del Affiliate]. OPCIONAL. Default=ALL.
+Status          =[ALL | Active | Inactive]. OPCIONAL. Default=ALL.
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=No.
+Meta            =[No | Yes]. [No] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Affiliate_Tags_dev(''); -- Todos los valores de selección por default
+call Report_Affiliate_Tags('meta=yes'); -- Todos los valores de selección por default con metadata
+call Report_Affiliate_Tags('Affiliate_id=123,status=Active,debug=yes');
+call Report_Affiliate_Tags('Filters=yes,meta=yes,debug=no'); -- Filtros disponibles
+call Report_Affiliate_Tags('Affiliate_id=123,status=Active,meta=yes,debug=no');
+
+*/

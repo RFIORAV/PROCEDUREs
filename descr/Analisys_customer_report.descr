@@ -1,0 +1,53 @@
+/*
+PROCEDURE_Analisys_customer_report_v5.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Analisys_customer_report` del dominio Analisys_customer_report. Procedimiento Analisys_customer_report. Reporte de señales de posible fraude de afiliados sobre customer_report_API_4_analysis v5
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: customer_report_API_4_analysis, with_months, aff_primary_country, cpa_velocity, fraud_flags, has_later_activity, normalized, per_player, tmp_fraud_detail_v5.
+Cuándo proponer el CALL: Construir `call Analisys_customer_report('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputParams = [valor]. Parámetro de entrada.
+
+Tabla fuente: customer_report_API_4_analysis
+Objetivo: Detectar jugadores con comportamiento compatible con fraude de afiliados.
+
+Patrones de fraude detectados (todos requieren CPA Triggered):
+  F1: Deposit-withdrawal cycling — Payouts >= Deposits + Turnover <= Deposits
+      Ref: "bonus abuse networks" que reclaman bonos, cumplen playthrough mínimo y retiran
+  F2: Jugador fantasma — Deposits < MinDeposit + sin actividad en meses siguientes
+      Ref: fake players / incentivized users que hacen un depósito mínimo y desaparecen
+  F3: Minimal engagement — Transactions <= MinTransactions + Deposits > 0
+      Ref: CPA farming con mínima interacción real
+  F4: Multi-geo anomaly — País del jugador distinto al país principal del afiliado
+      Ref: geo-spoofing, fake KYC, redes de cuentas en múltiples jurisdicciones
+  F5: Deposit-to-threshold match — Depósito total cercano al umbral mínimo de CPA
+      Ref: depósito mínimo exacto para disparar CPA sin intención real de juego
+  F6: High CPA velocity — Afiliado disparó más de MaxCPAperMonth CPAs en el mismo mes
+      Ref: CPA farming organizado, tráfico falso o incentivado en lotes
+  F7: Depósito sin juego — Deposits > 0 pero Turnover = 0
+      Ref: deposita solo para activar CPA, sin ninguna actividad de juego real
+
+  Score: suma de F1..F7 como indicador de riesgo global
+
+Compatibilidad: MySQL 8.0.37 / 8.4
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Analisys_customer_report('');
+CALL Analisys_customer_report('MinDeposit=40');
+CALL Analisys_customer_report('Signup_Month=2025-01');
+CALL Analisys_customer_report('Signup_Month=2025-02,MinDeposit=40');
+CALL Analisys_customer_report('MinTransactions=3,MaxCPAperMonth=8');
+CALL Analisys_customer_report('Signup_Month=2025-01,MinDeposit=40,MaxDeposit=150,MinTransactions=3,MaxCPAperMonth=15');
+
+*/

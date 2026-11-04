@@ -1,0 +1,56 @@
+/*
+PROCEDURE_Gestor_MarketingSources_v1.sql - Reporte multimodo de las MS
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Gestor_MarketingSources` del dominio Gestor_MarketingSources. Procedimiento Gestor_MarketingSources. Gestor_MonthlySources
+Categoría: portal gestor / publisher.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): MS_id, Owner_id, Brand, Account, Tracker_ID, Affiliate, Shortlink_id, Description, Creation_Date, Operator.
+Tablas clave: BaseCount, account_account, account_landing_pages, campaign_advertiser, campaign_deal_affiliate, campaign_marketing_source, campaign_mkt_source_deal, campaign_username.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Gestor_MarketingSources('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Affiliate_id    =[ALL | id del Affiliate]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Account_id      =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+Product         =[ALL | Product]. OPCIONAL. Default=ALL
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [No] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Keys no utilizadas:
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month.
+GroupByMS       =[Yes | No]. Agrupa Product by MS. OPCIONAL. Default=No
+ByAccount       =[No | Yes]. Info acumulada por Account/Advertiser. OPCIONAL. Default=No
+ByDay           =[No | Yes]. Info acumulada por Dia/Mes. OPCIONAL. Default=No
+View            =[viewAFF | viewGES]. Info de Fact2 (viewAFF) o de Fact1 (viewGES). OPCIONAL. Default=viewAFF
+OrderBy         =[CPA | CPAvalue | Profit | Advertiser]. OPCIONAL. Default=CPA
+Order           =[Desc | Asc]. OPCIONAL. Default=Desc
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Gestor_MarketingSources(''); -- Todos los valores de selección por default
+call Gestor_MarketingSources('meta=yes'); -- Todos los valores de selección por default usando _fact2
+call Gestor_MarketingSources('Filters=yes,debug=no'); -- Todos los valores de selección por default
+call Gestor_MarketingSources('Product=all,meta=yes,debug=no');
+call Gestor_MarketingSources('Advertiser_id=52,Account_id=72,Affiliate_id=39,meta=yes,debug=no');
+call Gestor_MarketingSources('Advertiser_id=all,Account_id=all,Affiliate_id=39,meta=yes,debug=no');
+
+*/

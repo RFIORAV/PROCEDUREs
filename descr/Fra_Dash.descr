@@ -1,0 +1,46 @@
+/*
+PROCEDURE_Fra_Dash_v2.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Fra_Dash` del dominio Fra_Dash. Responde a dos preguntas de negocio sobre el período Month_from..mes corriente: (1) ¿Cuánto beneficio representa un Publisher_id? → Mode=Publisher. (2) ¿Cuánto beneficio aporta un Afiliado? → Mode=Affiliate, con matriz por Publisher. Detalle por par Publisher/Afiliado → Mode=Detail. Fra_Dash: beneficio por Publisher y matriz de aporte por Afiliado; período configurable
+Categoría: dashboard con KPIs y agregaciones para paneles.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Affiliate ID, Affiliate, Operator, CPA, CPA Value, RS Value, Total Commiss, CPA Aff, CPA Value Aff, RS Value Aff, Total Commiss Aff, Manual Adj, Total Comm Aff + Adj, Gross Margin, Pct CPA, Pct CPA Value, Pct RS Value, Pct Total Commiss, Pct CPA Aff, Pct CPA Value Aff, Pct RS Value Aff, Pct Total Commiss Aff, Pct Gross Margin.
+Tablas clave: params, ges, data_rows, monthly_comms_affiliate_v5, unioned, campaign_advertiser, campaign_publisher, campaign_username, comm_pa, comm_pa_adj.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Fra_Dash('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas.
+  Cada par Key=Value debe ir seguido de una COMA.
+  El conjunto de pares debe ir entre '' (comillas simples) como único parámetro string.
+
+Keys:
+Month_from = [YYYY-MM]. Inicio del período (inclusive). OPCIONAL. Default=mes corriente - 11 meses.
+  Mode = [Publisher | Affiliate | Detail]. OPCIONAL. Default=Publisher.
+         Publisher: una fila por Publisher_id; Beneficio = beneficio del client.
+         Affiliate: matriz por Affiliate_id y Publisher.
+         Detail: fila por par Publisher_id/Affiliate_id.
+  SubMode = [Amount | Percentage]. OPCIONAL. Default=Amount. Solo aplica a Mode=Affiliate.
+            Amount muestra importes/valores absolutos; Percentage muestra participación por Publisher.
+  Data_Type = [CPA | net_CPA_Val | net_RS_Val | net_Total_comm | Profit]. OPCIONAL. Default=Profit.
+             Solo aplica a Mode=Affiliate.
+  Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+  Filters = [No | Yes]. OPCIONAL. Default=No. Si Yes: resultset con Korder, Key, Value, CallKey, CallValue, Rows.
+  Meta = [No | Yes]. OPCIONAL. Default=Yes.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Fra_Dash('');  -- últimos 12 meses hasta el mes corriente
+CALL Fra_Dash('Month_from=2025-06,Mode=Publisher,Meta=Yes');
+CALL Fra_Dash('Month_from=2025-06,Mode=Affiliate,Data_Type=Profit,SubMode=Amount');
+CALL Fra_Dash('Month_from=2025-06,Mode=Affiliate,Data_Type=net_Total_comm,SubMode=Percentage');
+CALL Fra_Dash('Mode=Detail,Month_from=2025-01');
+CALL Fra_Dash('Filters=Yes');
+
+*/

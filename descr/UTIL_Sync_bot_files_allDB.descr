@@ -1,0 +1,31 @@
+/*
+PROCEDURE_UTIL_Sync_bot_files_allDB_v1.sql-  CREA todos las tablas de bots en TODAS las DB
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `UTIL_Sync_bot_files_allDB` del dominio util_Sync_bot_files_allDB. Procedimiento UTIL_Sync_bot_files_allDB. Procedimiento UTIL_Sync_bot_files_allDB.
+Categoría: sincronización ETL entre tablas o entornos.
+Tablas clave: DbName, eachDbName.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+Cuándo proponer el CALL: Construir `call UTIL_Sync_bot_files_allDB('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call UTIL_Sync_bot_files_allDB('Debug=KeyValues');
+call UTIL_Sync_bot_files_allDB('Filters=Yes');
+
+*/

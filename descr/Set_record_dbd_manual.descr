@@ -1,0 +1,53 @@
+/*
+PROCEDURE_Set_record_dbd_manual_v1.sql **	Agrega/modifica record a tabla Snapshot_day_by_day_manual
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Set_record_dbd_manual` del dominio Set_record_dbd_manual. Procedimiento Set_record_dbd_manual. ADD/EDIT record Snapshot_day_by_day_manual
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: Snapshot_day_by_day_manual, campaign_advertiser, campaign_marketing_source, campaign_username.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Set_record_dbd_manual('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Solo cuando el requerimiento implica modificar datos; confirmar keys antes de ejecutar.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+DbD_id                     =[ '' | record id Snapshot_day_by_day_manual]. ''=Add record. OPCIONAL. Default=''
+MS_id                      =[id de MS]. OBLIGATORIO
+is_active                  =[ 0 | 1]. OPCIONAL. Default=0 (Paused)
+deal_to_apply              =[ 0 | 1 | 2]. 0=Deal Ges+Aff 1=Deal Aff 2=Deal Ges. OPCIONAL. Default=0
+Date                       =[AAAA-MM-DD]. OPCIONAL. Default=Current Day.
+Product                    =OPCIONAL. Default=''
+Qualified_Players          =OPCIONAL. Default='0'
+First_Time_Deposit         =OPCIONAL. Default='0'
+Views                      =OPCIONAL. Default='0'
+Clicks                     =OPCIONAL. Default='0'
+Signups                    =OPCIONAL. Default='0'
+Deposits                   =OPCIONAL. Default='0'
+Depositing_Customers       =OPCIONAL. Default='0'
+Active_Customers           =OPCIONAL. Default='0'
+First_Time_Active_Customers=OPCIONAL. Default='0'
+Turnover                   =OPCIONAL. Default='0'
+Net_Revenue                =OPCIONAL. Default='0'
+
+Debug           =[No | Yes | Any ]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [Any] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Set_record_dbd_manual ('is_active=2,deal_to_apply=1,MS_id=5722,date=2026-01-03,Qualified_Players=-1,debug=yes');
+CALL Set_record_dbd_manual ('is_active=1,deal_to_apply=1,MS_id=568,date=2023-02-02,Product=Sport ,Country=MX,Qualified_Players=2,Net_Revenue=2221.20,debug=yes');
+
+*/

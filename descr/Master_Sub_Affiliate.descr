@@ -1,0 +1,26 @@
+/*
+PROCEDURE_Master_Sub_Affiate_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Master_Sub_Affiliate` del dominio Master_Sub_Affiliate. Procedimiento Master_Sub_Affiliate. en formato "(1,2,5,8)" para incluir en cláusulas de Query Ej: Affiliate_id IN (1,2,5,8) Affiliate_id list from a MasterAffiliate
+Categoría: gestión / reportes de afiliados.
+Tablas clave: account_account, account_account_groups.
+Cuándo proponer el CALL: Construir `call Master_Sub_Affiliate('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+MasterAff_id     =[ MasterAff_id ]. Default='' 
+Affiliate_ids    =List of Affilate ids
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Master_Sub_Affiliate(441,@Affiliate_list);
+
+*/

@@ -1,0 +1,43 @@
+/*
+PROCEDURE_Dash_info_v1.8.2.sql
+
+Descripción, cometido y funciones:
+Cometido: Dashboard: info. Agrega métricas para visualización en panel. Procedimiento Dash_info. v1.8.2 22.06.2026 - Obtiene currentValue y trendValue por metrica desde campaign_log_dashboard
+Categoría: dashboard con KPIs y agregaciones para paneles.
+Tablas clave: campaign_log_dashboard_now, cld, cld_current, v_CurrentValue, v_PrevValue.
+Modos y comportamiento:
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Dash_info('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Devuelve currentValue y trendValue para una metrica puntual del dashboard mensual.
+ No utiliza columna Meta.
+ Cada Key debe estar seguida de = y el valor deseado SIN comillas.
+ Cada par Key=Value debe ir seguido de una COMA.
+ El conjunto de pares debe ir entre '' (comillas simples) como unico parametro string.
+
+Keys:
+Month    = [YYYY-MM | CM | LM]. OPCIONAL. Default=mes actual.
+             CM = mes corriente, LM = mes anterior.
+ Metric   = [CPA | CPA_Value | RS_Val | Tot_Comm | CPA_Profit | Profit]. OPCIONAL. Default=CPA.
+ Debug    = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Dash_info_dev('Metric=CPA');
+call Dash_info_dev('Metric=CPA,debug=yes');
+call Dash_info('Metric=CPA,debug=yes');
+call Dash_info('Month=LM,Metric=CPA,debug=yes');
+call Dash_info_dev('Month=LM,Metric=CPA,debug=yes');
+call Dash_info('Month=2026-02,Metric=CPA,debug=yes');
+call Dash_info_dev('Month=2026-02,Metric=CPA,debug=yes');
+call Dash_info_dev('Month=2026-01,Metric=Profit,debug=yes');
+call Dash_info_dev('Month=CM,Metric=CPA,debug=yes');
+call Dash_info_dev('Month=LM,Metric=Tot_Comm,debug=yes');
+call Dash_info_dev('Debug=KeyValues');
+
+*/

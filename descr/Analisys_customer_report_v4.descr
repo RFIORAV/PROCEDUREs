@@ -1,0 +1,43 @@
+/*
+PROCEDURE_Analisys_customer_report_v4.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Analisys_customer_report_v4` del dominio Analisys_customer_report. Procedimiento Analisys_customer_report_v4. Reporte de señales de posible fraude de afiliados sobre customer_report_API_4_analysis v4
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: with_months, customer_report_API_4_analysis, fraud_flags, has_later_activity, normalized, per_player, tmp_fraud_detail_v4.
+Cuándo proponer el CALL: Construir `call Analisys_customer_report_v4('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputParams = [valor]. Parámetro de entrada.
+
+Tabla fuente: customer_report_API_4_analysis
+Objetivo: Detectar jugadores con comportamiento compatible con fraude de afiliados.
+
+Patrones:
+  F1: CPA Triggered + Deposits < MinDeposit + Signup_Date del mismo mes o mes anterior
+  F2: CPA Triggered + Payouts >= Deposits + Turnover <= Deposits
+  F3: CPA Triggered + Deposits < MinDeposit + sin actividad en meses siguientes
+  F4: CPA Triggered + Transactions <= MinTransactions (minimal engagement / CPA farming)
+  F5: CPA Triggered + Total_Net_Revenue < 0 (negative value player / bonus abuse)
+  F6: CPA Triggered en el mismo mes calendario que Signup (rapid CPA trigger)
+
+Compatibilidad: MySQL 8.0.37 / 8.4
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Analisys_customer_report_v4('');
+CALL Analisys_customer_report_v4('MinDeposit=40');
+CALL Analisys_customer_report_v4('Signup_Month=2025-01');
+CALL Analisys_customer_report_v4('Signup_Month=2025-02,MinDeposit=40');
+CALL Analisys_customer_report_v4('MinTransactions=3');
+CALL Analisys_customer_report_v4('Signup_Month=2025-01,MinDeposit=40,MinTransactions=3');
+
+*/

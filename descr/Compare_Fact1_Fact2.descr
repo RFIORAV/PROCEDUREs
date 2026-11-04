@@ -1,0 +1,47 @@
+/*
+PROCEDURE_Compare_Fact1_Fact2.sql - Check data: Main Table Vs Main Aff Table (Fact1/Fact2)
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Compare_Fact1_Fact2` del dominio Compare_Fact1_Fact2. Procedimiento Compare_Fact1_Fact2_dev. v2.2 13.05.2026 Check/Sync data: Main Table Vs Main Aff Table (Fact1/Fact2)
+Categoría: comparación / auditoría de diferencias.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14.
+Tablas clave: tmp_diff_fact1_fact2, Snapshot_day_by_day_fact2, MonthFilter, Snapshot_day_by_day_fact1, TEXT, Affiliate, DIFF_Fact1_vs_Fact2, DbD_fact1, DbD_fact2, data.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Compare_Fact1_Fact2('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month.
+Affiliate_id    =[ALL | id del Affiliate]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Mode            =[UPDATE | VIEW]. OPCIONAL. Default=VIEW
+                  [UPDATE] Actualiza los datos de la tabla Snapshot_day_by_day_fact2
+                  [VIEW] Devuelve el resultado de la consulta sin actualizar los datos
+CPA_Diff        =[ALL | >0 | <0]. OPCIONAL. Filtra por CPA DIFF positivo o negativo. Default=ALL
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [yes]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Compare_Fact1_Fact2('month=LM,FILTERS=yes,debug=YES');
+call Compare_Fact1_Fact2('month=LM,advertiser_id=68,mode=updat,debug=ye,meta=yes');
+call Compare_Fact1_Fact2('month=LM,debug=yes');
+call Compare_Fact1_Fact2('month=LM,Mode=UPDATE,debug=YES');
+
+*/

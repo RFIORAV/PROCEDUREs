@@ -1,0 +1,41 @@
+/*
+PROCEDURE_Report_Notification_Types_v1.sql - Reporte de Tipos de Notificación
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Notification Types. Devuelve filas para consulta/exportación. Procedimiento Report_Notification_Types. Características principales: 1. Reporte de tipos de notificación Muestra todos los tipos de notificación disponibles en el sistema Incluye información de prioridad, estado y fechas de creación/actualización Permite filtrar por prioridad y estado 2. Parámetros de filtrado Priority: Filtra por prioridad específica (all = todas) Status_id: Filtra por estado (all = todos, 1 = Active, otros = Inactive) 3. Funcionalidad de metadatos Cuando @Meta='YES': - Incluye fila de configuración con metadatos de columnas - Define ancho, tooltips y acciones para cada columna 4. Funcionalidad de filtros Cuando @Filters='YES': - Devuelve lista de filtros disponibles - Agrupa por Status y Priority - Incluye conteo de registros por cada filtro Reporte de Tipos de Notificación
+Categoría: reporte tabular / exportación para grids dinámicos.
+Tablas clave: Main_Table_Data, notification_type.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Notification_Types('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Status_id         =[all | 1 | 0]. Filtra por estado (1=Active, 0=Inactive). OPCIONAL. Default=all.
+Filters           =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta              =[No | Yes]. [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Debug             =[No | Yes]. OPCIONAL. Default=No
+                   [Yes] NO EJECUTA QUERY y devuelve el código del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Report_Notification_Types('');
+CALL Report_Notification_Types('Status_id=all');
+CALL Report_Notification_Types('Status_id=1,Debug=YES');
+CALL Report_Notification_Types('Status_id=all,Filters=yes');
+CALL Report_Notification_Types('Status_id=1,Meta=yes');
+CALL Report_Notification_Types('Status_id=0,Debug=no');
+
+*/

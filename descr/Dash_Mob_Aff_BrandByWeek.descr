@@ -1,0 +1,54 @@
+/*
+PROCEDURE_Dash_Mob_Aff_BrandByWeek_v2.6.1.sql - Dashboard Mobile Aff Performance Brand by week
+
+Descripción, cometido y funciones:
+Cometido: Dashboard: Mob Aff BrandByWeek. Agrega métricas para visualización en panel. v2.6.1 17.07.2026 - Dashboard Mobile Aff Brand by week (Classic/Classic_RS/AreaChart/AreaChartL4W/DonutChart)
+Categoría: dashboard con KPIs y agregaciones para paneles.
+Tablas clave: WeeklyData, MonthDays, Set_Acumulados, MonthlyByBrand, MonthlyRS, Set_Acum_CM_LM, WeeklyDataPM, account_account_groups, v_AffiliateGroup.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Dash_Mob_Aff_BrandByWeek('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas
+  Cada par Key=Value debe ir seguido de una COMA
+  El conjunto de pares debe ir entre '' (comillas simples) como unico parametro string
+
+Keys:
+Affiliate_id  = [id affiliate]. OBLIGATORIO. No admite ALL ni vacio.
+ Month         = [YYYY-MM | CM | LM]. OPCIONAL. Default=mes actual (o mes anterior si dia<=5).
+ Advertiser_id = [ALL | id]. OPCIONAL. Default=ALL.
+ Brand         = [ALL | nombre Brand]. OBLIGATORIO. ALL acumula todas las marcas.
+ Metric        = [CPA | FTD | Signups | CPA_PM | ALL | RS]. OPCIONAL. Default=CPA. ALL solo en AreaChart/AreaChartL4W. RS en Classic_RS (forzado), AreaChart y AreaChartL4W (RS=net_RS_Val y net_Total_comm desde monthly_comms_affiliate_v5).
+ Style         = [Classic | Classic_RS | AreaChart | AreaChartL4W | DonutChart]. OPCIONAL. Default=Classic.
+ Filters       = [Yes | No]. OPCIONAL. Default=No.
+ Meta          = [No | Yes]. OPCIONAL. Default=No. Solo aplica a Style=Classic y Classic_RS.
+ Debug         = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Salidas por Style:
+ Classic       - Todas las metricas en una fila por Brand/Week (formato tabular con Meta opcional).
+ Classic_RS    - Columnas RS (net_RS_Val) y net_Total_comm desde monthly_comms_affiliate_v5, prorrateadas por semana. Metric=RS.
+ AreaChart     - Columnas meta,label,series_name,value por periodo del mes (Days 1-7, Days 8-14, etc.). Metric=ALL devuelve todas las metricas como series. Metric=RS: series RS y Total Comm desde monthly_comms_affiliate_v5 prorrateadas por periodos de 7 dias.
+ AreaChartL4W  - Igual que AreaChart pero datos de las 4 ultimas semanas desde hoy (Month ignorado). Metric=ALL igual que AreaChart. Metric=RS igual que AreaChart.
+ DonutChart    - Columnas label,value con acumulado mensual de la metrica por Brand (Brand=ALL: una fila por Brand).
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=450,Brand=ALL');
+call Dash_Mob_Aff_BrandByWeek('Affiliate_id=450,Brand=GoldBet,Month=LM,Style=AreaChart,Metric=Signups');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=450,Brand=GoldBet,Month=LM,Style=AreaChart,Metric=Signups');
+call Dash_Mob_Aff_BrandByWeek('Affiliate_id=450,Brand=ALL,Style=AreaChart,Metric=ALL');
+call Dash_Mob_Aff_BrandByWeek('Affiliate_id=450,Brand=ALL,Style=AreaChartL4W,Metric=ALL');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=450,Brand=ALL,Style=AreaChartL4W,Metric=ALL');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=450,Brand=ALL,Month=LM,Style=DonutChart');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=450,Brand=ALL,Style=Classic,debug=KeyValues');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=450,Brand=ALL,Month=2026-06,Style=Classic_RS,Metric=RS,Meta=Yes');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=934,Brand=ALL,Style=Classic_RS,Metric=RS');
+call Dash_Mob_Aff_BrandByWeek_dev('Affiliate_id=450,Brand=ALL,Month=LM,Style=AreaChart,Metric=RS');
+
+*/

@@ -1,0 +1,41 @@
+/*
+PROCEDURE_Report_Publisher.sql - Report Publisher (Publisher)
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Publisher. Devuelve filas para consulta/exportación. Procedimiento Report_Publisher. v1.4.3 27.05.2026: Report_Publisher
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): id, Operator, Status, CPA Limit, Manager, Manager Email, Manager Phone, Data Platform, Invoicing data, Invoice By Accnt, Web page, Last Update, User.
+Tablas clave: Main_Table_Data, account_account, campaign_publisher.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Publisher('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Status          =[ALL | 1 | 0]. OPCIONAL. Default=ALL. 1=Active 0=Inactive
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Publisher('debug=yes'); -- Devuelve todas las MS
+call Report_Publisher('debug=ye,filters=yes');
+call Report_Publisher('debug=ye,filters=no,status=0');
+
+*/

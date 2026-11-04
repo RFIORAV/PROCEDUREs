@@ -1,0 +1,47 @@
+/*
+PROCEDURE_Report_Documents.sql - Reports Documents
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Documents. Devuelve filas para consulta/exportación. Procedimiento Report_Documents. v2.6.4 28.07.2026: Report Documents - Gestor/Affiliate
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): action, Name, Description, Op. Type, Affiliate, Date submitted, Amount, Confirm. Balance today, Action_Status_id, Action taken, Reviewed on, Remarks.
+Tablas clave: Main_Table_Data_Filter, account_account, account_account_bills, account_account_groups, account_financial_movement, tmp_balance_by_affiliate, Main_Table_Data.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Report_Documents('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+mode             =[ GESTOR | AFFILIATE | MAF ] OBLIGATORIO.
+MasterAff_id     =[ MasterAff_id ]. SOLO PARA MAF EN MODO MAF. Default=''
+Affiliate_id     =[id de affiliate]
+Op_Type          =[ Withdraw | "NoWithdraw" ] Tipo de documento. Default='NoWithdraw'
+ActionTaken      =[ "ALL" | "Pending" | "Accepted" | "Paid" | "Blocked" | "Other" ] Status de la operación en account_financial_movement. Default=ALL
+Month            =[YYYY-MM]. Filtro por mes en formato YYYY-MM. Filtra registros de account_account_bills por Creation_Date. OPCIONAL. Default=''
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Documents('Mode=Gestor');
+call Report_Documents('Mode=Gestor,Affiliate_id=334');
+call Report_Documents('Mode=Gestor,Affiliate_id=74,Op_Type=Withdraw,Month=2025-07,debug=non');
+call Report_Documents('Mode=Gestor,Op_Type=Withdraw,Month=2026-03,debug=non');
+call Report_Documents('Mode=Gestor,Op_Type=Withdraw,debug=non');
+call Report_Documents('Mode=Gestor,filters=yes,debug=non');
+
+*/

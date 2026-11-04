@@ -1,0 +1,37 @@
+/*
+PROCEDURE_TEMPLATE_v1.1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Procedure_Template` del dominio TEMPLATE. Procedimiento Procedure_Template. Plantilla base de SP de reporte con parseo Key=Value y soporte Debug/Filters/Meta
+Categoría: plantilla para nuevos SP.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Data Month, Brand, Gross Revenue.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Procedure_Template('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Plantilla base para crear Stored Procedures de reporte compatibles con MySQL 8.0.37
+ Cada Key debe estar seguida de = y el valor deseado SIN comillas
+ Cada par Key=Value debe ir seguido de una COMA
+ El conjunto de pares debe ir entre '' (comillas simples) como unico parametro string
+
+Keys:
+Debug = [No | Yes | KeyValues]. Controla modo de ejecucion. OPCIONAL. Default=No.
+ Filters = [No | Yes]. Devuelve lista de filtros en lugar de datos. OPCIONAL. Default=No.
+ Meta = [No | Yes]. Incluye fila de metadatos de renderizado. OPCIONAL. Default=Yes.
+ Data_Month = [YYYY-MM]. Mes de datos. OPCIONAL. Default=mes actual.
+ Brand = [ValorA ^ ValorB ^ ValorC]. Filtro multivalor separado por ^. OPCIONAL.
+ InputCommLine = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Procedure_Template('Debug=Yes');
+call Procedure_Template('Data_Month=2026-04,Debug=No');
+call Procedure_Template('Brand=Sport^Casino,Meta=Yes,Filters=No');
+
+*/

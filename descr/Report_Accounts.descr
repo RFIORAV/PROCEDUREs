@@ -1,0 +1,55 @@
+/*
+PROCEDURE_Report_Accounts.sql - Report Accounts (campaign_username)
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Accounts. Devuelve filas para consulta/exportación. Procedimiento Report_Accounts. v1.6.2 27.08.2026 - Report Accounts multibrand
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): id, Operator, Brand, Account, Status, Derived Status, Bot status, CPA Limit, Data Currency, Area, Owner, Last Update, User.
+Tablas clave: Main_Table_Data, Multi_Op_Account, campaign_username, account_account, campaign_advertiser, campaign_publisher.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Accounts('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Area            =[ALL | gaming / forex]. OPCIONAL. Default=ALL
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Brand           =[ALL | Nombre del Advertiser]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Account         =[ALL | Username]. OPCIONAL. Default=ALL. Si tiene más de una palabra, separar con "!" en lugar de espacio
+Product         =[ALL | Product]. OPCIONAL. Default=ALL. Si tiene más de una palabra, separar con "!" en lugar de espacio
+Status_id       =[ALL | 1 | 0 | N]. OPCIONAL. Default=ALL. 1=Active 0=Inactive 4=Paused 6=Paused NM N=Other inactiv
+Stat_aggreg     =[ALL | 1 | 0 | N]. OPCIONAL. Default=ALL. 1=Active 0=Inactive 4=Paused 6=Paused NM N=Other inactiv
+Stat_final      =[ALL | Stat* ]. OPCIONAL. Default=ALL. Stat* es el que se indica con *
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Accounts_dev('debug=ye'); -- Devuelve todas las MS
+call Report_Accounts_dev('debug=ye,filters=yes');
+call Report_Accounts_dev('filters=yes,Publisher_id=1');
+call Report_Accounts_dev('debug=ye,filters=no,status=0');
+call Report_Accounts_dev('Mode=Operator,debug=ye');
+call Report_Accounts_dev('Mode=Operator,Meta=yes');
+call Report_Accounts_dev('Mode=brand,filters=ye,debug=ye');
+call Report_Accounts_dev('Publisher_id=68,Account=Euroaffiliati');
+call Report_Accounts_dev('Account=Euroaffiliati,debug=ye');
+
+*/

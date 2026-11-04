@@ -1,0 +1,36 @@
+/*
+PROCEDURE_Analisys_customer_report_genfile_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Analisys_customer_report_genfile` del dominio Analisys_customer_report_genfile. Procedimiento PROCEDURE_Analisys_customer_report_genfile_v1. Regenera customer_report_API_4_analysis desde players_netrefer_API + campaign data v1
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: account_account, campaign_deal_affiliate, campaign_marketing_source, campaign_mkt_source_deal, customer_report_API_4_analysis, players_netrefer_API.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Analisys_customer_report_genfile('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Tabla destino: customer_report_API_4_analysis
+Objetivo: Regenerar la tabla de análisis de customer report a partir de players_netrefer_API,
+          cruzando con marketing sources, deals y affiliates.
+          Sirve de tabla fuente para Analisys_customer_report().
+
+Uso:
+  CALL Analisys_customer_report_genfile();
+
+Version history:
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Analisys_customer_report_genfile('Debug=KeyValues');
+call Analisys_customer_report_genfile('Filters=Yes');
+
+*/

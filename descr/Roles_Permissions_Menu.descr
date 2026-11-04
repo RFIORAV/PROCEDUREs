@@ -1,0 +1,37 @@
+/*
+PROCEDURE_Roles_Permissions_Menu_v1.sql - Roles_Permissions_Menu
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Roles_Permissions_Menu` del dominio Roles_Permissions_Menu. Procedimiento Roles_Permissions_Menu. Roles Permissions Menu
+Categoría: procedimiento almacenado euroaffiliati.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): ..., Menu.
+Tablas clave: Main_Table_Data, auth_group_menu, auth_menu.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Roles_Permissions_Menu('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Group_id        =[ Group_id ]. OBLIGATORIO. Default=ALL
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Roles_Permissions_Menu('Group_id=2,debug=yes');
+
+*/

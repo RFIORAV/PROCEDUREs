@@ -1,0 +1,39 @@
+/*
+PROCEDURE_Analisys_customer_report_v1.sql - Análisis de jugadores con comportamiento compatible con fraude de afiliados
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Analisys_customer_report_v1` del dominio Analisys_customer_report. Procedimiento Analisys_customer_report_v1. Reporte de jugadores con comportamiento compatible con fraude de afiliados
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: cpa_months, tmp_affiliate_summary, tmp_fraud_detail, with_months, customer_report_API_4_analysis, fraud_flags, has_later_activity, normalized, safe_numeric.
+Cuándo proponer el CALL: Construir `call Analisys_customer_report_v1('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputParams = [valor]. Parámetro de entrada.
+
+Tabla fuente: customer_report_API_4_analysis
+Objetivo: Detectar patrones que sugieren fraude por parte de afiliados (no por jugadores),
+          como tráfico falso, cuentas incentivadas para disparar CPA, o lavado de comisiones.
+
+Patrones detectados (entre otros):
+1. CPA disparado + Deposits<50 en el mismo mes + Signup_Date en el mismo mes o mes anterior
+2. CPA disparado + Deposits = Payouts (posible wash / auto-referido)
+3. CPA disparado + Deposits<50 y sin actividad en los meses siguientes (churn-and-burn)
+4. Afiliado con muchos jugadores sospechosos (umbral configurable) — resumen por afiliado
+
+Referencia: Fraude afiliados iGaming (fake traffic, CPA abuse, bot sign-ups, low LTV post-CPA).
+Compatible: MySQL 8.0.37 / 8.4
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Analisys_customer_report_v1('Debug=KeyValues');
+call Analisys_customer_report_v1('Filters=Yes');
+
+*/

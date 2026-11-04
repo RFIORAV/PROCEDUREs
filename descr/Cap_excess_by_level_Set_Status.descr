@@ -1,0 +1,34 @@
+/*
+PROCEDURE_Cap_excess_by_level_Set_Status_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Cap_excess_by_level_Set_Status` del dominio Cap_excess_by_level_Set_Status. Acumula Qualified_Players (CPA) del mes corriente desde Snapshot_day_by_day_fact1 (excluye filas con Origin='manual') y pone Status_id='6' (Paused auto NM) en cada nivel cuyo acumulado alcance o supere el 89% de su CPA_Limit. v1 12.06.2026 - Pausa automática (Status_id=6) por exceso de CPA a nivel Operator/Brand/Account/Affiliate
+Categoría: límites CPA / caps.
+Tablas clave: Snapshot_day_by_day_fact1, account_account, campaign_advertiser, campaign_publisher, campaign_username, cpa_account, cpa_affiliate, cpa_brand, cpa_operator, util_settings.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Transaccional: START TRANSACTION / COMMIT / ROLLBACK.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Cap_excess_by_level_Set_Status('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Debug = [No | Yes | KeyValues]. Modo depuración. OPCIONAL. Default=No.
+          Yes       → devuelve registros que se pausarían SIN ejecutar UPDATE.
+          KeyValues → devuelve
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Cap_excess_by_level_Set_Status('');
+call Cap_excess_by_level_Set_Status('Debug=Yes');
+call Cap_excess_by_level_Set_Status('Debug=KeyValues');
+
+*/

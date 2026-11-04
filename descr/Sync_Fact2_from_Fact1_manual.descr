@@ -1,0 +1,39 @@
+/*
+PROCEDURE_Sync_Fact2_from_Fact1() - Sync one/all MS for a given month and/of affiliate_id
+
+Descripción, cometido y funciones:
+Cometido: Proceso de sincronización/replicación de datos entre fuentes del sistema. Procedimiento Sync_Fact2_from_Fact1_manual. A PARTIR DE Snapshot_day_by_day_manual Manual Data Sync one/all MS for a given month
+Categoría: sincronización ETL entre tablas o entornos.
+Tablas clave: Snapshot_day_by_day_manual.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+Cuándo proponer el CALL: Construir `call Sync_Fact2_from_Fact1_manual('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Month           =[AAAA-MM | CM | LM]. OPCIONAL. Default=CM=Current Month (Curr Month implica MS_id=ALL)
+MS_id           =[ALL | id de la MS]. OBLIGATORIO.
+						MS_id=ALL: SOLO VALIDO PARA MES CORRIENTE
+						MS_id=ALLALL: VALIDO PARA CUALQUIER OTRO MES (OBLIGATORIO informar DB)
+Debug           =[No | Yes | Other value ]. OPCIONAL. Default=No
+                  [No]  EJECUTA QUERY y devuelve resultado.
+                  [Yes] NO EJECUTA QUERY y devuelve el código del Query.
+                  [Other value] EJECUTA QUERY y devuelve el código del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Sync_Fact2_from_Fact1('');  -- Sync all curr month
+call Sync_Fact2_from_Fact1('MS_id=1581,debug=yes');  -- asume curr month
+call Sync_Fact2_from_Fact1('month=2022-10,Affiliate_id=39,MS_id=allall,debug=YE');  -- error: falta db
+
+*/

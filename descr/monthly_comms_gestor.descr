@@ -1,0 +1,35 @@
+/*
+PROCEDURE_monthly_comms_gestor - COMISIONES del GESTOR
+
+Descripción, cometido y funciones:
+Cometido: Calcula o actualiza comisiones mensuales de afiliados o gestores. Procedimiento monthly_comms_gestor. 22.02.2022 Calculos sobre Snapshot_day_by_day_fact1 02.04.2022 Se agrega Tracker_ID para estadisticas 19.04.2022 Tratamiento de Deal por producto y fecha 27.07.2022 Multimoneda 13.09.2022 incluye Product 10.10.2022 V3.1 incluye group by deal 27.10.2022 V3.2 Nuevo cálculo de RS (acumula por Adv Account) 28.10.2022 V3.2 Utiliza Brand_Group y Brand_Group_Acum -- 28.11.2022 v3.3 Se trata nuevos campos is_indirect,Advertiser_indirect_id,Advertiser_indirect 21.01.2023 v3.4 Trata nuevo concepto Publisher (pagador) 31.01.2023 v3.5 `Area` 10.03.2023 v4 PROCEDURE_monthly_comms_gestor_v4_COver.sql - C.Over 10.03.2023 v4 PROCEDURE_monthly_comms_affiliate_v4_COver.sql - C.Over 17.05.2024 v5 Nuevo cálculo de Carry Over 22.05.2024 v5.1 Inclusión de Deal_Ges_RS_Base en cálculos (Publisher/Account/Product) 29.05.2024 v5.2 Cálculo de Bonus/fee 30.05.2024 v5.3 Product=Product_real cuando no informado 09.10.2024 Agregado Owner a bonus+fee 11.03.2025 v5.4 Recálculo restringido a mes corriente y dos mes anteriores. 08.07.2025 Recálculo restringido a mes corriente y tres mes anteriores. 12.08.2025 v5.5 Fix cálculo COver cuando CPAminusRS 10.09.2025 v5.6 Agregado parámetro de entrada para mes específico (YYYY-MM) 15.01.2026 v5.7 Optimización de cálculo - RS por producto 06.03.2026 v5.7.1 Optimización de cálculo - RS por producto 21.03.2026 v5.7.2 Fix cálculo cuando RS_base=Publisher 01.04.2026 v5.7.3 Fix collation al comparar Month (uso de DATE) 03.04.2026 v5.7.4 Bonus/fee: solape con @LMonthDate y mes actual (no exigir Month_Valid_to <= inicio mes actual) Commission calc using C.Over and CPAminusRS with optional month parameter
+Categoría: cálculo de comisiones mensuales.
+Tablas clave: DbD_Fact1_Account_monthly_CPA_minus_RS_acum, monthly_comms_gestor_v5, campaign_publisher, date_series, Snapshot_day_by_day_fact1, bonus_value, campaign_deal_gestor_bonus, euroaffiliati2, euroaffiliati_dev, DbD_Fact1_Account_monthly.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call monthly_comms_gestor('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+p_month = [valor]. Parámetro de entrada.
+       
+-- Ejecucion                     
+call monthly_comms_gestor('2026-03');   -- Procesar mes específico
+call monthly_comms_gestor_dev('2026-03');   -- Procesar mes específico
+call monthly_comms_gestor_dev('');        -- Procesar mes automático (CURDATE - 3 meses)
+ 
+*
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call monthly_comms_gestor('Debug=KeyValues');
+call monthly_comms_gestor('Filters=Yes');
+
+*/

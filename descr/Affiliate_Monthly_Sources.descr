@@ -1,0 +1,46 @@
+/*
+PROCEDURE_Affiliate_Monthly_Sources_v1.6.6_mov.sql - Detailed Reports Affiliate
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Affiliate_Monthly_Sources` del dominio Affiliate_Monthly_Sources. Procedimiento Affiliate_Monthly_Sources. v1.6.6 20.07.2026 Detailed Reports - Affiliate
+Categoría: gestión / reportes de afiliados.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Date, Logo, Brand, Source, Product, Deal, CPA, Currcy, CPA Value, Rev Share, Total Commis., FTD, Views, Clicks, Signups, Deposit, Channel.
+Tablas clave: util_settings, months_cte, DUA, account_account_groups, campaign_deal_affiliate, numbers.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Affiliate_Monthly_Sources('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id, Channel_id (no ALL).
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id     =[id de affiliate]
+Month            =[CM | LM]. OPCIONAL. Default=CM
+Channel_id       =[ALL | id de Channel. OPCIONAL.] Default=ALL
+Product          =[ALL | Product. OPCIONAL.] Default=ALL
+Brand_id         =[ALL | id de Brand. OPCIONAL.] Default=ALL
+Tracker_id       =[ALL | Code_To_Affiliate. OPCIONAL.] Default=ALL
+GroupTrackers    =[No | Yes]. OPCIONAL. Acumula por MS. Default [No]
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Affiliate_Monthly_Sources_dev('Affiliate_id=13,debug=ye');
+call Affiliate_Monthly_Sources_dev('debug=ye'); -- Todos los valores de selección por default usando _fact2
+call Affiliate_Monthly_Sources_dev('Affiliate_id=469,FILTERS=YES,meta=yes,debug=ye');
+call Affiliate_Monthly_Sources_dev('Affiliate_id=469,month=cM,FILTERS=YE,meta=yes,debug=ye');
+
+*/

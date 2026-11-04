@@ -1,0 +1,42 @@
+/*
+PROCEDURE_Report_Reversed_CPA_v1.1.sql
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Reversed CPA. Devuelve filas para consulta/exportación. Procedimiento Report_Reversed_CPA. Muestra matriz diaria de CPA reversadas por MS para el mes seleccionado. v1.1 13.05.2026 Reporte de CPA reversadas por mes en matriz diaria por MS
+Categoría: reporte tabular / exportación para grids dinámicos.
+Tablas clave: tmp_days, tmp_rev_base, MonthFilter, tmp_rev_matrix, Snapshot_day_by_day_fact1, account_account, campaign_publisher, tmp_rev_base_account, tmp_rev_base_affiliate, tmp_rev_base_brand.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Reversed_CPA('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas
+ Cada par Key=Value debe ir seguido de una COMA
+ El conjunto de pares debe ir entre '' (comillas simples) como único parámetro string
+
+Keys:
+Month     = [YYYY-MM | CM | LM]. Mes de datos. OPCIONAL. Default=LM.
+ Brand     = [ALL | Brand | Brand^Brand]. Filtro por Brand. OPCIONAL. Default=ALL.
+ Username  = [ALL | Username_id | Username | valor^valor]. Filtro por cuenta. OPCIONAL. Default=ALL.
+ Publisher = [ALL | Publisher_id | Operator | valor^valor]. Filtro por Publisher/Operator. OPCIONAL. Default=ALL.
+ Owner     = [ALL | Owner_id | Owner | valor^valor]. Filtro por Owner. OPCIONAL. Default=ALL.
+ Affiliate = [ALL | Affiliate_id | Affiliate | valor^valor]. Filtro por Affiliate. OPCIONAL. Default=ALL.
+ Filters   = [Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=No.
+ Meta      = [Yes | No]. Incluye fila de metadatos de renderizado. OPCIONAL. Default=Yes.
+ Debug     = [No | Yes | KeyValues]. Devuelve
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Reversed_CPA('');
+call Report_Reversed_CPA('Month=2026-04');
+call Report_Reversed_CPA('Month=2026-04,Brand=Betsson,Publisher=10');
+call Report_Reversed_CPA('Month=LM,Filters=Yes');
+call Report_Reversed_CPA('Debug=KeyValues');
+
+*/

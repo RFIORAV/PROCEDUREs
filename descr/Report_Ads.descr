@@ -1,0 +1,47 @@
+/*
+PROCEDURE_Report_Ads.sql - Report Ads
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Ads. Devuelve filas para consulta/exportación. Procedimiento Report_Ads. v1.1 27.05.2026 - Report Ads Afiliates
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Action, Ad Code, Status, Product, Brand, Account id, Account, Country, Title, Description, Valid From, Valid Until, Last Update, User.
+Tablas clave: Main_Table_Data, Ads_available, campaign_advertiser_ads_v2, campaign_username, CURRENT_TIMESTAMP, DATE, DATETIME, MS_with_bid, account_account, campaign_advertiser.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Ads('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Mode              =[Aff | Ges | Option]. Opcional. Asume "Aff"
+Account_id        =[id de Account_id] Obligatorio para Aff. [Para Ges: Opcional. Default ALL}
+Account           =[Account name] [Para Ges: Opcional. Default ALL}
+Product           =[Product | blank] Obligatorio para Aff. [Para Ges: Opcional. Default ALL}
+Brand             =[Brand | blank] Obligatorio para Aff. [Para Ges: Opcional. Default ALL}
+Status_id         =[0 | 1] 1=Active/Other=Inactive. Opcional. Default ALL
+Option            =[Brand | Account]
+Expiration        =[Valid | Expired] Opcional. Default ALL
+Excl_Ad_code      =[Ad_code]. Ad_code a excluir cuando se muestra Ads (normalmente es le Ad que ya tiene)
+
+Filters           =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta              =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug             =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                   [No] NO EJECUTA QUERY y devuelve el código del Query.
+                   [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Ads('Account_id=490,Product=sport,Excl_Ad_code=1234,debug=ye');
+
+*/

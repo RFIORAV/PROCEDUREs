@@ -1,0 +1,68 @@
+/*
+PROCEDURE_Dash_BrandMatrix.sql() - CPA/Signup/FTD/Click/Comms - Matriz por Brand
+
+Descripción, cometido y funciones:
+Cometido: Dashboard matricial por brand con datos agregados para visualización gráfica (BrandMatrix); incluye subtotales y metadatos de renderizado.
+Categoría: dashboard con KPIs y agregaciones para paneles.
+Tablas clave: account_account_groups, util_settings, Affiliate_list, monthly_comms_affiliate_v5, monthly_comms_gestor_v5.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Dash_BrandMatrix('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+View            =[viewAFF | viewGES | viewMAF]. Datos de Fact2/Fact1/Fact3 respectivamente. OBLIGATORIO.
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month día>=6. Last Month día<6
+MatrixBy        =[CPA | net_CPA_Val | net_RS_Val | net_Total_comm | Signup | FTD | Click | NR ].
+                  OPCIONAL. Default=CPA.
+                  CPA/Signup/FTD/Click/NR desde Snapshot (CPA=`Qualified_Players`).
+                  net_* desde monthly_comms_affiliate_v5 (ViewAFF) o monthly_comms_gestor_v5 (ViewGES).
+                  ViewMAF no admite matrices net_* (fallback Signup).
+                  En ViewAFF, net_RS_Val y net_Total_comm solo si Check_RS_affiliate(Affiliate_id)=1.
+MasterAff_id    =[ MasterAff_id ]. SOLO PARA MODO viewMAF. Default=''
+Affiliate_id    =[ALL | id del Affiliate_id | ALLdetail]. ALLdetail=All en secuencia continua
+                  OPCIONAL para View=viewGES (Default=ALL).
+                  OBLIGATORIO para View=viewAFF
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+ByDay           =[No | Yes]. Info acumulada por Dia/Mes. OPCIONAL. Default=No.
+                  Se fuerza No para matrices desde monthly_comms_*.
+LastMonths      =[No | Yes]. Info acumulada LastMonths. OPCIONAL. Default=No
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Total           =[Yes | No]. Incluye línea/s de Totales x OWNER/Currency. OPCIONAL. Default=Yes
+TotLine         =[First | Last]. Posición de la línea de Totales. OPCIONAL. Default=First
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Keys no utilizadas:
+Currency        =[EUR | Original]. Moneda a la que se convierten los resultados. Original=No hacer conversiones. El Profit NO SE CALCULARÁ cuando sean monedas distintas. OPCIONAL. Default=EUR.
+ByAccount       =[No | Yes]. Info acumulada por Account/Advertiser. OPCIONAL. Default=No
+OrderBy         =[CPA | CPAvalue | Profit | Advertiser]. OPCIONAL. Default=Affiliate
+Order           =[Desc | Asc]. OPCIONAL. Default=Desc
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Dash_BrandMatrix('View=VIEWGES');
+call Dash_BrandMatrix('View=VIEWGES,MatrixBy=CPA,meta=yes,debug=no');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=39,Month=LM,MatrixBy=net_Total_comm');
+call Dash_BrandMatrix('View=ViewGES,Affiliate_id=ALL,Month=LM,MatrixBy=net_CPA_Val');
+call Dash_BrandMatrix_dev('View=ViewAFF,Affiliate_id=13,MatrixBy=CPA,meta=yes');
+call Dash_BrandMatrix_dev('View=ViewAFF,Affiliate_id=13,MatrixBy=CPA,meta=yes');
+call Dash_BrandMatrix('View=ViewAFF,Affiliate_id=39,MatrixBy=net_RS_Val,meta=yes');
+call Dash_BrandMatrix('View=ViewAFF,Affiliate_id=39,MatrixBy=net_Total_comm,filters=yes');
+call Dash_BrandMatrix('View=ViewAFF,Affiliate_id=39,ByDay=yes,MatrixBy=ftd,meta=yes');
+call Dash_BrandMatrix('View=ViewGES,Owner=2,Month=2022-08,MatrixBy=Signup');
+
+*/

@@ -1,0 +1,52 @@
+/*
+PROCEDURE_util_copy_table_only_same_fields_v1.sql - util_copy_table_only_same_fields
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `util_copy_table_only_same_fields` del dominio util_copy_table_only_same_fields. Procedimiento util_copy_table_only_same_fields. Features: Copia una tabla a otra usando los campos que se llaman igual en ambas
+Categoría: utilidad de administración de BD.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call util_copy_table_only_same_fields('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+source_table = [valor]. Parámetro de entrada.
+ target_table = [valor]. Parámetro de entrada.
+
+✔ Dynamic Column Matching: Copies only fields present in both tables.
+✔ No Manual Column Mapping: Saves time and avoids errors in column listing.
+✔ Adaptable to Schema Changes: Automatically adjusts when tables are altered.
+
+ Benefits:
+
+    Ensures NULL values do not cause errors in non-nullable target fields.
+    Automatically detects column types and applies appropriate defaults.
+    Works dynamically without requiring manual column mapping.
+
+How It Works
+
+    Matches columns in source_table and target_table by name.
+    Checks if the destination field (target table) is non-nullable:
+        If numeric, replaces NULL values with 0.
+        If string-based, replaces NULL values with '' (empty string).
+    Dynamically constructs the INSERT ... SELECT statement, using COALESCE(field, default_value).
+    Executes the statement dynamically.
+
+How to Use:
+    
+CALL util_copy_table_only_same_fields('source_table', 'target_table');
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call util_copy_table_only_same_fields('Debug=KeyValues');
+call util_copy_table_only_same_fields('Filters=Yes');
+
+*/

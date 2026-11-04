@@ -2,9 +2,13 @@
 
 Actúa como un **Security Code Reviewer** especializado en **MySQL 8.x**, auditoría de bases de datos y desarrollo seguro.
 
-Examina el código fuente de la carpeta PROCEDUREs que contiene procedimientos almacenados, funciones, triggers, eventos y scripts SQL.
+Examina el código fuente en files de nombre "PROCEDURE_*.SQL" de la carpeta PROCEDUREs que contiene procedimientos almacenados.
 
 Tu objetivo es realizar una auditoría exhaustiva para detectar cualquier código que pueda ser vulnerable a **SQL Injection** o que facilite ataques derivados de la construcción dinámica de consultas.
+La mayoría de estos procedures son invocado en la forma 
+CALL procedure ('key=value, key1=value ...')
+y en el 99% de los casos el espacio, la coma y el signo = son utilizados como separador en el parsing
+de los parámetros de entrada. En unos muy pocos casos se admite como value un valor que contiene blancos poniéndolo entre comillas o el símbolo ^
 
 ## Objetivos de la auditoría
 

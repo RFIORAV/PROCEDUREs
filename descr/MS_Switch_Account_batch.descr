@@ -1,0 +1,46 @@
+/*
+PROCEDURE_MS_Switch_Account_batch_v2.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `MS_Switch_Account_batch` del dominio MS_Switch_Account_batch. Procedimiento MS_Switch_Account_batch. Switch Account Batch v2 - Transfer marketing sources between accounts
+Categoría: marketing sources.
+Tablas clave: campaign_marketing_source, tmp_ms_origen, Snapshot_day_by_day_fact1, account_account, para.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call MS_Switch_Account_batch('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Funcionalidades principales:
+
+Lectura de registros origen: Utiliza una tabla temporal para almacenar todos los registros donde Username_id IN (@Accounts_origen), Status_id = '1' y Product = @Product
+Verificación de Qualified_Players: Solo procesa registros cuya suma de Qualified_Players en Snapshot_day_by_day_fact1 para el período @Day_from a @Day_to sea >= @CPA_Min
+Actualización condicional: Para cada registro de la tabla temporal, intenta actualizar un registro que cumpla Username_id = @Account_destino, Affiliate_id = 84, Product = @Product, Stat_aggreg = 1, Channel_id = 531
+Transferencia de campos: Actualiza todos los campos especificados desde el registro origen al destino
+
+Características técnicas:
+
+Usa una tabla temporal para almacenar los registros origen
+Itera sobre la tabla temporal usando un bucle WHILE
+Utiliza LIMIT 1 en el UPDATE para asegurar que solo se actualice un registro por iteración
+Si no existe un registro destino que cumpla los criterios, automáticamente pasa al siguiente registro origen
+Recibe
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL MS_Switch_Account_batch('Day_from=2025-11-01,Day_to=2025-11-30,CPA_Min=5,Accounts_origen=111,Account_destino=262,Product=casino,Debug=NO');
+CALL MS_Switch_Account_batch('Day_from=2025-11-01,Day_to=2025-11-30,CPA_Min=5,Accounts_origen=86,Account_destino=261,Product=casino,Debug=NO');
+CALL MS_Switch_Account_batch('Day_from=2025-11-01,Day_to=2025-11-30,CPA_Min=5,^Accounts_origen=36^236,Account_destino=266,Product=casino,Debug=NO');
+CALL MS_Switch_Account_batch('Day_from=2025-12-01,Day_to=2025-12-31,CPA_Min=0,Accounts_origen=266,Account_destino=265,Product=casino,Debug=yes');
+
+*/

@@ -1,3 +1,84 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+generate_sp_docs.py
+===================
+
+Descripción del proceso:
+------------------------
+Script automatizado para la generación de documentación técnica interactiva en formato
+HTML (SP_Documentation.html) a partir de los archivos de código fuente SQL del proyecto
+Euroaffiliati (Stored Procedures, Events, Functions y Triggers).
+
+El script inspecciona el esquema de base de datos MySQL para validar tablas físicas existentes,
+descubre y procesa los archivos SQL del repositorio, extrae los bloques documentales
+estandarizados y las dependencias de tablas, y compila un dashboard web interactivo con
+búsqueda en tiempo real, filtros por tipo de objeto, índice inverso de tablas y visor
+modal del código fuente.
+
+Principales partes del proceso:
+-------------------------------
+1. Configuración y Conexión a Base de Datos (DB_CONFIG / get_database_tables):
+   - Conecta a MySQL (localhost:3304 / euroaffiliati2) mediante `mysql.connector`.
+   - Consulta `information_schema.tables` para obtener el catálogo de tablas físicas
+     (`BASE TABLE`). Este catálogo sirve de diccionario de validación para cotejar
+     y confirmar las tablas referenciadas en el código SQL. Si la base de datos no está
+     accesible o falla la conexión, el proceso continúa sin interrumpirse.
+
+2. Descubrimiento y Recopilación de Archivos SQL (source_patterns / main):
+   - Escanea el directorio base (`PROCEDUREs/`) buscando patrones de:
+     * Stored Procedures: `PROCEDURE_*.sql`
+     * Scheduled Events: `EVENT_*.sql`
+     * Stored Functions: `FUNCTION_*.sql`
+   - Escanea el directorio de triggers (`../TRIGGERs/TRIGGER_MANUAL`) buscando:
+     * Triggers: `TRIGGER_*.sql` y `TRIGGER_*.SQL`
+   - Elimina duplicados y consolida la lista ordenada de archivos a procesar.
+
+3. Parseo y Extracción de Metadatos Documentales (parse_sp_file):
+   - Detección del tipo de objeto (`SP`, `EVENT`, `FUNCTION`, `TRIGGER`) y extracción
+     del nombre canónico mediante expresiones regulares sobre sentencias
+     `CREATE PROCEDURE/FUNCTION/EVENT/TRIGGER`.
+   - Extracción y separación del bloque de comentario inicial `/* ... */` en secciones:
+     * Descripción
+     * `Keys` (parámetros clave y sus valores por defecto)
+     * `Parámetros`
+     * `Ejemplos` de llamada/invocación
+     * `Historial` (líneas que inician con fecha `dd.mm.yyyy`)
+   - Filtrado de secciones de uso interno (`Observaciones:`) y preservación de sangrías.
+
+4. Detección de Tablas e Indexación Inversa (parse_sp_file / build_table_index):
+   - Limpia comentarios de una línea y de bloque en el código SQL para evitar falsos positivos.
+   - Detecta tablas en cláusulas `FROM`, `JOIN`, `UPDATE` e `INTO`, normalizando y
+     validando contra el catálogo de tablas físicas reales (omitiendo `DUAL`, `LATERAL`).
+   - Construye un índice inverso (tabla -> lista de objetos SQL asociados) para
+     permitir análisis de impacto, referencias cruzadas y auditoría de dependencias.
+
+5. Generación de Interfaz Web Interactiva (generate_html):
+   - Ensambla un documento HTML autocontenido (`SP_Documentation.html`) con estilo
+     oscuro ('dark theme'), tipografía moderna y diseño responsive.
+   - Incluye:
+     * Barra lateral con buscador en tiempo real por nombre de objeto y texto.
+     * Filtros rápidos por tipo de objeto (`Todos`, `SP`, `Events`, `Functions`, `Triggers`).
+     * Sección de índice de tablas con conteo de objetos y filtrado instantáneo.
+     * Tarjetas de detalle por objeto con parámetros, keys, historial y tablas vinculadas.
+     * Visor modal de código fuente SQL completo (codificado en Base64), con botón de copia
+       al portapapeles y apertura en nueva pestaña mediante Blob URL.
+     * Sincronización dinámica de scroll con la barra de navegación lateral.
+
+6. Orquestación y Salida (main):
+   - Coordina la ejecución secuencial, reporta estadísticas por consola (tablas
+     detectadas, archivos leídos y procesados) y exporta el archivo final
+     `SP_Documentation.html` en el directorio de trabajo.
+
+Historial de versiones:
+-----------------------
+v1.0 - 14.10.2026: Versión inicial documentada. Soporte para SPs, Events, Functions y
+                   Triggers, extracción de tablas desde MySQL, índice relacional inverso
+                   y visor modal de código fuente.
+"""
+
+__version__ = "1.0"
+
 import os
 import glob
 import re
@@ -1081,7 +1162,7 @@ def generate_html(sp_data_list):
     return html
 
 def main():
-    print("Iniciando generación de documentación...")
+    print(f"Iniciando generación de documentación (v{__version__})...")
     db_tables = get_database_tables()
     if db_tables:
         print(

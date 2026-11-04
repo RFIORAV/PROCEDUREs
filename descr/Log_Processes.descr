@@ -1,0 +1,34 @@
+/*
+PROCEDURE_Log_Processes_v1.sql - log de procesos
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Log_Processes` del dominio Log_Processes. Procedimiento Log_Processes. Add records to table `Log_Processes`
+Categoría: registro y trazabilidad de procesos.
+Tablas clave: log_processes.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Log_Processes('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Comments        =[ any string ]. OPCIONAL. Default="" - NO UTILIZAR "=" DENTRO DE Comments
+proc_origin     =[ any string ]. OPCIONAL. Default="" - NO UTILIZAR "=" DENTRO DE proc_origin
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Log_Processes('proc_origin=MS_Status_6_Reset,Comments=Reset de Status Paused NM,debug=YES');
+
+*/

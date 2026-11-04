@@ -1,0 +1,50 @@
+/*
+PROCEDURE_Sync_MS_DbD_DbD_lm.sql - Check Last Month Raw data: Stored data Vs New downloaded data (DbD vs DbD_lm)
+
+Descripción, cometido y funciones:
+Cometido: Proceso de sincronización/replicación de datos entre fuentes del sistema. Procedimiento Sync_MS_DbD_DbD_lm_dev. v3.3 13.07.2026 Check/Sync LM Raw data: Stored data Vs New downloaded data (DbD vs DbD_lm)
+Categoría: sincronización ETL entre tablas o entornos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Brand, Acct id, Account, MS id, Tracker ID, Tracker name, Product, Affiliate, CPA our database, CPA in Brand, Difference, NR our database, NR in Brand.
+Tablas clave: campaign_username, Snapshot_day_by_day, LM_minus_Dbd, campaign_advertiser, Snapshot_day_by_day_lm, DbD_agg, LM_agg, account_account, campaign_marketing_source, campaign_mkt_source_deal.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Transaccional: START TRANSACTION / COMMIT / ROLLBACK.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Sync_MS_DbD_DbD_lm('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+p_InputCommLine = [valor]. Parámetro de entrada.
+
+Mode     = [ VIEW | RUN | FACT1 | DEBUG ]. Default=VIEW.
+             VIEW: Muestra diferencias sin modificar datos
+             RUN: Reemplaza contenido de DbD por DbD_LM para el Last Month (completo o por Brand)
+             FACT1: Ejecuta Snapshot_day_by_day_fact1_upd_from_dbd('LM') para recalcular Fact1
+             DEBUG: Igual que VIEW pero muestra SQL generados y variables internas
+Brand    = [ Advertiser_Name ]. Filtra por marca. OPCIONAL. Default='' (todas)
+Filters  = [ YES | NO ]. Devuelve lista de filtros disponibles. OPCIONAL. Default=NO
+Meta     = [ YES | NO ]. Fila de metadatos/settings para grid. OPCIONAL. Default=YES
+Debug    = [ YES | NO ]. Muestra SQL y variables. OPCIONAL. Default=NO
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Sync_MS_DbD_DbD_lm('Mode=View');
+call Sync_MS_DbD_DbD_lm_dev('Mode=View');
+call Sync_MS_DbD_DbD_lm_dev('Mode=View,Brand=Betsson');
+call Sync_MS_DbD_DbD_lm_dev('Mode=Debug');
+call Sync_MS_DbD_DbD_lm_dev('Mode=Run');
+call Sync_MS_DbD_DbD_lm_dev('Mode=Run,Brand=Betssona,debug=yes');
+call Sync_MS_DbD_DbD_lm_dev('Mode=Run,Brand=Betssona,Filters=Yes,debug=ye');
+call Sync_MS_DbD_DbD_lm_dev('Filters=Yes,debug=yes');
+
+*/

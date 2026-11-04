@@ -1,0 +1,44 @@
+/*
+PROCEDURE_Report_MarketingSources.sql - Reporte multimodo de MS de segun filtros
+
+Descripción, cometido y funciones:
+Cometido: Reporte de MarketingSources1. Devuelve filas para consulta/exportación. Procedimiento Report_MarketingSources1. v2.4g 24.07.2026 - Report Marketing Sources
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Action, MS_id, Operator, Brand, Account, Tracker ID, Tracker name, Affiliate, Shortlink, Area, Owner id, Owner.
+Tablas clave: campaign_marketing_source, campaign_username, StaticFilters, account_account, account_account_groups, campaign_advertiser, campaign_marketing_source_updated, campaign_mkt_source_deal, Snapshot_day_by_day_fact2, account_landing_pages.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_MarketingSources1('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Mode            =[Affiliate | Gestor | MAF]. OPCIONAL. Default=Affiliate
+MasterAff_id    =[ MasterAff_id ]. SOLO PARA MAF EN Mode=MAF. Default=''
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL. tiene prioridad sobre el resto de
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_MarketingSources1('Mode=Gestor,filters=yes,debug=no'); -- Devuelve todas las MS
+call Report_MarketingSources1('meta=yes,Mode=Gestor,Brand=GiocoDigitale,filters=ye,debug=no');
+call Report_MarketingSources1('debug=yes,MS_ID=859,filters=no');
+call Report_MarketingSources1('debug=no,search=859,filters=no');
+call Report_MarketingSources1('debug=no,search=cwu,filters=yes');
+call Report_MarketingSources1('debug=no,status=all,filters=no');
+call Report_MarketingSources1('debug=no,status=all,filters=no');
+call Report_MarketingSources1('Affiliate_id="39",status=active,meta=yes,debug=no');
+call Report_MarketingSources1('Affiliate_id=39,debug=YE');
+
+*/

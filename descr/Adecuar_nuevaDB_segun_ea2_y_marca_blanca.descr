@@ -1,0 +1,36 @@
+/*
+PROCEDURE_Adecuar_nuevaDB_segun_ea2_y_marca_blanca_v1.sql - Transferir contenido de tablas de euroaffiliati2 a tyltyco
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Adecuar_nuevaDB_segun_ea2_y_marca_blanca` del dominio Adecuar_nuevaDB_segun_ea2_y_marca_blanca. Transfiere el contenido de las tablas a la base de datos tyltyco y marca_blanca según los siguientes criterios: - Desde euroaffiliati2: tablas que existen en tyltyco, NO terminan en "_history" y NO están vacías en marca_blanca - Desde marca_blanca: tablas que existen en tyltyco y NO están vacías en marca_blanca - Ignorar las tablas cuyo nombre termina en "_history" - Ignorar las tablas que existen en db marca_blanca y están vacías (0 registros) Procedimiento Adecuar_nuevaDB_segun_ea2_y_marca_blanca.
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: tablas_euroaffiliati2, tablas_marca_blanca_con_datos, tablas_marca_blanca_vacias, tablas_tyltyco, IGNORE, tableName, tyltyco.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Adecuar_nuevaDB_segun_ea2_y_marca_blanca('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+CONDICIONES DE EJECUCIÓN:
+   1. Las bases de datos euroaffiliati2, tyltyco y marca_blanca deben existir
+   2. Las tablas destino en tyltyco y marca_blanca deben tener la misma estructura que las de euroaffiliati2
+   3. Se recomienda hacer backup antes de ejecutar
+
+FECHA: $(date)
+VERSIÓN: 1.0
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Adecuar_nuevaDB_segun_ea2_y_marca_blanca('Debug=KeyValues');
+call Adecuar_nuevaDB_segun_ea2_y_marca_blanca('Filters=Yes');
+
+*/

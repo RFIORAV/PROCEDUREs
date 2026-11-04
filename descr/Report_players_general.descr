@@ -1,0 +1,55 @@
+/*
+PROCEDURE_Report_players_general.sql
+
+Descripción, cometido y funciones:
+Cometido: Reporte de players general. Devuelve filas para consulta/exportación. Procedimiento Report_players_general. v3.5.1 28.07.2026: Report Affiliate Interactions
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Date data, Brand, Account, Cust ID, Country, Signup Date, Reward Plan, MS Name, Tracking id, MS_id, Affiliate id, Affiliate, Cust Type, Cust Level, CPA Date, Cust Sgnup Source, Gross Revenue, Deposits, Turnover, Payouts, Contribt, Transacts, Points, Adj (Chargebacks), Total NR, Total NR MTD.
+Tablas clave: players_general_API_idx, account_account, campaign_marketing_source, campaign_username, player_flutter_affilyn, players_mexos_API, players_netrefer_API, players_referon_API, Main_Table_Data, SUBSTRING.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_players_general('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles "), salvo Advertiser con espacios: usar comillas dobles en el valor (Advertiser="Nombre con espacios")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id    =[ALL | id de Affiliate]. OPCIONAL. Default=ALL.
+Data_Month      =[ALL | fecha en formato YYYY-MM]. OPCIONAL. Default=ALL.
+Advertiser      =[ALL | nombre de Advertiser]. OPCIONAL. Default=ALL. Si el nombre contiene espacios, encerrar el valor entre comillas dobles.
+Account         =[ALL | id de Account]. OPCIONAL. Default=ALL.
+Tracker_name    =[ALL | nombre de Tracker]. OPCIONAL. Default=ALL.
+Signup_month    =[ALL | fecha en formato YYYY-MM]. OPCIONAL. Default=ALL.
+Customer_ID     =[ALL | id de Customer]. OPCIONAL. Default=ALL.
+Show_products   =[Yes | No]. Devuelve los productos. OPCIONAL. Default=no.
+
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+GenIdx          =[No | Yes]. OPCIONAL. Si es Yes, regenera players_netrefer_API_idx (TRUNCATE + recarga). Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_players_general_dev('debug=ye'); -- Devuelve todas las MS
+call Report_players_general_dev('debug=ye,filters=yeS');
+call Report_players_general_dev('debug=ye,filters=ye,Advertiser=Bwin');
+call Report_players_general_dev('debug=ye,filters=ye,Advertiser="Bet 365",show_products=yes');
+call Report_players_general_dev('debug=ye,filters=ye,Advertiser=Bwin,show_products=yes');
+call Report_players_general_dev('debug=ye,filters=ye,CPA_Month=2025-05,Advertiser=Bwin');
+call Report_players_general_dev('debug=ye,filters=yes,Affiliate_id=39');
+call Report_players_general('genidx=yes,debug=YE');
+call Report_players_general('data_month=2026-07,Advertiser="Sisal",debug=ye,filters=ye');
+
+*/

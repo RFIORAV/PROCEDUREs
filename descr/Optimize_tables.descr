@@ -1,0 +1,36 @@
+/*
+PROCEDURE_Optimize_tables_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Mantenimiento: recorre tablas BASE de la BD activa y ejecuta TRUNCATE en tablas vacías (COUNT(*)=0) para liberar espacio y reiniciar AUTO_INCREMENT. Execute=No solo lista candidatas; Debug=Yes muestra SQL sin ejecutar.
+Categoría: mantenimiento de base de datos.
+Tablas clave: tmp_optimize_tables_log, v_TableName.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Optimize_tables('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas
+  Cada par Key=Value debe ir seguido de una COMA
+  El conjunto de pares debe ir entre '' (comillas simples) como único parámetro string
+  Solo procesa TABLE_TYPE = BASE TABLE de DATABASE()
+  Vacía se determina con COUNT(*) = 0 en cada tabla (no se usa TABLE_ROWS)
+
+Keys:
+Debug   = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+            Yes        → lista el SQL generado sin ejecutarlo
+            KeyValues  → muestra
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Optimize_tables('');
+CALL Optimize_tables('Execute=No');
+CALL Optimize_tables('Debug=Yes');
+CALL Optimize_tables('Debug=KeyValues');
+
+*/

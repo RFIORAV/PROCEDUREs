@@ -1,0 +1,35 @@
+/*
+PROCEDURE_Cap_excess_to_DbD_manual_v2.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Cap_excess_to_DbD_manual` del dominio Cap_excess_to_DbD_manual. Procedimiento Cap_excess_to_DbD_manual_dev. Cálculo y generación de movimientos en DbD_manual para compensar exceso de Cap. Excepciones en tabla campaign_mkt_source_cap_real. v2.2 13.07.2026 - Cálculo y generación de movimientos DbD_manual para compensar exceso de Cap
+Categoría: datos day-by-day (DbD).
+Tablas clave: Snapshot_day_by_day_manual, CURRENT_TIMESTAMP, campaign_marketing_source, fact_acum_by_MS_date, Snapshot_day_by_day_fact1, campaign_mkt_source_cap_date, campaign_mkt_source_cap_real, fact_by_Date, util_settings.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Cap_excess_to_DbD_manual('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Month = [AAAA-MM | CM | LM]. Mes a procesar. OPCIONAL. Default=CM (mes actual).
+  Debug = [No | Yes | KeyValues]. Modo depuración. OPCIONAL. Default=No.
+          Yes       → muestra
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Cap_excess_to_DbD_manual('');
+call Cap_excess_to_DbD_manual('Month=CM,Debug=Yes');
+call Cap_excess_to_DbD_manual('Month=LM,Debug=Yes');
+call Cap_excess_to_DbD_manual('Month=2024-05');
+call Cap_excess_to_DbD_manual('Debug=Yes');
+call Cap_excess_to_DbD_manual('Month=2025-01,Debug=Yes');
+
+*/

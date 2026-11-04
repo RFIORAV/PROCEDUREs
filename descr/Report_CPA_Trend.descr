@@ -1,0 +1,44 @@
+/*
+PROCEDURE_Report_CPA_Trend_v1.1.sql  Tendencia del acumulado de CPA a fin de mes
+
+Descripción, cometido y funciones:
+Cometido: Reporte de CPA Trend. Devuelve filas para consulta/exportación. Este procedimiento calcula y muestra la tendencia del CPA (Cost Per Acquisition) incluyendo valores diarios, acumulados mensuales y proyección a fin de mes. Report CPA Trend - Análisis de tendencias CPA (Versión desarrollo)
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Affiliate, Date, CPA day, CPA Acum, End Month Trend.
+Tablas clave: Snapshot_day_by_day_fact1, Main_Table_Data, MonthFilter.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Report_CPA_Trend('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id    =[ALL | id de Affiliate]. OPCIONAL. Default=ALL.
+Month           =[AAAA-MM | LM]. OPCIONAL. Default=Current Month.
+                  [AAAA-MM] Año y mes específico
+                  [LM] Last Month - Mes anterior al corriente
+
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_CPA_Trend('debug=ye'); -- Devuelve todas las MS
+call Report_CPA_Trend('debug=ye,filters=yes');
+call Report_CPA_Trend('debug=ye,filters=no,month=lm');
+call Report_CPA_Trend('');
+
+*/

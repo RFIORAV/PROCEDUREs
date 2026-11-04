@@ -1,0 +1,26 @@
+/*
+PROCEDURE_Show_mkt_sources_deal.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `MktSrcDeal` del dominio Show_mkt_sources_deal.sql. Procedimiento MktSrcDeal. campaign_mkt_source_deal - Show records
+Categoría: consultas de diferencias o alertas.
+Tablas clave: account_account, account_landing_pages, campaign_deal_affiliate, campaign_mkt_source_deal.
+Cuándo proponer el CALL: Construir `call MktSrcDeal('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+MS_id_IN = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call MktSrcDeal('Debug=KeyValues');
+call MktSrcDeal('Filters=Yes');
+
+*/

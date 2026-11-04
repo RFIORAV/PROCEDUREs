@@ -1,0 +1,57 @@
+/*
+PROCEDURE_CPA_ByAFFILIATE_BrandMatrix.sql() - CPA x Affiliate - Matriz por Brand
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `CPA_ByAFFILIATE_BrandMatrix` del dominio CPA_ByAFFILIATE_BrandMatrix. Procedimiento CPA_ByAFFILIATE_BrandMatrix. CPA x [Affiliate/ALL] - Matriz por Brand
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: Snapshot_day_by_day_fact1, account_account_groups.
+Modos y comportamiento:
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call CPA_ByAFFILIATE_BrandMatrix('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+View            =[viewAFF | viewGES ]. Info de Fact2 (viewAFF) o de Fact1 (viewGES). OBLIGATORIO.
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month día>=6. Last Month día<6
+MasterAff_id    =[ MasterAff_id ]. SOLO PARA MAF EN MODO viewGES. Default=''
+Affiliate_id    =[ALL | id del Affiliate_id]. 
+                  OPCIONAL para View=viewGES (Default=ALL).
+                  OBLIGATORIO para View=viewAFF (Default=999999)
+ByDay           =[No | Yes]. Info acumulada por Dia/Mes. OPCIONAL. Default=No
+Total           =[Yes | No]. Incluye línea/s de Totales x OWNER/Currency. OPCIONAL. Default=Yes
+TotLine         =[First | Last]. Posición de la línea de Totales. OPCIONAL. Default=First
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+                  
+Keys no utilizadas:
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Currency        =[EUR | Original]. Moneda a la que se convierten los resultados. Original=No hacer conversiones. El Profit NO SE CALCULARÁ cuando sean monedas distintas. OPCIONAL. Default=EUR.
+ByAccount       =[No | Yes]. Info acumulada por Account/Advertiser. OPCIONAL. Default=No
+OrderBy         =[CPA | CPAvalue | Profit | Advertiser]. OPCIONAL. Default=CPA
+Order           =[Desc | Asc]. OPCIONAL. Default=Desc
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call CPA_ByAFFILIATE_BrandMatrix(' '); -- No devolverá nada porque asume ViewAFF y Affiliate_id=9999999
+call CPA_ByAFFILIATE_BrandMatrix('View=VIEWGES');
+call CPA_ByAFFILIATE_BrandMatrix('View=VIEWGES,OrderBy=CPA,meta=yes,debug=no');
+call CPA_ByAFFILIATE_BrandMatrix('View=ViewGES,Affiliate_id=39,Month=2022-08,debug=yes');
+call CPA_ByAFFILIATE_BrandMatrix('View=ViewGES,Affiliate_id=ALL,Month=2022-08,ByDay=yes');
+call CPA_ByAFFILIATE_BrandMatrix('View=ViewGES,Affiliate_id=ALL,ByDay=yes,Month=2022-08,meta=yes');
+call CPA_ByAFFILIATE_BrandMatrix('View=ViewAFF,Affiliate_id=ALL,ByDay=yes'); --  ERROR Para View=viewAFF Default Affiliate_id=9999999
+call CPA_ByAFFILIATE_BrandMatrix('View=ViewAFF,Affiliate_id=39,ByDay=yes,debug=no');
+call CPA_ByAFFILIATE_BrandMatrix('View=ViewGES,Owner=2,Month=2022-08');
+
+*/

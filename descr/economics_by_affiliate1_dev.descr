@@ -1,0 +1,45 @@
+/*
+PROCEDURE_economics_by_affiliate1_v1.11.sql - GENERACION DE RESUMEN ECONOMICS
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `economics_by_affiliate1_dev` del dominio economics_by_affiliate1. Procedimiento economics_by_affiliate1. v1.11 19.06.2026 - RESUMEN [Affiliate_id] de Comisiones, Pagos, Ajustes desde el inicio, en forma de cuadro contabilidad
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: monthly_comms_affiliate_v5, tmp_economics_by_affiliate, All_records, util_settings, All_records_numbered, VARCHAR, account_account, account_financial_movement, account_manual_adjustments.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call economics_by_affiliate1_dev('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+GenFile         =[Yes | No]. Guarda resultados en tabla temporal tmp_economics_by_affiliate. OPCIONAL. Default=No.
+                  Con GenFile=Yes es obligatorio Affiliate_id numérico (no ALL).
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+OnlyBalance     =[Yes | No]. Sólo la línea de saldo final. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+economics_by_affiliate1
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call economics_by_affiliate1_dev(''); -- Devuelve todas las MS
+call economics_by_affiliate1_dev(''); -- Devuelve todas las MS
+call economics_by_affiliate1_dev('Affiliate_id=450,Meta=yes,debug=ye');
+call economics_by_affiliate1_dev('Affiliate_id=all,OnlyBalance=yes,Meta=yes,debug=ye');
+call economics_by_affiliate1_dev('Affiliate_id=450,GenFile=yes,debug=ye');
+
+*/

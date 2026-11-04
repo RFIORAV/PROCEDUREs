@@ -1,0 +1,41 @@
+/*
+PROCEDURE_Report_Cashflow_v2.x.sql - Reporte cashflow por vencimiento (Due_Date)
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Cashflow. Devuelve filas para consulta/exportación. Procedimiento Report_Cashflow. Reporte cashflow por Owner/Publisher con pivote mensual de 12 meses
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Owner, Operator, PayDay, Due_date_resolved, id, Owner_id, Publisher_id, Pay_Day, Category, Invoiced_Month, Ammount, Due_Date.
+Tablas clave: MonthGrid, campaign_publisher_invoice, UltimosMeses, BaseInvoice, Owners, campaign_publisher, tmp_balance_by_affiliate, v_AffEstimated, v_SQLcols, v_SQLmetaCols.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Report_Cashflow('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Parametro unico de entrada estilo Key=Value separado por coma.
+
+Keys:
+Meta      =[No | Yes]. OPCIONAL. Columna 1 como METADATO total/data/setting. Default=Yes.
+Filters   =[No | Yes]. OPCIONAL. Devuelve lista de filtros disponibles. Default=No.
+Debug     =[No | Yes | KeyValues]. OPCIONAL. Default=No.
+FromMonth =[AAAA-MM]. OPCIONAL. Mes inicial de la ventana de 12 meses. Default=CM-3.
+Owner     =[ALL | Owner | Owner_id]. OPCIONAL. Default=ALL.
+DebtSide  =[ALL | OnlyClients | OnlyAffilates   ]. OPCIONAL. Default=ALL.
+InputCommLine = [valor]. Parámetro de entrada.
+
+Version history:
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Cashflow('Debug=KeyValues');
+call Report_Cashflow('Filters=Yes');
+
+*/

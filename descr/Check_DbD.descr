@@ -1,0 +1,29 @@
+/*
+PROCEDURE_Check_DbD.sql - Check Main Table vs Raw data table (fact1/DbD)
+
+Descripción, cometido y funciones:
+Cometido: Validación o diagnóstico; revisar discrepancias o reglas de negocio. Procedimiento Check_DbD. 05.09.2022 V1 COMPARA Snapshot_day_by_day contra Snapshot_day_by_day_fact1. Devuelve diferencias Mes corriente a partir de día 6. Antes del 6, Last Month 19.10.2022 V1.1 Columna Meta 23.10.2022 Traducción de mensajes. Warning por Deal_Aff=0 07.12.2022 V1.2 Warning por Deal_Aff=0 & Deal_Ges=0. Check LM hasta día 20 06.08.2023 v1.5 Incluye campo `Origin` en grid Parametros (none) 10.01.2024 v1.5.1 Agrega campos al grid: Publisher_id,Advertiser_id,Publisher 11.01.2024 v1.5.2 Karen: preparación para invocar alta missing MS 10.04.2026 v1.5.3 Meta/grid: etiqueta columna nombre publisher -> Operator 13.05.2026 v1.5.4 Agrega proyección de CPA a fin de mes con enfoque de regresión lineal simple. Check Main Table vs Raw data table (fact1/DbD)
+Categoría: validación, control de calidad o diagnóstico.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Month, Origin, Brand, Username_id, Username, Affiliate, Tracker_ID, Tracker_Name, Product, Country, MS_ID, Warning, CPAs_Fa1, NR_Fa1, Hour_Update.
+Tablas clave: Snapshot_day_by_day_fact1, DailyAggregates, Tot_Fact1, CurrentMonthProgress, Detail_Fact1, MonthlyStats, campaign_publisher.
+Modos y comportamiento:
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+Cuándo proponer el CALL: Construir `call Check_DbD('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Sin
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Check_DbD('Debug=KeyValues');
+call Check_DbD('Filters=Yes');
+
+*/

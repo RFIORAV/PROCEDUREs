@@ -2,10 +2,209 @@
       MODIFICAR ANTES DE USAR
 */
 
+-- 03.11.2026
+
+-- ALTER TABLE `dash_modules` CHANGE COLUMN `Settings` `Settings` TEXT NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci' AFTER `Query_params`;
+
+-- INSERT IGNORE INTO `dash_modules` (`id`, `Title`, `Description`, `Plan`, `Icon`, `Preview`, `Default_w`, `Default_h`, `Min_w`, `Min_h`, `Position_x`, `Position_y`, `Component`, `Sub_component`, `Query_procedure`, `Query_params`, `Settings`, `Is_filter`, `Is_active`, `Is_default`, `Order`, `Group_id`, `Creation_Date`, `Last_Update`, `Operator`) VALUES (27, 'Daily Postback Report', '# CPA	Total number of CPA conversions for the period.', 'free', 'Grid', 'https://storage.cloud.google.com/affiliatteaccess.appspot.com/app-assets/images/dash/grid-dinamic.png', 12, 7, 4, 7, 0, 24, 'GridComponent', NULL, 'Report_Postback_daily', 'Display=Transpose,Mode=AFF', 'link=/affiliate/report-postback-daily;notice={title:\'Real-Time Webhook Notice:\',text:\'CPA figures shown for today and yesterday are provisional incoming events. Official CPA validation and final commission approval occur once operator API audits consolidate the statements (typically within 24-48 hours).\'}', 1, 1, 1, 11, 3, '2026-06-17 16:37:13', '2026-11-02 10:20:56', 'admin');
+-- INSERT IGNORE INTO `dash_modules` (`id`, `Title`, `Description`, `Plan`, `Icon`, `Preview`, `Default_w`, `Default_h`, `Min_w`, `Min_h`, `Position_x`, `Position_y`, `Component`, `Sub_component`, `Query_procedure`, `Query_params`, `Settings`, `Is_filter`, `Is_active`, `Is_default`, `Order`, `Group_id`, `Creation_Date`, `Last_Update`, `Operator`) VALUES (28, 'Daily Postback Report', '# CPA	Total number of CPA conversions for the period.', 'free', 'Grid', 'https://storage.cloud.google.com/affiliatteaccess.appspot.com/app-assets/images/dash/grid-dinamic.png', 12, 10, 4, 10, 0, 0, 'GridComponent', NULL, 'Report_Postback_daily', 'Display=Transpose', 'link=/postback-report;notice={title:\'Real-Time Webhook Notice:\',text:\'CPA figures shown for today and yesterday are provisional incoming events. Official CPA validation and final commission approval occur once operator API audits consolidate the statements (typically within 24-48 hours).\'}', 1, 1, 0, 13, 2, '2026-11-02 16:37:13', '2026-11-03 11:02:44', 'admin');
+
+-- INSERT IGNORE INTO `auth_menu` (`id`, `Code`, `title`, `icon`, `path`, `type`, `header_id`, `isExternal`, `isReport`, `group`, `order`, `status_id`, `description`, `Creation_Date`, `Last_Update`) VALUES (98, 'affiliate_reports_players', 'Players Report', 'Activity', '/affiliate/report-players', '0', 46, 0, 0, '0', 7, 1, NULL, '2026-11-02 13:35:03', '2026-11-03 09:10:45');
+-- INSERT IGNORE INTO `auth_menu` (`id`, `Code`, `title`, `icon`, `path`, `type`, `header_id`, `isExternal`, `isReport`, `group`, `order`, `status_id`, `description`, `Creation_Date`, `Last_Update`) VALUES (99, 'affiliate_reports_daily', 'Daily Detail', 'BarChart2', '/affiliate/report-daily', '0', 46, 0, 0, '0', 6, 1, NULL, '2026-11-02 13:35:03', '2026-11-03 09:10:47');
+-- INSERT IGNORE INTO `auth_menu` (`id`, `Code`, `title`, `icon`, `path`, `type`, `header_id`, `isExternal`, `isReport`, `group`, `order`, `status_id`, `description`, `Creation_Date`, `Last_Update`) VALUES (100, 'postback_report', 'Postback Report', 'ChevronRight', '/postback-report', '0', 15, 0, 1, '0', 2, 1, '', '2024-10-05 13:35:03', '2026-11-03 11:07:05');
+
+-- INSERT IGNORE INTO `auth_group_menu` (`id`, `group_id`, `menu_id`) VALUES (239, 5, 100);
+-- INSERT IGNORE INTO `auth_group_menu` (`id`, `group_id`, `menu_id`) VALUES (238, 2, 100);
+-- INSERT IGNORE INTO `auth_group_menu` (`id`, `group_id`, `menu_id`) VALUES (237, 3, 99);
+-- INSERT IGNORE INTO `auth_group_menu` (`id`, `group_id`, `menu_id`) VALUES (236, 3, 98);
+-- INSERT IGNORE INTO `auth_group_menu` (`id`, `group_id`, `menu_id`) VALUES (235, 3, 97);
+
+-- DROP TABLE `account_notifications_session`;
+-- CREATE TABLE `account_notifications_session` (
+   -- `id` INT NOT NULL AUTO_INCREMENT,
+   -- `Account_id` INT NOT NULL,
+   -- `last_modal_shown_at` DATETIME NULL DEFAULT NULL,
+   -- `modal_snoozed_until` DATETIME NULL DEFAULT NULL,
+   -- `dismissed_types` JSON NULL DEFAULT NULL,
+   -- `Status_id` INT NOT NULL,
+   -- `Creation_Date` DATETIME NOT NULL,
+   -- `Last_Update` DATETIME NULL DEFAULT NULL,
+   -- `Operator` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   -- PRIMARY KEY (`id`) USING BTREE
+-- )
+-- COLLATE='utf8mb4_0900_ai_ci'
+-- ENGINE=InnoDB
+-- ;
+
+
+-- 02.11.2026
+
+-- ALTER TABLE `campaign_deal_affiliate` CHANGE COLUMN `RS_Base` `RS_Base` VARCHAR(30) NULL DEFAULT 'brand' COLLATE 'utf8mb4_0900_ai_ci' AFTER `RS_Percentage_Displayed`;
+-- call Report_players_general('genidx=yes');
+   
+-- 01.11.2026
+
+-- CREATE TABLE IF NOT EXISTS `players_admiralbet_API` (
+   -- `ID` INT NOT NULL AUTO_INCREMENT,
+   -- `Date` DATE NOT NULL COMMENT 'mese di riferimento (primo del mese)',
+   -- `Advertiser` VARCHAR(100) NOT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Username` VARCHAR(100) NOT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Username_id` INT NOT NULL,
+   -- `Customer_Reference_ID` VARCHAR(50) NOT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Marketing_Source_Name` VARCHAR(100) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Signup_Date` DATE NULL DEFAULT NULL,
+   -- `Signup_Date_Type` VARCHAR(10) NULL DEFAULT NULL COMMENT 'exact | month' COLLATE 'utf8mb4_0900_ai_ci',
+   -- `FTD_Date` DATE NULL DEFAULT NULL,
+   -- `FTD_Date_Type` VARCHAR(10) NULL DEFAULT NULL COMMENT 'exact | month' COLLATE 'utf8mb4_0900_ai_ci',
+   -- `CPA_Processed_Date` DATE NULL DEFAULT NULL,
+   -- `Clicks` INT NULL DEFAULT '0',
+   -- `Registrations` INT NULL DEFAULT '0',
+   -- `Confirmations` INT NULL DEFAULT '0',
+   -- `FTD` INT NULL DEFAULT '0',
+   -- `Deposits` DECIMAL(12,2) NULL DEFAULT '0.00',
+   -- `Payouts` DECIMAL(12,2) NULL DEFAULT '0.00',
+   -- `Revenue` DECIMAL(12,2) NULL DEFAULT '0.00',
+   -- `Net_Commission` DECIMAL(12,2) NULL DEFAULT '0.00',
+   -- `Created_At` TIMESTAMP NULL DEFAULT (CURRENT_TIMESTAMP),
+   -- `Updated_At` TIMESTAMP NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP,
+   -- PRIMARY KEY (`ID`) USING BTREE,
+   -- UNIQUE INDEX `uq_player_month` (`Username_id`, `Customer_Reference_ID`, `Date`) USING BTREE,
+   -- INDEX `idx_date` (`Date`) USING BTREE,
+   -- INDEX `idx_ms` (`Marketing_Source_Name`) USING BTREE,
+   -- INDEX `idx_signup` (`Signup_Date`) USING BTREE,
+   -- INDEX `idx_ftd` (`FTD_Date`) USING BTREE
+-- )
+-- COLLATE='utf8mb4_0900_ai_ci'
+-- ;
+
+
+-- 23.10.2026
+
+-- TRUNCATE changelog;
+-- INSERT IGNORE INTO changelog SELECT * FROM euroaffiliati_dev.changelog_copy;
+
+-- 16.10.2026
+
+-- INSERT IGNORE INTO `notification_type` (`id`, `Title`, `Description`, `Type`, `Subtype`, `Display_required`, `Priority`, `Status_id`, `Creation_Date`, `Last_Update`, `Operator`) VALUES (11, 'New Reward Plan', 'Notifies the user when a new Reward Plan is available', 'New Reward Plan', '', 1, 'Medium', 1, '2026-09-25 10:03:43', '2026-09-25 10:03:43', '334');
+-- robocopy "F:\_Jorge_HD_USB_Seagate" "H:" /E /Z /J /ETA /R:2 /W:2
+
+-- 09.10.2026
+
+-- INSERT IGNORE INTO `notification_type` (`id`, `Title`, `Description`, `Type`, `Subtype`, `Display_required`, `Priority`, `Status_id`, `Creation_Date`, `Last_Update`, `Operator`) 
+-- VALUES (10, 'Warning SysOp', 'Notifies the user when a new Reward Plan is available', 'Warning SysOp', NULL, 1, 'Medium', 1, '2026-09-25 10:03:43', '2026-09-25 10:03:43', '334');
+
+-- 07.10.2026
+
+-- DROP TABLE `players_general_API_idx`;
+-- call Report_players_general('genidx=yes');
+
+-- 26.09.2026
+
+-- INSERT IGNORE INTO `auth_menu` (`id`, `Code`, `title`, `icon`, `path`, `type`, `header_id`, `isExternal`, `isReport`, `group`, `order`, `status_id`) 
+-- VALUES (97, 'affiliate_reports_postback_daily', 'Daily Postback Report', 'Activity', '/affiliate/report-postback-daily', '0', 46, 0, 0, '0', 5, 0);
+
+-- 24.09.2026
+
+-- CALL Check_and_Notify_Reward_Plan('Init=Yes');
+
+-- 23.09.2026
+
+-- INSERT INTO `multi_query` (`id`, `title`, `Descr_EN`, `Descr_ES`, `Descr_IT`, `is_Procedure`, `code`, `is_Filter`, `params_Procedure`, `Procedure_call`, `Orden`, `Creation_Date`, `Last_Update`, `Operator`)
+ -- VALUES (85, 'Daily Postback Report', 'Daily Postback Report', 'Informe diario de postbacks', 'Report giornaliero dei postback', 1, 'Report_Postback_daily', 1, '', NULL, NULL, '2026-06-08 12:55:00', '2026-09-23 20:53:46', 'SysOP');
+
+-- 15.09.2026
+
+-- SET FOREIGN_KEY_CHECKS = 0;
+-- ALTER TABLE `campaign_deal_affiliate_bonus_brand`
+   -- ADD CONSTRAINT `FK_campaign_deal_affiliate_bonus_v2` 
+   -- FOREIGN KEY (`Bonus_id`) REFERENCES `campaign_deal_affiliate_bonus_v2` (`id`) ON UPDATE NO ACTION ON DELETE CASCADE;
+-- ALTER TABLE `campaign_deal_affiliate_bonus_brand`
+   -- DROP FOREIGN KEY `fk_aff_bonus_brand`;
+
+-- ALTER TABLE `master_affiliate_deals_per_affiliate`
+   -- ADD CONSTRAINT `FK_master_affiliate_deals_v2` FOREIGN KEY (`Deal_id`) REFERENCES `master_affiliate_deals_v2` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+   -- ADD CONSTRAINT `FK_account_account` FOREIGN KEY (`Master_Affiliate_id`) REFERENCES `account_account` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+   -- ADD CONSTRAINT `FK_account_account_2` FOREIGN KEY (`Sub_Affiliate_id`) REFERENCES `account_account` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION;
+-- ALTER TABLE `master_affiliate_deals_per_affiliate`
+   -- DROP FOREIGN KEY `master_affiliate_dea_Deal_id_39b018a5_fk_master_af`,
+   -- DROP FOREIGN KEY `master_affiliate_dea_Master_Affiliate_id_b50b0363_fk_account_a`,
+   -- DROP FOREIGN KEY `master_affiliate_dea_Sub_Affiliate_id_c664d092_fk_account_a`;
+
+-- 12.09.2026
+
+-- SET FOREIGN_KEY_CHECKS = 0;
+-- CREATE TABLE IF NOT EXISTS `campaign_deal_affiliate_bonus_brand` (
+   -- `id` INT NOT NULL AUTO_INCREMENT,
+   -- `Bonus_id` INT NOT NULL COMMENT 'FK a campaign_deal_affiliate_bonus.id',
+   -- `Advertiser_id` INT NOT NULL COMMENT 'Brand (campaign_advertiser.id)',
+   -- `Creation_Date` DATETIME NULL DEFAULT (now()),
+   -- `Last_Update` DATETIME NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+   -- `User` VARCHAR(30) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',   
+   -- PRIMARY KEY (`id`) USING BTREE,
+   -- UNIQUE INDEX `uk_bonus_advertiser` (`Bonus_id`, `Advertiser_id`) USING BTREE,
+   -- INDEX `idx_advertiser` (`Advertiser_id`) USING BTREE,
+   -- CONSTRAINT `fk_aff_bonus_brand` FOREIGN KEY (`Bonus_id`) REFERENCES `campaign_deal_affiliate_bonus` (`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+-- )
+-- COMMENT='Brands de una regla bonus; sin filas = aplica a todas'
+-- ;
+-- CREATE TABLE IF NOT EXISTS  `campaign_deal_affiliate_bonus_v2` (
+   -- `id` INT NOT NULL AUTO_INCREMENT,
+   -- `Affiliate_id` INT NOT NULL,
+   -- `Code_to_Affiliate` VARCHAR(50) NULL DEFAULT NULL COMMENT 'NULL o vacío = todas las MS' COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Description` VARCHAR(250) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Date_Valid_From` DATE NOT NULL COMMENT 'Inicio de vigencia (obligatorio)',
+   -- `Date_Valid_to` DATE NULL DEFAULT NULL COMMENT 'NULL = permanente',
+   -- `Bonus_Value` DECIMAL(12,2) NOT NULL DEFAULT '0.00' COMMENT 'Importe fijo opcional; ver fórmula con Bonus_NR',
+   -- `Bonus_Value_per_CPA` DECIMAL(12,2) NOT NULL DEFAULT '0.00' COMMENT 'Importe fijo por cada CPA del mes filtrado',
+   -- `Bonus_NR` DECIMAL(8,2) NOT NULL DEFAULT '0.00' COMMENT '% sobre NR acumulado del filtro; opcional si hay Bonus_Value',
+   -- `Currency` VARCHAR(5) NULL DEFAULT 'EUR' COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Conditions` VARCHAR(10) NOT NULL DEFAULT 'ANY' COMMENT 'ANY|ALL sobre umbrales CPA_min/NR_min/FTD_min (>0)' COLLATE 'utf8mb4_0900_ai_ci',
+   -- `CPA_min` INT NOT NULL DEFAULT '0' COMMENT '0 = no aplica; CPA = SUM(Qualified_Players) del mes filtrado',
+   -- `NR_min` INT NOT NULL DEFAULT '0' COMMENT '0 = no aplica; NR = SUM(Net_Revenue) del mes filtrado',
+   -- `FTD_min` INT NOT NULL DEFAULT '0' COMMENT '0 = no aplica; FTD = SUM(First_Time_Deposit) del mes filtrado',
+   -- `Status_id` SMALLINT NULL DEFAULT '1',
+   -- `Status` VARCHAR(30) NULL DEFAULT 'Active' COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Creation_Date` DATETIME NULL DEFAULT (now()),
+   -- `Last_Update` DATETIME NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+   -- `User` VARCHAR(30) NULL DEFAULT ' ' COLLATE 'utf8mb4_0900_ai_ci',
+   -- PRIMARY KEY (`id`) USING BTREE,
+   -- INDEX `idx_aff_dates` (`Affiliate_id`, `Date_Valid_From`, `Date_Valid_to`) USING BTREE,
+   -- INDEX `idx_code_to_aff` (`Code_to_Affiliate`) USING BTREE,
+   -- INDEX `idx_status_id` (`Status_id`) USING BTREE
+-- )
+-- COMMENT='Reglas bonus affiliate: fijo y/o %NR; brands en tabla hija (0 filas=all)'
+-- ;
+-- CREATE TABLE  IF NOT EXISTS  `master_affiliate_deals_v2` (
+   -- `id` INT NOT NULL AUTO_INCREMENT,
+   -- `Deal_Name` VARCHAR(200) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Deal_Currency` VARCHAR(3) NULL DEFAULT 'EUR' COLLATE 'utf8mb4_0900_ai_ci',
+   -- `Perc_on_Tot_Comm` DECIMAL(12,2) NULL DEFAULT '0.00' COMMENT '% a aplicar sobre el Total Comm',
+   -- `Value_by_CPA` DECIMAL(12,2) NULL DEFAULT '0.00' COMMENT 'Valor por cada CPA',
+   -- `Perc_on_CPA_Value` DECIMAL(12,2) NULL DEFAULT NULL COMMENT '% a aplicar sobre el CPA_Net_Value',
+   -- `Perc_on_RS` DECIMAL(12,2) NULL DEFAULT '0.00' COMMENT '% a aplicar sobre la RS_Net_Value',
+   -- `Perc_on_Margin_value` DECIMAL(12,2) NULL DEFAULT NULL COMMENT '% a aplicar sobre el Margen del Network sobre el Afiliado',
+   -- `Creation_Date` DATETIME NULL DEFAULT (now()),
+   -- `Last_Update` DATETIME NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+   -- `User` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   -- PRIMARY KEY (`id`) USING BTREE
+-- )
+-- ;
+-- ALTER TABLE `master_affiliate_deals_v2`
+   -- CHANGE COLUMN `Perc_on_CPA_Value` `Perc_on_CPA_Value` DECIMAL(12,2) NULL DEFAULT '0.00' COMMENT '% a aplicar sobre el CPA_Net_Value' AFTER `Value_by_CPA`,
+   -- CHANGE COLUMN `Perc_on_Margin_value` `Perc_on_Margin_value` DECIMAL(12,2) NULL DEFAULT '0.00' COMMENT '% a aplicar sobre el Margen del Network sobre el Afiliado' AFTER `Perc_on_RS`;
+   
+-- INSERT INTO `master_affiliate_deals_v2` (`id`,`Deal_Name`,`Deal_Currency`,`Perc_on_Tot_Comm`, `Value_by_CPA`, `Perc_on_RS`, `Creation_Date`, `Last_Update`, `User`)
+-- SELECT `id`,`Deal_Name`,`Deal_Currency`,`Commissions_Percentage`,`CPA_Value`,`RS_Percentage`,`Creation_Date`,`Last_Update`,`Operator` 
+-- FROM master_affiliate_deals;
+
+-- 08.09.2026
+
+-- UPDATE `util_countries` SET Phone_prefix='+356' WHERE eu='Malta';
+
 -- 05.08.2026
 
-REPLACE INTO `util_settings` (`Setting`, `Description`, `Show_enabled`, `Edit_enabled`, `Value_01`, `Value_01_Options`, `Value_01_Required`, `Value_01_MultiSelect`, `Value_02`, `Value_02_Options`, `Value_02_Required`, `Value_02_MultiSelect`) 
-VALUES ('Fact2_Date_BeginToShow', 'Show Affiliate Data Starting From', 1, 1, 'YES', 'YES/NO', 1, 0, '2021-01-01', 'Date YYYY-MM-DD', 0, 0);
+-- REPLACE INTO `util_settings` (`Setting`, `Description`, `Show_enabled`, `Edit_enabled`, `Value_01`, `Value_01_Options`, `Value_01_Required`, `Value_01_MultiSelect`, `Value_02`, `Value_02_Options`, `Value_02_Required`, `Value_02_MultiSelect`) 
+-- VALUES ('Fact2_Date_BeginToShow', 'Show Affiliate Data Starting From', 1, 1, 'YES', 'YES/NO', 1, 0, '2021-01-01', 'Date YYYY-MM-DD', 0, 0);
 
 -- 24.07.2026
 

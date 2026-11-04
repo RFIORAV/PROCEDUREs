@@ -1,0 +1,35 @@
+/*
+PROCEDURE_CREATE_gambling_tables_from_DB1_to_DB2.sql - CreateGamblingTablesFromAtoB
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `CreateGamblingTablesFromAtoB` del dominio CREATE_gambling_tables_from_DB1_to_DB2.sql. Procedimiento CreateGamblingTablesFromAtoB. Script MySQL 8.0 que crea en la base de datos destino las tablas que coinciden con un patrón que existen en la base de datos origen y que no existen en la base de datos destino. Procedimiento CreateGamblingTablesFromAtoB.
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: temp_mensajes, tableExists, tableName.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call CreateGamblingTablesFromAtoB('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+p_db_origen = [valor]. Parámetro de entrada.
+p_db_destino = [valor]. Parámetro de entrada.
+p_table_pattern = [valor]. Parámetro de entrada.
+
+INSTRUCCIONES:
+1. Ejecutar el script para crear el procedimiento almacenado
+2. Llamar al procedimiento con los
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL CreateGamblingTablesFromAtoB('euroaffiliati2', 'euroaffiliati_dev', 'gambling_%');
+
+*/

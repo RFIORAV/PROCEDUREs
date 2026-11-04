@@ -1,0 +1,40 @@
+/*
+PROCEDURE_Dash_Aff_Brand.sql() - CPA/Signup/FTD/Click - Dash affiliate Brand
+
+Descripción, cometido y funciones:
+Cometido: Dashboard: Aff Brand. Agrega métricas para visualización en panel. Procedimiento Dash_Aff_Brand. v1.7 04.08.2026 - CPA/Reg/FTD/Global/NR - Dash_aff_Brand
+Categoría: dashboard con KPIs y agregaciones para paneles.
+Tablas clave: BaseData, util_settings, BaseDataByCurrency, Snapshot_day_by_day_fact2, TotalRow, account_account_groups.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Dash_Aff_Brand('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id    =[ALL | id del Affiliate_id]. 
+Month           =[AAAA-MM | CM | LM ]. OPCIONAL. Default=Current Month
+Brand           =[Brand | ALL ]. Nombre de la Brand/advertiser. OPCIONAL. Default=ALL
+Meta            =[No | Yes]. Default [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Dash_Aff_Brand(' ');                                   -- ERROR Sin Affiliate_id
+call Dash_Aff_Brand('Affiliate_id=ALL,Month=LM');           -- ERROR Affiliate_id=ALL
+call Dash_Aff_Brand('Affiliate_id=450,Brand=ALL,Month=LM,debug=ye');  -- OK
+call Dash_Aff_Brand('Brand=ALL,Month=LM');                  -- ERROR Affiliate_id=""
+call Dash_Aff_Brand('Affiliate_id=39,Brand=betclic,Month=LM,debug=no');
+
+*/

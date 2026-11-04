@@ -1,0 +1,48 @@
+/*
+PROCEDURE_Publisher_balance_to_Proforma_v1.sql - Inserta los resultados x Publisher de InvoiceToPubliser
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Publisher_balance_to_Proforma` del dominio Publisher_balance_to_Proforma. Procedimiento Publisher_balance_to_Proforma. Publisher balance to Proforma
+Categoría: operaciones de publisher.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Category, Owner, Owner id, Operator, Invoiced Month, Currcy, CPA, CPA Value, Net Revenue, net RS_Val, Total Commiss, Amount Due, Invoice address.
+Tablas clave: Main_Table_Data, campaign_publisher_invoice, MonthFilter, account_account, campaign_publisher, CURRENT_TIMESTAMP, LONGTEXT, SetUnConverted, monthly_comms_gestor_v5.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Publisher_balance_to_Proforma('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Month           =[ALL | AAAA-MM ]. OPCIONAL. Default=ALL
+Owner_id        =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Export          =[Yes | No]. INSERT en campaign_publisher_invoice. OPCIONAL. Default=no.
+
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Publisher_balance_to_Proforma('month=LM,debug=ye'); -- Devuelve todas las MS
+call Publisher_balance_to_Proforma_dev('month=LM,debug=ye'); -- Devuelve todas las MS
+call Publisher_balance_to_Proforma_dev('month=2025-12,Export=ye,debug=non');
+call Publisher_balance_to_Proforma_dev('debug=ye,filters=yes');
+call Publisher_balance_to_Proforma_dev('debug=ye,filters=no');
+call Publisher_balance_to_Proforma_dev('month=2026-04,EXPORT=YES,debug=ye');
+CALL Publisher_balance_to_Proforma('month=2026-01,export=yes,debug=ye');
+
+*/

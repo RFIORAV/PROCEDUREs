@@ -1,0 +1,31 @@
+/*
+PROCEDURE_players_nerefer_to_DbD_AR_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `players_nerefer_to_DbD_AR` del dominio players_nerefer_to_DbD_AR. AR - Actualiza tabla Snapshot_day_by_day desde players_netrefer_API - Last Month y Cte / AAAA-MM
+Categoría: datos day-by-day (DbD).
+Tablas clave: Snapshot_day_by_day, Snapshot_day_by_day_temp_NR, Snapshot_day_by_day_dev, players_netrefer_API, ONLY, current_username, util_countries.
+Modos y comportamiento:
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call players_nerefer_to_DbD_AR('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call players_nerefer_to_DbD_AR('Debug=KeyValues');
+call players_nerefer_to_DbD_AR('Filters=Yes');
+
+*/

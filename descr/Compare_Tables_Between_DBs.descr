@@ -1,0 +1,29 @@
+/*
+PROCEDURE_Compare_Tables_Between_DBs_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Compare_Tables_Between_DBs` del dominio Compare_Tables_Between_DBs. Procedimiento PROCEDURE_Compare_Tables_Between_DBs_v1. Procedimiento Compare_Tables_Between_DBs.
+Categoría: comparación / auditoría de diferencias.
+Tablas clave: temp_comparison_results, temp_alter_statements, v_table_name, v_total_tables.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Compare_Tables_Between_DBs('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Sin
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL PROCEDURE_Compare_Tables_Between_DBs_v1();
+
+*/

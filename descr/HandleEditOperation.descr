@@ -1,0 +1,47 @@
+/*
+PROCEDURE_HandleEditOperation_v1.sql - Maneja ediciones de grillas
+
+Descripción, cometido y funciones:
+Cometido: Operación de escritura; modifica registros — usar con precaución en producción. Procedimiento HandleEditOperation. Procesa parámetros de edición (old/new) y debug
+Categoría: operación transaccional de edición.
+Tablas clave: tmp_HandleEditCall_params, tmp_HandleEditOperation_params.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call HandleEditOperation('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Solo cuando el requerimiento implica modificar datos; confirmar keys antes de ejecutar.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada
+
+Keys:
+PRCorigen   =[nombre del procedure que invoca]
+<Campo>     =[valor anterior]  (primera ocurrencia)
+<Campo>     =[valor nuevo]     (segunda ocurrencia)
+Debug       =[No | Yes]. OPCIONAL. Default=No
+InputCommLine = [valor]. Parámetro de entrada.
+
+Ejemplo:
+call HandleEditOperation('PRCorigen=FM_edit_info_fact1,Clicks=13,Clicks=2,Date=2026-02-01,MS_id=4680')
+
+call HandleEditOperation('PRCorigen=FM_edit_info_fact1
+   ,Date=2026-01-15
+   ,MS_id=5730
+   ,Qualified_Players_Adjusted=10,Qualified_Players_Adjusted=8
+   ,First_Time_Deposit=10,First_Time_Deposit=8
+   ,Signups=8,Signups=6
+   ,Net_Revenue=100,Net_Revenue=80
+   ,Clicks=200,Clicks=80
+   ,Deposits=110,Deposits=85
+   ,debug=ye');
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call HandleEditOperation('PRCorigen=FM_edit_info_fact1,Clicks=13,Clicks=2,Date=2026-02-01,MS_id=4680')
+call HandleEditOperation('PRCorigen=FM_edit_info_fact1
+
+*/

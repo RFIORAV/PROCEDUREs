@@ -1,0 +1,48 @@
+/*
+PROCEDURE_Show_Diff_CPA_DbD_90days_v2.0.sql - Check Raw Data: CPA missing from 90 days comparison
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Show_Diff_CPA_DbD_90days_v2` del dominio Show_Diff_CPA_DbD_90days. Procedimiento Show_Diff_CPA_DbD_90days_v2. Check Raw Data: CPA missing from 90 days comparison - V2 with column-based comparison
+Categoría: datos day-by-day (DbD).
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Brand, Account Name, Account id, MS_id, Tracker ID, Tracker Name, Affiliate, Row Total.
+Tablas clave: temp_dates_with_prev_numbers, Snapshot_day_by_day_diff_90days, temp_dates, temp_negative_columns, temp_final_data, temp_data_with_columns, MonthFilter, Snapshot_day_by_day_fact1, month_dates, v_first_day_number.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Show_Diff_CPA_DbD_90days_v2('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Action          =[View | SET]. Modifica datos o solo muestra. OPCIONAL. Default=VIEW.
+LAPSE           =[1-90]. Número de días para mostrar en columnas. OPCIONAL. Default=días del mes.
+OnlyNegative    =[0 | 1]. Si es 1, muestra solo diferencias negativas. OPCIONAL. Default=0.
+OnlyNegativeColumns=[0 | 1]. Si es 1, muestra solo columnas que tengan al menos un valor negativo. OPCIONAL. Default=0.
+Month           =[YYYY-MM | CM | LM]. Mes a mostrar. CM=mes actual, LM=mes anterior. Si es mes actual, llega hasta hoy; si no, muestra el mes completo. OPCIONAL. Default=mes actual.
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Show_Diff_CPA_DbD_90days_v2('Action=VIEW,month=LM,debug=non');
+CALL Show_Diff_CPA_DbD_90days_v2('Action=VIEW,Debug=KEYVALUES');
+CALL Show_Diff_CPA_DbD_90days_v2('Action=SET,debug=no'); -- ejecutado por EVENT a partir de las 23
+CALL Show_Diff_CPA_DbD_90days_v2('Action=VIEW,filters=yes,debug=ye');
+CALL Show_Diff_CPA_DbD_90days_v2('Action=VIEW,OnlyNegative=1,debug=ye'); -- muestra solo diferencias negativas
+CALL Show_Diff_CPA_DbD_90days_v2('Action=VIEW,OnlyNegative=0,debug=non'); -- muestra todas las diferencias en 10 días
+CALL Show_Diff_CPA_DbD_90days_v2('Action=VIEW,Month=LM,OnlyNegativeColumns=0,debug=ye'); -- mes específico y solo columnas con negativos
+
+*/

@@ -1,0 +1,70 @@
+/*
+PROCEDURE_Dash_Gestor_TotalByAdvertiser.sql - Dashboard Gestor Performance por Advertiser
+
+Descripción, cometido y funciones:
+Cometido: Dashboard: Gestor TotalByAdvertiser. Agrega métricas para visualización en panel. Procedimiento Dash_Gestor_TotalByAdvertiser. v4.8 21.06.2026 - Dashboard Gestor/MAF. PERFORMANCE Advertiser/Account - Currency conversion
+Categoría: dashboard con KPIs y agregaciones para paneles.
+Tablas clave: exchange_rate, account_account, campaign_log_dashboard_now, campaign_username, BaseCount, MonthFilter, SetFact_ges, campaign_advertiser, campaign_log_dashboard_temp, SetCommConverted_aff_man_adj.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Dash_Gestor_TotalByAdvertiser('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+MasterAff_id    =[ MasterAff_id ]. SOLO PARA MAF EN MODO MAF. Default=''
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Month           =[AAAA-MM].            OPCIONAL. Default=Current Month.
+Area            =[ALL | forex | gaming ]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | Publisher_id]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Brand           =[ALL | NOMBRE de Brand]. OPCIONAL. Default=ALL
+Currency        =[EUR | Original].     Moneda a la que se convierten los resultados. Original  No hace conversiones. El Profit NO SE CALCULARÁ cuando sean monedas distintas. OPCIONAL. Default=EUR.
+ByAccount       =[No | Yes]. OPCIONAL. Default=No
+OnlyOverCap     =[No | Yes]. OPCIONAL. Default=No
+OrderBy         =[CPA | CPAvalue | Profit | Brand | Publisher]. OPCIONAL. Default=CPA
+Order           =[Desc | Asc]. OPCIONAL. Default=Desc
+ShowDate        =[Yes | No]. Incluye columna Date en resultado. OPCIONAL. Default=Yes
+ShowOwner       =[Yes | No]. Incluye columna Owner en resultado. OPCIONAL. Default=Yes
+Total           =[Yes | No]. Incluye línea/s de Totales x OWNER/Currency. OPCIONAL. Default=Yes
+TotLine         =[First | Last]. Posición de la línea de Totales. OPCIONAL. Default=First
+Rec_log         =[Yes | No | NOW | DASH ]. Guarda la primera fila de todas las columnas del grid en un una tabla.
+                                    NOW=Crea una tabla temporal con el resultado
+                                    DASH=Crea/recrea tabla campaign_log_dashboard_now con el resultado completo (si Filters!=Yes)
+                                    OPCIONAL. Default=no
+
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query. [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Dash_Gestor_TotalByAdvertiser('Debug=ye'); -- Asumirá todos los defaults
+call Dash_Gestor_TotalByAdvertiser_dev('Debug=ye');
+call Dash_Gestor_TotalByAdvertiser('meta=yes'); -- Asumirá todos los defaults
+call Dash_Gestor_TotalByAdvertiser_dev('month=lm,debug=ye');
+call Dash_Gestor_TotalByAdvertiser_dev('month=cm,rec_log=yes,debug=ye');
+call Dash_Gestor_TotalByAdvertiser_dev('Rec_log=DASH');
+call Dash_Gestor_TotalByAdvertiser('Month=2025-12,Rec_log=DASH,Debug=ye');
+call Dash_Gestor_TotalByAdvertiser_dev('Debug=ye');
+call Dash_Gestor_TotalByAdvertiser_dev('Currency=original,Debug=KeyValues');
+call Dash_Gestor_TotalByAdvertiser_dev('ShowDate=no,ShowOwner=no');
+call Dash_Gestor_TotalByAdvertiser_dev('Month=2022-09,OnlyOverCap=yes');
+call Dash_Gestor_TotalByAdvertiser_dev('Month=2022-08,OrderBy=Profit');
+call Dash_Gestor_TotalByAdvertiser_dev('Month=2022-08,ByAccount=yes,OrderBy=Profit');
+call Dash_Gestor_TotalByAdvertiser_dev('Month=2022-08,Currency=ALL');
+call Dash_Gestor_TotalByAdvertiser_dev('Month=2022-08,TotLine=last,Debug=yes');
+call Dash_Gestor_TotalByAdvertiser_dev('Month=2022-08,OrderBy=Advertiser,Order=asc')
+
+*/

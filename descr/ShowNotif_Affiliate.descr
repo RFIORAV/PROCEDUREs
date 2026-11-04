@@ -1,0 +1,35 @@
+/*
+PROCEDURE_ShowNotif_Affiliate.sql - Notificaciones al Afiliado MS Status Change
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `ShowNotif_Affiliate` del dominio ShowNotif_Affiliate.sql. Procedimiento ShowNotif_Affiliate. Notificaciones al Afiliado MS Status Change
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: account_notifications, account_account, account_landing_pages, campaign_advertiser, campaign_marketing_source.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call ShowNotif_Affiliate('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Parámetro 1=Affiliate_id (para lectura de notificaciones, resto de
+
+Keys:
+AffiliateID = [valor]. Parámetro de entrada.
+
+Observaciones: 
+   Parámetro 1=Affiliate_id (para lectura de notificaciones, resto de
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call ShowNotif_Affiliate(Affiliate_id,0,0);
+call ShowNotif_Affiliate('ALL',0,0);
+call ShowNotif_Affiliate('id notificación a marcar como leída',0,1);
+
+*/

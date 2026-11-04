@@ -1,0 +1,29 @@
+/*
+PROCEDURE_Check_RS_affiliate_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Validación o diagnóstico; revisar discrepancias o reglas de negocio. Indica si un afiliado tiene al menos un Marketing Source con Stat_aggreg en (1,4,6) y Deal con RS_Percentage > 0. Devuelve RS_Status = 1/0. v1 16.07.2026 - Devuelve RS_Status 0/1 si el afiliado tiene MS con Revenue Share activo
+Categoría: validación, control de calidad o diagnóstico.
+Tablas clave: campaign_deal_affiliate, campaign_marketing_source, v_RS_Status.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Check_RS_affiliate('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas
+  Cada par Key=Value debe ir seguido de una COMA
+  El conjunto de pares debe ir entre '' (comillas simples) como único parámetro string
+
+Keys:
+Affiliate_id = [id]. Id del afiliado a comprobar. OBLIGATORIO.
+  Debug        = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Check_RS_affiliate('Affiliate_id=39');
+CALL Check_RS_affiliate('Affiliate_id=39,Debug=KeyValues');
+
+*/

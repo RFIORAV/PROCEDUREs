@@ -1,0 +1,59 @@
+/*
+PROCEDURE_Report_day_by_day.sql
+
+Descripción, cometido y funciones:
+Cometido: Reporte day-by-day (DbD) con desglose diario de métricas de afiliación; variante manual para ajustes o fuentes específicas según versión del archivo.
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Action, Status, Origin, Date, Affiliate, Account, Brand, Tracker ID, MS id, CPA, FTD, Views, Clicks, Sign ups, Cntry, Deposits, Dep Custom, FTA Custom, Net Revenue, Product, Product MS, Deal Gestor, Deal Affiliate, RS Network, RS Affiliate, CPA Value Affiliate, CPA Value Network, deal to apply, Last Update, User.
+Tablas clave: Main_Table_Data, Main_Table_Data_Filter, MonthFilter, campaign_marketing_source, campaign_mkt_source_deal, util_settings, Main_Table_Data_Acum, Snapshot_day_by_day, account_account, account_landing_pages.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_day_by_day('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+DbD             =[manual | gaming | forex]. OPCIONAL. Default=manual
+Mode            =[UPDATE | ""]. OPCIONAL. Default="".
+                  [UPDATE] Actualiza los datos de la tabla Snapshot_day_by_day_fact1 con datos de Snapshot_day_by_day_manual de un mes seleccionado.
+                  [""] Devuelve el resultado de la consulta sin actualizar los datos.
+Area            =[manual | gaming | forex]. OPCIONAL. Default=gaming
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month.
+Origin          =[user | autoCapExcess | autoBLcheck ]. OPCIONAL. Default=user. Solo para Snapshot_day_by_day_manual
+is_active       =[ALL | 0 | 1]. OPCIONAL. Default=ALL
+error           =[MS | No ]. OPCIONAL. Default=no. Sólo errores MS inexistente
+Affiliate_id    =[ALL | id del Affiliate]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Account_id      =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL.
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL Default=[Yes] . Columna 1 como METADATO: total/data/setting.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_day_by_day('debug=ye'); -- utiliza Snapshot_day_by_day_manual
+call Report_day_by_day('dbd=forex'); -- utiliza forex_day_by_day_2
+call Report_day_by_day('month=2023-01');
+call Report_day_by_day('month=2023-02,filters=yes');
+call Report_day_by_day('Account_id=79,month=2023-02');
+call Report_day_by_day('Account_id=79,month=2023-02,filters=yes');
+call Report_day_by_day('origin=autoCapExcess');
+call Report_day_by_day('origin=autoBLcheck');
+call Report_day_by_day('month=LM,debug=ye');
+call Report_day_by_day('month=2025-06,Mode=UPDATE,debug=ye');
+
+*/

@@ -1,0 +1,32 @@
+/*
+PROCEDURE_util_alter_table_customizable.sql - Ajuste masivo de longitud de columna Product
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `util_alter_table_customizable` del dominio util_alter_table_customizable.sql. Procedimiento util_alter_table_customizable. Ajusta Product a VARCHAR(200) en tablas Snapshot_day_by_day%
+Categoría: utilidad de administración de BD.
+Tablas clave: v_table_name.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+Cuándo proponer el CALL: Construir `call util_alter_table_customizable('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+- Recorre tablas BASE TABLE del esquema actual con nombre Snapshot_day_by_day%
+- Aplica ALTER TABLE ... CHANGE COLUMN Product a VARCHAR(200) NULL DEFAULT NULL
+
+Keys:
+Version history:
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call util_alter_table_customizable('Debug=KeyValues');
+call util_alter_table_customizable('Filters=Yes');
+
+*/

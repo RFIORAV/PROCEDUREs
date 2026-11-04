@@ -1,0 +1,50 @@
+/*
+PROCEDURE_Gestor_YearlySources.sql - Reporte multimodo de las MS de un año
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Gestor_YearlySources` del dominio Gestor_YearlySources. Procedimiento Gestor_YearlySources. Gestor_YearlySources
+Categoría: portal gestor / publisher.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Operator, Brand, Affiliate, MS_id, MS_Status, @Tot00, @Mes01, @Mes02, @Mes03, @Mes04, @Mes05, @Mes06, @Mes07, @Mes08, @Mes09, @Mes10, @Mes11, @Mes12.
+Tablas clave: BaseCount, Snapshot_day_by_day_fact1, campaign_marketing_source, MonthFilter, Seleccion_base, Snapshot_day_by_day_fact2, campaign_publisher, campaign_username.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Gestor_YearlySources('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+ 
+Data            =[CPA | NR | CPA_Val | RS_Val | CPA_Val_Aff | RS_Val_Aff]. OPCIONAL. Default=CPA.
+Affiliate_id    =[ALL | id del Affiliate]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Publisher]. OPCIONAL. Default=ALL
+Brand           =[ALL | Name del Brand]. OPCIONAL. Default=ALL
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+ProductMS       =[ALL | Product]. Producto original de la MS. OPCIONAL. Default=ALL
+GroupByMS       =[Yes | No]. Agrupa Product by MS. OPCIONAL. Default=No
+Total           =[Yes | No]. Incluye línea/s de Totales. OPCIONAL. Default=Yes
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+TotLine         =[First | Last]. Posición de la línea de Totales. OPCIONAL. Default=First
+Meta            =[No | Yes]. [No] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Search          =[(dato a buscar]. OPCIONAL. Busca string en Tracker_ID/Tracker_Name/Code_To_Affiliate/MS_id
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Keys no utilizadas:
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL. tiene prioridad sobre el resto de
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Gestor_YearlySources(''); -- Todos los valores de selección por default
+call Gestor_YearlySources('meta=yes'); -- Todos los valores de selección por default usando _fact2
+
+*/

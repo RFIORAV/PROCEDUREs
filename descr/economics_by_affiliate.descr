@@ -1,0 +1,27 @@
+/*
+PROCEDURE_economics_by_affiliate_v2.sql - GENERACION DE RESUMEN ECONOMICS - SOLO SE USA INVOCADO DESDE DJANGO
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `economics_by_affiliate` del dominio economics_by_affiliate. Procedimiento economics_by_affiliate. RESUMEN [Affiliate_id] de Comisiones, Pagos, Ajustes (CALL economics_by_affiliate1)
+Categoría: procedimiento almacenado euroaffiliati.
+Modos y comportamiento:
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+Cuándo proponer el CALL: Construir `call economics_by_affiliate('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+AffiliateID = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call economics_by_affiliate('Debug=KeyValues');
+call economics_by_affiliate('Filters=Yes');
+
+*/

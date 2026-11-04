@@ -1,0 +1,45 @@
+/*
+PROCEDURE_Show_Diff_CPA_DbD_90days.sql - Check Raw Data: CPA missing from 90 days comparison
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Show_Diff_CPA_DbD_90days` del dominio Show_Diff_CPA_DbD_90days. Procedimiento Show_Diff_CPA_DbD_90days. Características principales: 1. Acumulación de 90 días Crea una nueva tabla Snapshot_day_by_day_diff_90days que almacena datos diarios Incluye campo Date para rastrear cada día individualmente Mantiene automáticamente solo los últimos 90 días de datos 2. Parámetro LAPSE Nuevo parámetro LAPSE que controla cuántos días mostrar en las columnas Valor por defecto: 5 días Máximo: 90 días Se ajusta automáticamente si no hay suficientes días disponibles 3. Funcionalidad SET Cuando @Action='SET': - Elimina datos del día actual si existen (para evitar duplicados) - Inserta los datos del día actual en la tabla de acumulación - Elimina datos más antiguos de 90 días - Finaliza el proceso 4. Funcionalidad VIEW con auto-creación Cuando @Action='VIEW': - Verifica si existen datos del día actual - Si no existen, los crea automáticamente - Elimina datos más antiguos de 90 días - Continúa con el reporte de comparación 5. Reporte de comparación - Muestra filas por cada MS_id que tenga diferencias (F.CPA > D.CPA) - Columnas dinámicas que representan cada día según el parámetro LAPSE - Cada columna muestra la diferencia con respecto al día anterior - Ordenado por la diferencia más significativa Check Raw Data: CPA missing from 90 days comparison
+Categoría: datos day-by-day (DbD).
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Brand, Account Name, Account id, MS_id, Tracker ID, Tracker Name, Product.
+Tablas clave: Snapshot_day_by_day_diff_90days, temp_dates, Snapshot_day_by_day_fact1, CURRENT_TIMESTAMP, temp_dates_with_rn, temp_dates_with_rn2.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Show_Diff_CPA_DbD_90days('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Action          =[View | SET]. Modifica datos o solo muestra. OPCIONAL. Default=VIEW.
+LAPSE           =[1-90]. Número de días para mostrar en columnas. OPCIONAL. Default=5.
+OnlyNegative    =[0 | 1]. Si es 1, muestra solo diferencias negativas. OPCIONAL. Default=0.
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [Yes] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW');
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,Debug=KEYVALUES');
+CALL Show_Diff_CPA_DbD_90days('Action=SET,debug=no'); -- ejecutado por EVENT a partir de las 23
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,LAPSE=7'); -- muestra 7 días de comparación
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,OnlyNegative=1,debug=no'); -- muestra solo diferencias negativas
+CALL Show_Diff_CPA_DbD_90days('Action=VIEW,OnlyNegative=0,debug=non'); -- muestra todas las diferencias en 10 días
+
+*/

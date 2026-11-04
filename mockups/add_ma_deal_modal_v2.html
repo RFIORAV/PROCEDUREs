@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Add Master Affiliate Deal</title>
+  <style>
+    :root {
+      --bg-page: #07111f;
+      --bg-modal: #0b1626;
+      --bg-input: #0f1c2e;
+      --border: #2a3b52;
+      --border-focus: #4a6a94;
+      --text: #f3f6fb;
+      --muted: #8fa3bd;
+      --label: #c9d6e8;
+      --accent: #e11d2e;
+      --accent-hover: #c41625;
+      --chip: #15263d;
+      --radius: 10px;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background: radial-gradient(1200px 600px at 50% -10%, #132744 0%, var(--bg-page) 55%);
+      color: var(--text);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px 48px;
+    }
+
+    .backdrop {
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .modal {
+      background: var(--bg-modal);
+      border: 1px solid #1c2b40;
+      border-radius: 16px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      padding: 22px 22px 18px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .header h1 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .header p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .close {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      font-size: 1.35rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 6px;
+    }
+
+    .close:hover { color: var(--text); }
+
+    form { display: grid; gap: 14px; }
+
+    .field { display: grid; gap: 5px; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    label {
+      color: var(--label);
+      font-size: 0.86rem;
+      font-weight: 600;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.75rem;
+      line-height: 1.35;
+      margin: 0;
+    }
+
+    .section {
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid #1a2a3f;
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      color: #a9bdd8;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    input[type="number"],
+    select,
+    textarea {
+      width: 100%;
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 11px 12px;
+      font: inherit;
+      font-size: 0.95rem;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(74, 106, 148, 0.25);
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 8px;
+      padding-top: 14px;
+    }
+
+    .btn {
+      border-radius: 10px;
+      padding: 10px 18px;
+      font: inherit;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid #6b7f99;
+    }
+
+    .btn-cancel:hover { border-color: #93a7c2; }
+
+    .btn-submit {
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid var(--accent);
+    }
+
+    .btn-submit:hover { background: var(--accent-hover); }
+
+    .formula {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      background: #101f33;
+      border: 1px solid #243652;
+      border-radius: 8px;
+      color: #b8cbe3;
+      font-size: 0.76rem;
+      line-height: 1.45;
+    }
+
+    .formula code {
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.72rem;
+      color: #d7e4f5;
+    }
+
+    @media (max-width: 560px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="backdrop">
+    <div class="modal" role="dialog" aria-labelledby="ma-deal-title">
+      <div class="header">
+        <div>
+          <h1 id="ma-deal-title">Add MA Deal</h1>
+          <p>Master Affiliate referral deal (v2) and assignment</p>
+        </div>
+        <button type="button" class="close" aria-label="Close">×</button>
+      </div>
+
+      <form action="#" method="post" onsubmit="return false;">
+        <!-- Asignación: master_affiliate_deals_per_affiliate -->
+        <div class="section" style="border-top: 0; padding-top: 0; margin-top: 0;">
+          <p class="section-title">Assignment</p>
+        </div>
+
+        <div class="field">
+          <label for="status">Rule status</label>
+          <select id="status" name="Status_id">
+            <option value="1" selected>Enabled</option>
+            <option value="0">Disabled</option>
+          </select>
+          <p class="hint">Only enabled assignments are evaluated in the monthly commission run (`Comm_type=REFER`).</p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="master">Master Affiliate</label>
+            <select id="master" name="Master_Affiliate_id" required>
+              <option value="">Select master…</option>
+              <option value="130" selected>Referrer130 (130)</option>
+              <option value="55">Aff55</option>
+            </select>
+            <p class="hint">Receives the referral commission (`Affiliate_id` in REFER rows).</p>
+          </div>
+          <div class="field">
+            <label for="sub">Sub Affiliate</label>
+            <select id="sub" name="Sub_Affiliate_id" required>
+              <option value="">Select sub…</option>
+              <option value="440" selected>EnricoBetTipster (440)</option>
+              <option value="99">Aff99</option>
+            </select>
+            <p class="hint">Source of CPA / RS / Total Comm used as calculation base.</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="brand">Brand</label>
+          <select id="brand" name="Advertiser_id">
+            <option value="0" selected>All brands (0)</option>
+            <option value="12">PlanetWin365</option>
+            <option value="8">KingBet</option>
+          </select>
+          <p class="hint">`Advertiser_id=0` = all brands. Specific brand wins over ALL when both apply.</p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="from">Valid from</label>
+            <input id="from" name="Valid_From" type="date" value="2026-09-01" required />
+            <p class="hint">Required. First month of eligibility.</p>
+          </div>
+          <div class="field">
+            <label for="to">Valid to</label>
+            <input id="to" name="Valid_To" type="date" />
+            <p class="hint">Optional. Leave blank for open-ended (through current month).</p>
+          </div>
+        </div>
+
+        <!-- Catálogo: master_affiliate_deals_v2 -->
+        <div class="section">
+          <p class="section-title">Deal terms — master_affiliate_deals_v2</p>
+          <p class="formula">
+            Monthly REFER (per Sub + Brand) =<br />
+            <code>(CPA × Value_by_CPA)</code>
+            + <code>(net_CPA_Val × Perc_on_CPA_Value / 100)</code>
+            + <code>(net_RS_Val × Perc_on_RS / 100)</code>
+            + <code>(net_Total_comm × Perc_on_Tot_Comm / 100)</code>
+            + <code>(Estimated_Margin × Perc_on_Margin_value / 100)</code>
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="deal_mode">Deal source</label>
+          <select id="deal_mode" name="Deal_Mode">
+            <option value="existing">Use existing deal</option>
+            <option value="new" selected>Create / edit deal terms below</option>
+          </select>
+          <p class="hint">Existing → pick `Deal_id`. New → persist into `master_affiliate_deals_v2` then link.</p>
+        </div>
+
+        <div class="field">
+          <label for="deal_id">Existing deal</label>
+          <select id="deal_id" name="Deal_id">
+            <option value="">—</option>
+            <option value="3">Std 5% Total Comm (3)</option>
+            <option value="7">CPA +10 / RS 2% (7)</option>
+          </select>
+          <p class="hint">Used when Deal source = existing. Ignored if creating new terms.</p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="deal_name">Deal name</label>
+            <input id="deal_name" name="Deal_Name" type="text" placeholder="e.g. MA 5% Tot + Margin 10%" value="MA 5% Tot Comm" />
+            <p class="hint">Label in referral reports (`Deal_Name`).</p>
+          </div>
+          <div class="field">
+            <label for="currency">Deal currency</label>
+            <select id="currency" name="Deal_Currency">
+              <option value="EUR" selected>EUR</option>
+              <option value="USD">USD</option>
+              <option value="GBP">GBP</option>
+            </select>
+            <p class="hint">Currency stored on the deal (`Deal_Currency`).</p>
+          </div>
+        </div>
+
+        <div class="section">
+          <p class="section-title">Commission components — set unused to 0</p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="value_by_cpa">Value per CPA</label>
+            <input id="value_by_cpa" name="Value_by_CPA" type="number" step="0.01" min="0" value="0.00" />
+            <p class="hint">Fixed amount × Sub Affiliate CPA for the brand/month.</p>
+          </div>
+          <div class="field">
+            <label for="perc_tot">% on Total Comm</label>
+            <input id="perc_tot" name="Perc_on_Tot_Comm" type="number" step="0.01" min="0" value="5.00" />
+            <p class="hint">% of Sub `net_Total_comm` (CPA+RS net) for the brand/month.</p>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="perc_cpa">% on CPA Value</label>
+            <input id="perc_cpa" name="Perc_on_CPA_Value" type="number" step="0.01" min="0" value="0.00" />
+            <p class="hint">% of Sub `net_CPA_Val` for the brand/month.</p>
+          </div>
+          <div class="field">
+            <label for="perc_rs">% on RS</label>
+            <input id="perc_rs" name="Perc_on_RS" type="number" step="0.01" min="0" value="0.00" />
+            <p class="hint">% of Sub `net_RS_Val` for the brand/month.</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="perc_margin">% on Network Margin</label>
+          <input id="perc_margin" name="Perc_on_Margin_value" type="number" step="0.01" min="0" value="0.00" />
+          <p class="hint">% of Estimated_Margin (fact1: Gestor CPA/RS − Affiliate CPA/RS) for Sub+brand+month.</p>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="btn btn-cancel">Cancel</button>
+          <button type="submit" class="btn btn-submit">Submit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

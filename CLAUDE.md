@@ -5,6 +5,16 @@ Debe ser leído por cualquier asistente de IA antes de generar o modificar códi
 
 ---
 
+## Principios generales
+
+1. No des nada por sentado. No ocultes la confusión. Resalta las ventajas y desventajas.
+
+2. Código mínimo que resuelva el problema. Nada especulativo.
+
+3. Toca solo lo que sea necesario. Limpia solo tu propio desorden.
+
+4. Definir los criterios de éxito. Repetir hasta que se verifiquen.
+
 ## Entorno
 
 - **Sistema operativo:** Windows 11 Pro (exclusivo)

@@ -126,7 +126,7 @@ call Gestor_MonthlySources('mode=daily,^month=^2026-06,debug=ye,^day=^2026-06-01
 11.05.2026 v4.1   Parametro Mode=Monthly/Daily. Monthly agrega por mes y oculta Day; Daily agrega por dia, habilita Day y muestra Date
 11.05.2026 v4.1.1 Date: muestra mes si es multivalor
 21.07.2026 v4.1.2 Fix tamaño de InputCommLine cuando se seleccionan muchos días
-
+21.07.2026 v4.1.3 en filtros, agrupa por Date si es Daily
 */
 
 DROP PROCEDURE IF EXISTS Gestor_MonthlySources;
@@ -137,11 +137,11 @@ DELIMITER $$
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Gestor_MonthlySources`(IN
    InputCommLine    VARCHAR(550)
    )
-    COMMENT 'v4.1.2 21.07.2026 Monthly/Daily Sources PARAMETROS MULTIVALOR y Tags. Fix tamaño de InputCommLine cuando se seleccionan muchos días'
+    COMMENT 'v4.1.3 21.07.2026 Monthly/Daily Sources PARAMETROS MULTIVALOR y Tags. Fix tamaño de InputCommLine cuando se seleccionan muchos días'
 BEGIN
 -- --------------------------------------------------------------------------------------------
 -- Defaults
-SET @Version            ='v4.1.2 21.07.2026';
+SET @Version            ='v4.1.3 21.07.2026';
 SET @Month              =CONCAT('("',LEFT(CURDATE(),7),'")');
 -- SELECT @Month ;
 SET @MS_id              ='';
@@ -675,7 +675,8 @@ WHERE (@Day != "" OR LEFT(D.Date,7) IN ',@MONTH,')
    ,@WhereMaster_Affiliate_id
    ,@WhereSearch
    ,'
-GROUP BY DATE(D.Date),IFNULL(D.Owner,""),IFNULL(D.Publisher_id,""),IFNULL(R.Master_Affiliate_id,"")
+GROUP BY ',@GroupDateExpr,'
+   ,IFNULL(D.Owner,""),IFNULL(D.Publisher_id,""),IFNULL(R.Master_Affiliate_id,"")
    ,IFNULL(Platform,""),IFNULL(D.Brand,"")
    ,IFNULL(D.Username,""),IFNULL(MS_id,0),IFNULL(D.Tracker_ID,""),IFNULL(D.Tracker_Name,"")'
    ,@GroupBySeleccBase,'

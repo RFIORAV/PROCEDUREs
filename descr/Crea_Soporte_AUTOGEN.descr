@@ -1,0 +1,31 @@
+/*
+PROCEDURE_Crea_Soporte_AUTOGEN_v1.sql - Crea_Soporte_AUTOGEN
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Crea_Soporte_AUTOGEN` del dominio Crea_Soporte_AUTOGEN. Procedimiento Crea_Soporte_AUTOGEN. Valores en tabla `util_settings`: id record 15: AutogenDefaultUser id record 16: AutogenDefaultChannel id record 17: AutogenDefaultDeal CREA SOPORTE PARA LA AUTO-GENERACIÓN DE MARKETING SOURCES DESDE SNAPSHOT_DAY_BY_DAY
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: util_settings, account_account, account_landing_pages, campaign_deal_affiliate, account_account_groups.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Crea_Soporte_AUTOGEN('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Crea_Soporte_AUTOGEN('Debug=KeyValues');
+call Crea_Soporte_AUTOGEN('Filters=Yes');
+
+*/

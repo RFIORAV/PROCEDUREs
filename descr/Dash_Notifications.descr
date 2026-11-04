@@ -1,0 +1,39 @@
+/*
+PROCEDURE_Dash_Notifications_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Dashboard: Notifications. Agrega métricas para visualización en panel. Devuelve las últimas 15 notificaciones no leídas de `account_notifications`, ordenadas por `Date` en forma descendente. El SP recibe un único string con formato `Key=Value` separado por comas. Actualmente `Month` y `Account_id` se parsean/validan para trazabilidad, pero no aplican filtro al `SELECT` final. Dash Notifications
+Categoría: dashboard con KPIs y agregaciones para paneles.
+Tablas clave: account_notifications.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Dash_Notifications('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Month      = [YYYY-MM]. OPCIONAL. Default = mes actual (`CURDATE()`).
+              Se valida formato y fecha.
+ Account_id = [id de cuenta]. OPCIONAL. Default = ''.
+              Actualmente no aplica filtro en el resultado.
+ Debug      = [No | Yes | KeyValues]. OPCIONAL. Default = No.
+              - No: devuelve notificaciones.
+              - Yes: devuelve notificaciones + un segundo resultset con trazabilidad.
+              - KeyValues: devuelve solo los
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Dash_Notifications('');
+call Dash_Notifications('Debug=No');
+call Dash_Notifications('Debug=Yes');
+call Dash_Notifications('Debug=KeyValues');
+call Dash_Notifications('Month=2026-05,Account_id=39,Debug=Yes');
+call Dash_Notifications('Month=2026-13'); -- Devuelve error por mes inválido
+
+*/

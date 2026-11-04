@@ -1,0 +1,43 @@
+/*
+PROCEDURE_Calculate_Operations_Commission_v1.sql - Cálculo de comisiones de operaciones
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Calculate_Operations_Commission` del dominio Calculate_Operations_Commission. Este procedimiento calcula las comisiones de operaciones basándose en los movimientos de la tabla DBD_movements y aplicando las reglas definidas en la tabla Deals. Cálculo de comisiones de operaciones basado en movimientos y reglas de deals
+Categoría: cálculo de comisiones u operaciones.
+Tablas clave: temp_operations_commission, DBD_movements, deals, deals_applied, movements_summary.
+Modos y comportamiento:
+  - Transaccional: START TRANSACTION / COMMIT / ROLLBACK.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Calculate_Operations_Commission('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+p_start_date = [valor]. Parámetro de entrada.
+  p_end_date = [valor]. Parámetro de entrada.
+  p_tracker_id = [valor]. Parámetro de entrada.
+  p_product = [valor]. Parámetro de entrada.
+
+Tablas utilizadas:
+- DBD_movements: Contiene los movimientos de operaciones con campos Date, Tracker_id, Product, Deposits
+- Deals: Contiene las reglas de comisión con campos Product, Criteria, Threshold, Level, CPA
+
+Lógica del cálculo:
+1. Agrupa los movimientos por Tracker_id y Product
+2. Suma el campo Criteria (ej: Deposits) para cada grupo
+3. Aplica las reglas de la tabla Deals según el Threshold alcanzado
+4. Calcula la comisión CPA correspondiente al Level alcanzado
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Calculate_Operations_Commission('Debug=KeyValues');
+call Calculate_Operations_Commission('Filters=Yes');
+
+*/

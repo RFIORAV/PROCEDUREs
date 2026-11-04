@@ -1,0 +1,455 @@
+/*
+PROCEDURE_Report_Dbd_Acum_All_v1.2.sql - Snapshot DbD - Acumulado con drill-down
+
+Descripción:
+  Procedimiento Report_Dbd_Acum_All.
+  Acumula con SUM() los campos métricos de Snapshot_day_by_day_fact1.
+  El nivel de detalle (GROUP BY) es progresivo según los filtros *_id con valor
+  concreto (<> ALL). Date siempre aplica (default=hoy).
+
+Drill-down (valor del filtro <> ALL):
+  Solo Date                                          → totales por Operator_id
+  Date + Operator_id                                 → totales por Advertiser_id
+  Date + Operator_id + Advertiser_id                 → totales por Account_id
+  Date + Operator_id + Advertiser_id + Account_id    → totales por Affiliate_id
+  Date + Operator_id + Advertiser_id + Account_id + Affiliate_id → totales por MS_id
+  Las dimensiones superiores al nivel actual se muestran como contexto;
+  las inferiores se devuelven como NULL (estructura fija).
+
+Observaciones:
+  - Query base: Snapshot_day_by_day_fact1 F + campaign_publisher P + account_account A.
+  - Todas las columnas de la tabla vienen calificadas con F. / P. / A. para evitar
+    ambigüedad: F.Username y A.Username existen en ambas tablas (A.Username = Owner,
+    F.Username = Account).
+  - Profit = SUM(CPA_Value_Gestor - CPA_Value_Affiliate + Revenue_Share_Gestor
+                 - Revenue_Share_Affiliate)
+  - Meta=Yes agrega la columna "Meta" y la fila "setting" (patrón del proyecto).
+    Meta=No devuelve las 26 columnas originales del query, sin fila Meta.
+  - Si hay más de una línea de datos, se antepone una fila Meta="total" con
+    SUM() de las métricas de las líneas mostradas (Operator="TOTAL"; dims en NULL).
+  - Filters=Yes: Date ofrece la fecha activa (o la asumida si Date=ALL) y las dos
+    anteriores; el resto de filtros respeta los filtros ya activos.
+  - Owner_id / MS_id siguen admitidos como filtro WHERE opcional
+    (no definen el nivel de drill).
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe estar seguido de una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+  Date            =[AAAA-MM-DD | ALL]. Día a acumular. OPCIONAL. Default=Curdate()
+  Operator_id     =[ALL | id del Publisher (F.Publisher_id)]. Filtra y abre drill a Advertiser. OPCIONAL. Default=ALL
+  Advertiser_id   =[ALL | id del Advertiser]. Filtra y abre drill a Account. OPCIONAL. Default=ALL
+  Account_id      =[ALL | valor de F.Username_id]. Filtra y abre drill a Affiliate. OPCIONAL. Default=ALL
+  Owner_id        =[ALL | valor de F.Owner]. Solo filtro WHERE. OPCIONAL. Default=ALL
+  Affiliate_id    =[ALL | id del Affiliate]. Filtra y abre drill a MS. OPCIONAL. Default=ALL
+  MS_id           =[ALL | id de la Marketing Source]. Solo filtro WHERE. OPCIONAL. Default=ALL
+  Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=No
+  Meta            =[Yes | No]. Columna 1 como METADATO: setting/total/data. OPCIONAL. Default=Yes
+  Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                   [No] Ejecuta el query normalmente
+                   [Yes] Devuelve el SQL generado SIN ejecutarlo
+                   [KeyValues] Devuelve los parámetros parseados y ejecuta el query
+
+Parámetros ('[Key=Value[,...]']')
+
+Ejemplos:
+
+  call Report_Dbd_Acum_All('');                                          -- por Operator (Date=hoy)
+  call Report_Dbd_Acum_All('Date=2026-09-23');                            -- por Operator esa fecha
+  call Report_Dbd_Acum_All('Date=2026-09-22,Operator_id=17');             -- Advertisers del Operator 17
+  call Report_Dbd_Acum_All('Date=2026-09-22,Operator_id=17,Advertiser_id=17'); -- Accounts
+  call Report_Dbd_Acum_All('Date=2026-09-22,Operator_id=17,Advertiser_id=17,Account_id=236'); -- Affiliates
+  call Report_Dbd_Acum_All('Date=2026-09-22,Operator_id=17,Advertiser_id=17,Account_id=236,Affiliate_id=39'); -- MS
+  call Report_Dbd_Acum_All('debug=yes');
+  call Report_Dbd_Acum_All('Date=2026-09-23,filters=yes');
+  call Report_Dbd_Acum_All('meta=no');
+
+23.09.2026 v1     Primera versión operativa (acumulado + drill-down por Keys informadas)
+24.09.2026 v1.1   Drill fijo: Date→Operator→Advertiser→Account→MS (valor <> ALL)
+25.09.2026 v1.2   Drill Affiliate→MS; fila total si >1 línea; Filters Date=activa+2 previas
+*/
+
+DROP PROCEDURE IF EXISTS Report_Dbd_Acum_All;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Dbd_Acum_All`(IN
+   InputCommLine    VARCHAR(250)
+   )
+    COMMENT 'Snapshot DbD - SUM() drill Date→Operator→Advertiser→Account→Affiliate→MS'
+SQL SECURITY DEFINER
+proc_label:BEGIN
+-- --------------------------------------------------------------------------------------------
+-- Declaración de variables locales
+DECLARE v_Version            VARCHAR(32) DEFAULT 'v1.2 25.09.2026';
+DECLARE v_Date               VARCHAR(10);
+DECLARE v_Owner_id           VARCHAR(60);
+DECLARE v_Operator_id        VARCHAR(20);
+DECLARE v_Advertiser_id      VARCHAR(20);
+DECLARE v_Account_id         VARCHAR(60);
+DECLARE v_Affiliate_id       VARCHAR(20);
+DECLARE v_MS_id              VARCHAR(20);
+DECLARE v_DrillLevel         VARCHAR(20);   -- OPERATOR | ADVERTISER | ACCOUNT | AFFILIATE | MS
+DECLARE v_Filters            VARCHAR(10);
+DECLARE v_Meta               VARCHAR(10);
+DECLARE v_Debug              VARCHAR(20);
+DECLARE v_InputCommLine      VARCHAR(500);
+DECLARE v_e                  INT;
+DECLARE v_c                  INT;
+DECLARE v_k                  VARCHAR(50);
+DECLARE v_v                  VARCHAR(100);
+DECLARE v_WhereDate          VARCHAR(200);
+DECLARE v_WhereOwner_id      VARCHAR(200);
+DECLARE v_WhereOperator_id   VARCHAR(200);
+DECLARE v_WhereAdvertiser_id VARCHAR(200);
+DECLARE v_WhereAccount_id    VARCHAR(200);
+DECLARE v_WhereAffiliate_id  VARCHAR(200);
+DECLARE v_WhereMS_id         VARCHAR(200);
+DECLARE v_WHERE              TEXT;
+DECLARE v_SelectDims         TEXT;
+DECLARE v_GroupBy            TEXT;
+DECLARE v_OrderBy            TEXT;
+DECLARE v_DateFilterBase     VARCHAR(10);  -- fecha activa/asumida para lista Filters Date
+DECLARE v_DatePrev1          VARCHAR(10);
+DECLARE v_DatePrev2          VARCHAR(10);
+DECLARE v_CTEfilters         TEXT;
+DECLARE v_SQLmeta            TEXT;
+DECLARE v_SQLdata            TEXT;
+DECLARE v_SQLtotal           TEXT;
+DECLARE v_SQLfilters         TEXT;
+DECLARE v_SQL                TEXT;
+
+-- --------------------------------------------------------------------------------------------
+-- Defaults
+SET v_Date               =DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY),'%Y-%m-%d');   -- Date siempre aplica (ayer si no viene)
+SET v_Owner_id           ='ALL';
+SET v_Operator_id        ='ALL';
+SET v_Advertiser_id      ='ALL';
+SET v_Account_id         ='ALL';
+SET v_Affiliate_id       ='ALL';
+SET v_MS_id              ='ALL';
+SET v_DrillLevel         ='OPERATOR';
+SET v_Filters            ='NO';
+SET v_Meta               ='YES';
+SET v_Debug              ='NO';
+
+SET v_InputCommLine=Concat(InputCommLine ,',');      -- Coma de cierre
+-- SET v_InputCommLine=replace(v_InputCommLine,' ','');  -- Elimina espacios
+SET v_InputCommLine=replace(v_InputCommLine,'"','');  -- Elimina comillas
+
+WHILE v_InputCommLine>' ' DO
+-- v_InputCommLine: Date=2026-09-23,Operator_id=17,Debug=yes
+-- v_InputCommLine: ----5----0----5----0----5----0----5----0----5----0----5----0----5----0----5----0
+   SET v_e=INSTR(v_InputCommLine,'=');                -- 6
+   SET v_c=INSTR(v_InputCommLine,',');                -- 14
+   SET v_k=SUBSTRING(v_InputCommLine,1,v_e-1);        -- Date
+   SET v_v=SUBSTRING(v_InputCommLine,v_e+1,v_c-(v_e+1)); -- 2026-09-23
+   SET v_InputCommLine=SUBSTRING(v_InputCommLine,v_c+1);
+   SET v_k=TRIM(v_k);
+   SET v_v=TRIM(v_v);
+
+   IF lower(v_k)='date'          THEN SET v_Date         =      v_v;  END IF;
+   IF lower(v_k)='owner_id'      THEN SET v_Owner_id     =      v_v;  END IF;
+   IF lower(v_k)='operator_id'   THEN SET v_Operator_id  =UPPER(v_v); END IF;
+   IF lower(v_k)='advertiser_id' THEN SET v_Advertiser_id=UPPER(v_v); END IF;
+   IF lower(v_k)='account_id'    THEN SET v_Account_id   =UPPER(v_v); END IF;
+   IF lower(v_k)='affiliate_id'  THEN SET v_Affiliate_id =UPPER(v_v); END IF;
+   IF lower(v_k)='ms_id'         THEN SET v_MS_id        =UPPER(v_v); END IF;
+   IF lower(v_k)='filters'       THEN SET v_Filters      =UPPER(v_v); END IF;
+   IF lower(v_k)='meta'          THEN SET v_Meta         =UPPER(v_v); END IF;
+   IF lower(v_k)='debug'         THEN SET v_Debug        =UPPER(v_v); END IF;
+
+END WHILE;
+
+-- Nivel de drill según cadena Date → Operator → Advertiser → Account → Affiliate → MS
+-- (solo cuenta valor concreto <> ALL)
+IF v_Operator_id<>'ALL' AND v_Advertiser_id<>'ALL' AND v_Account_id<>'ALL' AND v_Affiliate_id<>'ALL' THEN
+   SET v_DrillLevel='MS';
+ELSEIF v_Operator_id<>'ALL' AND v_Advertiser_id<>'ALL' AND v_Account_id<>'ALL' THEN
+   SET v_DrillLevel='AFFILIATE';
+ELSEIF v_Operator_id<>'ALL' AND v_Advertiser_id<>'ALL' THEN
+   SET v_DrillLevel='ACCOUNT';
+ELSEIF v_Operator_id<>'ALL' THEN
+   SET v_DrillLevel='ADVERTISER';
+ELSE
+   SET v_DrillLevel='OPERATOR';
+END IF;
+
+IF v_Debug!='NO' THEN SELECT v_Version,v_Date,v_Owner_id,v_Operator_id,v_Advertiser_id
+                             ,v_Account_id,v_Affiliate_id,v_MS_id,v_DrillLevel
+                             ,v_Filters,v_Meta,v_Debug,InputCommLine; END IF;
+
+-- --------------------------------------------------------------------------------------------
+-- Validación
+IF v_Date<>'ALL' AND v_Date NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN
+   SELECT 'data' AS `Meta`,'Date inválida: use AAAA-MM-DD o ALL' AS `Message` FROM DUAL;
+   LEAVE proc_label;
+END IF;
+
+IF (v_Operator_id   <>'ALL' AND v_Operator_id   NOT REGEXP '^[0-9]+$')
+OR (v_Advertiser_id <>'ALL' AND v_Advertiser_id NOT REGEXP '^[0-9]+$')
+OR (v_Affiliate_id  <>'ALL' AND v_Affiliate_id  NOT REGEXP '^[0-9]+$')
+OR (v_MS_id         <>'ALL' AND v_MS_id         NOT REGEXP '^[0-9]+$') THEN
+   SELECT 'data' AS `Meta`,'Id no numérico: use ALL o solo dígitos' AS `Message` FROM DUAL;
+   LEAVE proc_label;
+END IF;
+
+-- --------------------------------------------------------------------------------------------
+-- Cláusulas WHERE (solo para los filtros activos; valor <> ALL)
+IF v_Date           ='ALL' THEN SET v_WhereDate          =''; ELSE SET v_WhereDate          =CONCAT(' AND F.`Date`="'          ,REPLACE(v_Date          ,'"','""'),'"'); END IF;
+IF v_Owner_id       ='ALL' THEN SET v_WhereOwner_id      =''; ELSE SET v_WhereOwner_id      =CONCAT(' AND F.`Owner`="'        ,REPLACE(v_Owner_id      ,'"','""'),'"'); END IF;
+IF v_Operator_id    ='ALL' THEN SET v_WhereOperator_id   =''; ELSE SET v_WhereOperator_id   =CONCAT(' AND F.`Publisher_id`="'  ,REPLACE(v_Operator_id   ,'"','""'),'"'); END IF;
+IF v_Advertiser_id  ='ALL' THEN SET v_WhereAdvertiser_id =''; ELSE SET v_WhereAdvertiser_id =CONCAT(' AND F.`Advertiser_id`="' ,REPLACE(v_Advertiser_id ,'"','""'),'"'); END IF;
+IF v_Account_id     ='ALL' THEN SET v_WhereAccount_id    =''; ELSE SET v_WhereAccount_id    =CONCAT(' AND F.`Username_id`="'   ,REPLACE(v_Account_id    ,'"','""'),'"'); END IF;
+IF v_Affiliate_id   ='ALL' THEN SET v_WhereAffiliate_id  =''; ELSE SET v_WhereAffiliate_id  =CONCAT(' AND F.`Affiliate_id`="'  ,REPLACE(v_Affiliate_id  ,'"','""'),'"'); END IF;
+IF v_MS_id          ='ALL' THEN SET v_WhereMS_id         =''; ELSE SET v_WhereMS_id         =CONCAT(' AND F.`MS_id`="'        ,REPLACE(v_MS_id         ,'"','""'),'"'); END IF;
+
+SET v_WHERE=CONCAT(v_WhereDate,v_WhereOwner_id,v_WhereOperator_id,v_WhereAdvertiser_id
+                  ,v_WhereAccount_id,v_WhereAffiliate_id,v_WhereMS_id);
+
+IF v_Debug!='NO' THEN SELECT v_WHERE,v_DrillLevel; END IF;
+
+-- Fechas para Filters=Yes: activa/asumida + 2 anteriores
+SET v_DateFilterBase=IF(v_Date='ALL'
+                       ,DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY),'%Y-%m-%d')
+                       ,v_Date);
+SET v_DatePrev1=DATE_FORMAT(DATE_SUB(v_DateFilterBase, INTERVAL 1 DAY),'%Y-%m-%d');
+SET v_DatePrev2=DATE_FORMAT(DATE_SUB(v_DateFilterBase, INTERVAL 2 DAY),'%Y-%m-%d');
+
+-- --------------------------------------------------------------------------------------------
+-- Dimensiones SELECT / GROUP BY / ORDER BY según nivel de drill-down
+-- (columnas por debajo del nivel → NULL; estructura de salida fija)
+SET v_SelectDims=CONCAT(
+   ' F.`Date`'
+  -- Owner: no forma parte del drill; siempre NULL en columnas de dimensión
+  ,',NULL AS `Owner_id`,NULL AS `Owner`'
+  -- Operator: siempre visible (nivel mínimo de reporte)
+  ,',F.`Publisher_id` AS `Operator_id`,P.`Advertiser_Name` AS `Operator`'
+  ,IF(v_DrillLevel IN ('ADVERTISER','ACCOUNT','AFFILIATE','MS')
+     ,',F.`Advertiser_id`,F.`Brand`'
+     ,',NULL AS `Advertiser_id`,NULL AS `Brand`')
+  ,IF(v_DrillLevel IN ('ACCOUNT','AFFILIATE','MS')
+     ,',F.`Username` AS `Account`,F.`Username_id` AS `Account_id`'
+     ,',NULL AS `Account`,NULL AS `Account_id`')
+  ,IF(v_DrillLevel IN ('AFFILIATE','MS')
+     ,',F.`Affiliate_id`,F.`Affiliate`'
+     ,',NULL AS `Affiliate_id`,NULL AS `Affiliate`')
+  ,IF(v_DrillLevel='MS'
+     ,',F.`MS_id`,F.`Tracker_ID`,F.`Data_Currency`,IFNULL(F.`Channel_id`,0) AS `Channel_id`,IFNULL(F.`Channel`,"no Channel") AS `Channel`'
+     ,',NULL AS `MS_id`,NULL AS `Tracker_ID`,NULL AS `Data_Currency`,NULL AS `Channel_id`,NULL AS `Channel`')
+);
+
+SET v_GroupBy=CONCAT(
+   ' GROUP BY F.`Date`,F.`Publisher_id`'
+  ,IF(v_DrillLevel IN ('ADVERTISER','ACCOUNT','AFFILIATE','MS') ,',F.`Advertiser_id`','')
+  ,IF(v_DrillLevel IN ('ACCOUNT','AFFILIATE','MS')              ,',F.`Username_id`'  ,'')
+  ,IF(v_DrillLevel IN ('AFFILIATE','MS')                        ,',F.`Affiliate_id`' ,'')
+  ,IF(v_DrillLevel='MS'                                         ,',F.`MS_id`'        ,'')
+);
+
+SET v_OrderBy=CONCAT(
+   ' ORDER BY `_ord` ASC,`Date` ASC,`Operator` ASC'
+  ,IF(v_DrillLevel IN ('ADVERTISER','ACCOUNT','AFFILIATE','MS') ,',`Brand` ASC'      ,'')
+  ,IF(v_DrillLevel IN ('ACCOUNT','AFFILIATE','MS')              ,',`Account` ASC'    ,'')
+  ,IF(v_DrillLevel IN ('AFFILIATE','MS')                        ,',`Affiliate` ASC'  ,'')
+  ,IF(v_DrillLevel='MS'                                         ,',`MS_id` ASC'      ,'')
+);
+
+-- --------------------------------------------------------------------------------------------
+-- Fila de metadatos "setting" (27 columnas = Meta + 26 directivas)
+SET v_SQLmeta=CONCAT('(
+SELECT
+   0                             AS `_ord`
+  ,"setting"                     AS `Meta`
+  ,"width=100px"                 AS `Date`
+  ,"omit=true"                   AS `Owner_id`
+  ,"width=90px,tooltip=true"     AS `Owner`
+  ,"omit=true"                   AS `Operator_id`
+  ,"width=120px,tooltip=true"    AS `Operator`
+  ,"omit=true"                   AS `Advertiser_id`
+  ,"width=110px"                 AS `Brand`
+  ,"width=120px,tooltip=true"    AS `Account`
+  ,"omit=true"                   AS `Account_id`
+  ,"omit=true"                   AS `Affiliate_id`
+  ,"width=120px,tooltip=true"    AS `Affiliate`
+  ,"omit=true"                   AS `MS_id`
+  ,"width=110px,tooltip=true"    AS `Tracker ID`
+  ,"width=090px"                 AS `Data Curncy`
+  ,"omit=true"                   AS `Channel_id`
+  ,"omit=true"                   AS `Channel`
+  ,"width=090px,right=true"      AS `CPA`
+  ,"width=090px,right=true"      AS `Net Revenue`
+  ,"width=090px,right=true"      AS `FTD`
+  ,"width=090px,right=true"      AS `Signups`
+  ,"width=090px,right=true"      AS `Clicks`
+  ,"width=090px,right=true"      AS `CPA Val Ges`
+  ,"width=090px,right=true"      AS `CPA Val Aff`
+  ,"width=090px,right=true"      AS `RS Val Ges`
+  ,"width=090px,right=true"      AS `RS Val Aff`
+  ,"width=090px,right=true"      AS `Profit`
+ FROM DUAL)');
+
+-- --------------------------------------------------------------------------------------------
+-- Query principal: SUM() métricos + GROUP BY según drill-down (cuerpo CTE DataRows)
+SET v_SQLdata=CONCAT('
+SELECT '
+  ,v_SelectDims,'
+   ,SUM(F.`Qualified_Players`)               AS `CPA`
+   ,SUM(F.`Net_Revenue`)                     AS `Net_Revenue`
+   ,SUM(F.`First_Time_Deposit`)              AS `FTD`
+   ,SUM(F.`Signups`)                         AS `Signups`
+   ,SUM(F.`Clicks`)                          AS `Clicks`
+   ,SUM(F.`CPA_Value_Gestor`)                AS `CPA_Val_Ges`
+   ,SUM(F.`CPA_Value_Affiliate`)             AS `CPA_Val_Aff`
+   ,SUM(F.`Revenue_Share_Gestor`)            AS `RS_Val_Ges`
+   ,SUM(F.`Revenue_Share_Affiliate`)         AS `RS_Val_Aff`
+   ,SUM(F.`CPA_Value_Gestor`-F.`CPA_Value_Affiliate`
+        +F.`Revenue_Share_Gestor`-F.`Revenue_Share_Affiliate`) AS `Profit`
+  FROM Snapshot_day_by_day_fact1 F
+  LEFT JOIN campaign_publisher   P ON P.`id`=F.`Publisher_id`
+  LEFT JOIN account_account      A ON A.`id`=F.`Owner`
+ WHERE 1=1'
+,v_WHERE
+,v_GroupBy
+);
+
+-- Fila total: SUM de métricas de las líneas mostradas; solo si hay más de una
+SET v_SQLtotal=CONCAT('(
+SELECT
+   1 AS `_ord`
+  ,',IF(v_Meta='YES','"total" AS `Meta`,',''),'
+   MAX(`Date`)                         AS `Date`
+  ,NULL                                AS `Owner_id`
+  ,NULL                                AS `Owner`
+  ,NULL                                AS `Operator_id`
+  ,"TOTAL"                             AS `Operator`
+  ,NULL                                AS `Advertiser_id`
+  ,NULL                                AS `Brand`
+  ,NULL                                AS `Account`
+  ,NULL                                AS `Account_id`
+  ,NULL                                AS `Affiliate_id`
+  ,NULL                                AS `Affiliate`
+  ,NULL                                AS `MS_id`
+  ,NULL                                AS `Tracker_ID`
+  ,NULL                                AS `Data_Currency`
+  ,NULL                                AS `Channel_id`
+  ,NULL                                AS `Channel`
+  ,SUM(`CPA`)                          AS `CPA`
+  ,SUM(`Net_Revenue`)                  AS `Net_Revenue`
+  ,SUM(`FTD`)                          AS `FTD`
+  ,SUM(`Signups`)                      AS `Signups`
+  ,SUM(`Clicks`)                       AS `Clicks`
+  ,SUM(`CPA_Val_Ges`)                  AS `CPA_Val_Ges`
+  ,SUM(`CPA_Val_Aff`)                  AS `CPA_Val_Aff`
+  ,SUM(`RS_Val_Ges`)                   AS `RS_Val_Ges`
+  ,SUM(`RS_Val_Aff`)                   AS `RS_Val_Aff`
+  ,SUM(`Profit`)                       AS `Profit`
+ FROM DataRows
+HAVING COUNT(*)>1)');
+
+-- --------------------------------------------------------------------------------------------
+-- Filters: valores disponibles por filtro, respetando los filtros activos
+
+SET v_CTEfilters=CONCAT('WITH Src AS (
+   SELECT F.`Date`
+         ,F.`Owner`                                AS `Owner_id`
+         ,A.`Username`                             AS `Owner`
+         ,F.`Publisher_id`                         AS `Operator_id`
+         ,P.`Advertiser_Name`                      AS `Operator`
+         ,F.`Advertiser_id`
+         ,F.`Brand`
+         ,F.`Username`                             AS `Account`
+         ,F.`Username_id`                          AS `Account_id`
+         ,F.`Affiliate_id`
+         ,F.`Affiliate`
+         ,F.`MS_id`
+         ,F.`Tracker_ID`
+         ,F.`Data_Currency`
+     FROM Snapshot_day_by_day_fact1 F
+     LEFT JOIN campaign_publisher   P ON P.`id`=F.`Publisher_id`
+     LEFT JOIN account_account      A ON A.`id`=F.`Owner`
+    WHERE 1=1'
+   ,v_WHERE,'
+)');
+
+SET v_SQLfilters=CONCAT(v_CTEfilters,'
+(SELECT "01" AS "Korder","Date" AS "Key","',v_DateFilterBase,'" AS "Value","Date" AS `CallKey`,"',v_DateFilterBase,'" AS `CallValue`,0 AS "Rows" FROM DUAL)
+UNION ALL
+(SELECT "01","Date","',v_DatePrev1,'","Date","',v_DatePrev1,'",0 FROM DUAL)
+UNION ALL
+(SELECT "01","Date","',v_DatePrev2,'","Date","',v_DatePrev2,'",0 FROM DUAL)
+UNION ALL
+(SELECT "02","Operator"         ,`Operator` ,"Operator_id"  ,`Operator_id`  ,COUNT(*) FROM Src GROUP BY `Operator_id`)
+UNION ALL
+(SELECT "03","Advertiser"       ,`Brand`    ,"Advertiser_id",`Advertiser_id`,COUNT(*) FROM Src GROUP BY `Advertiser_id`)
+UNION ALL
+(SELECT "04","Account"          ,`Account`  ,"Account_id"   ,`Account_id`   ,COUNT(*) FROM Src GROUP BY `Account_id`)
+UNION ALL
+(SELECT "05","Affiliate"        ,`Affiliate`,"Affiliate_id" ,`Affiliate_id` ,COUNT(*) FROM Src GROUP BY `Affiliate_id`)
+UNION ALL
+(SELECT "06","Marketing Source" ,`MS_id`    ,"MS_id"        ,`MS_id`        ,COUNT(*) FROM Src WHERE `MS_id` IS NOT NULL GROUP BY `MS_id`)
+ORDER BY Korder ASC,
+         CASE WHEN Korder="01"     THEN Value END DESC,
+         CASE WHEN Korder<>"01"    THEN Value END ASC');
+
+-- --------------------------------------------------------------------------------------------
+-- Armado del SQL final: setting → total (si >1 línea) → data
+SET v_SQL=CONCAT(
+   'WITH DataRows AS (',v_SQLdata,'
+)
+SELECT ',
+   IF(v_Meta='YES'
+     ,'`Meta`,`Date`,`Owner_id`,`Owner`,`Operator_id`,`Operator`
+      ,`Advertiser_id`,`Brand`,`Account`,`Account_id`,`Affiliate_id`,`Affiliate`
+      ,`MS_id`,`Tracker ID`,`Data Curncy`,`Channel_id`,`Channel`
+      ,`CPA`,`Net Revenue`,`FTD`,`Signups`,`Clicks`
+      ,`CPA Val Ges`,`CPA Val Aff`,`RS Val Ges`,`RS Val Aff`,`Profit`'
+     ,'`Date`,`Owner_id`,`Owner`,`Operator_id`,`Operator`
+      ,`Advertiser_id`,`Brand`,`Account`,`Account_id`,`Affiliate_id`,`Affiliate`
+      ,`MS_id`,`Tracker_ID`,`Data_Currency`,`Channel_id`,`Channel`
+      ,`CPA`,`Net_Revenue`,`FTD`,`Signups`,`Clicks`
+      ,`CPA_Val_Ges`,`CPA_Val_Aff`,`RS_Val_Ges`,`RS_Val_Aff`,`Profit`'),'
+  FROM (
+',IF(v_Meta='YES',CONCAT(v_SQLmeta,'
+UNION ALL
+'),'')
+  ,v_SQLtotal,'
+UNION ALL
+(SELECT
+   2 AS `_ord`
+  ,',IF(v_Meta='YES','"data" AS `Meta`,',''),'
+   D.`Date`,D.`Owner_id`,D.`Owner`,D.`Operator_id`,D.`Operator`
+  ,D.`Advertiser_id`,D.`Brand`,D.`Account`,D.`Account_id`,D.`Affiliate_id`,D.`Affiliate`
+  ,D.`MS_id`,D.`Tracker_ID`,D.`Data_Currency`,D.`Channel_id`,D.`Channel`
+  ,D.`CPA`,D.`Net_Revenue`,D.`FTD`,D.`Signups`,D.`Clicks`
+  ,D.`CPA_Val_Ges`,D.`CPA_Val_Aff`,D.`RS_Val_Ges`,D.`RS_Val_Aff`,D.`Profit`
+ FROM DataRows D)
+) X'
+,v_OrderBy
+);
+
+IF v_Filters='YES' THEN SET v_SQL=v_SQLfilters; END IF;
+
+IF v_Debug!='NO' THEN SELECT v_SQL; END IF;
+
+IF v_Debug!='YES' THEN
+   SET @v_stmt_sql=v_SQL;
+   PREPARE stmt1 FROM @v_stmt_sql;
+   EXECUTE stmt1;
+   DEALLOCATE PREPARE stmt1;
+END IF;
+
+END$$
+DELIMITER ;
+
+/*
+  call Report_Dbd_Acum_All('');
+  call Report_Dbd_Acum_All('Date=2026-09-22');
+  call Report_Dbd_Acum_All('Date=2026-09-22,Operator_id=17');
+  call Report_Dbd_Acum_All('Date=2026-09-22,Operator_id=17,Advertiser_id=5');
+  call Report_Dbd_Acum_All('Date=2026-09-22,Operator_id=17,Advertiser_id=5,Account_id=ABC');
+  call Report_Dbd_Acum_All('Date=2026-09-22,Operator_id=17,Advertiser_id=5,Account_id=ABC,Affiliate_id=39');
+  call Report_Dbd_Acum_All('debug=yes');
+  call Report_Dbd_Acum_All('filters=yes');
+  call Report_Dbd_Acum_All('meta=no');
+*/

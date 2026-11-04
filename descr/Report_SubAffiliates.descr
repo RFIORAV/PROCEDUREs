@@ -1,0 +1,38 @@
+/*
+PROCEDURE_Report_SubAffiliates.sql - Report Sub Afiliates - Deals
+
+Descripción, cometido y funciones:
+Cometido: Reporte de SubAffiliates. Devuelve filas para consulta/exportación. Procedimiento Report_SubAffiliates. v1.2.3 12.06.2026 - Report Sub Afiliates - Deals
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Action, id , Sub Affiliate, SubAff name, Brand, Deal id, Deal, Valid From, Valid To, Value over CPA, % over RS, % over Comm, Updated on, User.
+Tablas clave: account_account, campaign_advertiser, master_affiliate_deals, master_affiliate_deals_per_affiliate, Main_Table_Data, Table_Data.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_SubAffiliates('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id     =[id de Afiliado]
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_SubAffiliates('Affiliate_id=442,debug=ye');
+
+*/

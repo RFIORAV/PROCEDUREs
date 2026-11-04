@@ -1,0 +1,38 @@
+/*
+PROCEDURE_Sync_MS_DbD_DbD_lm_byBrand.sql - Check Last Month Raw data by Brand_id
+
+Descripción, cometido y funciones:
+Cometido: Proceso de sincronización/replicación de datos entre fuentes del sistema. Procedimiento Sync_MS_DbD_DbD_lm_byBrand. Check/Update LM Raw data by Brand: Stored data Vs New downloaded data (DbD vs DbD_lm)
+Categoría: sincronización ETL entre tablas o entornos.
+Tablas clave: Snapshot_day_by_day, LM_minus_Dbd, Snapshot_day_by_day_lm, account_account, campaign_marketing_source, campaign_mkt_source_deal, campaign_username.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Sync_MS_DbD_DbD_lm_byBrand('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Mode:         = [ view | run ]
+                  view=Muestra las diferencias pero no las aplica
+                  run=Reemplaza contenido de DbD por DbD_LM para el Last Month
+Brand         =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Meta          =[No | Yes]. [yes] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Debug         =[No | Yes ]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Sync_MS_DbD_DbD_lm_byBrand(' '); -- Asumirá todos los defaults
+call Sync_MS_DbD_DbD_lm_byBrand('mode=view,Brand=lotomattica,debug=no');
+
+*/

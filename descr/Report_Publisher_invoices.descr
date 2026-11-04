@@ -1,0 +1,51 @@
+/*
+PROCEDURE_Report_Publisher_invoices_v1.sql - Report Invoices and Payment Publishers (campaign_publisher_invoice y campaign_publisher_receivable)
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Publisher invoices. Devuelve filas para consulta/exportación. Procedimiento Report_Publisher_invoices. v1.5 03.06.2026 Report Publisher invoices
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Action, Category, Status, Owner, Operator, Invoice address, Invoiced Month, Invoice Number, Invoice Date, Due Date, Payment Date, Invoice Total, Proforma Total, Invoice Diff, Currency, Invoice details, CPA, CPA Value, Net Revenue, net RS_Val, Generate invoice, Generated, Invoice File, Last Update, User, Bank account, Date Payment, Gross Amount, Transfer Currency, Credited Amount, Credited Currency, Remarks.
+Tablas clave: Main_Table_Data, account_account, campaign_publisher, campaign_publisher_invoice, VARCHAR, campaign_publisher_receivable.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Publisher_invoices('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+DataFrom        =[Invoices | Payments]. OPCIONAL. Default=Invoices
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Category        =[ALL | Invoice | Proforma]. OPCIONAL. Default=ALL
+Invoiced_Month  =[ALL | AAAA-MM | CM | LM | LAST6M | LAST12M ]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Invoice_id      =[ALL | id de Invoice]. OPCIONAL. Default=ALL. 
+Status_id       =[ALL | 1 | 0 | N]. OPCIONAL. Default=ALL. 1=Active 0=Inactive 4=Paused 6=Paused NM N=Other inactiv
+Recalc          =[Yes | No]. OPCIONAL. Default=No.
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Publisher_invoices('debug=ye'); -- Devuelve todas las MS
+call Report_Publisher_invoices('debug=ye,filters=yes');
+call Report_Publisher_invoices('debug=ye,filters=no,status=0');
+call Report_Publisher_invoices('debug=ye,filters=no,Invoiced_Month=CM');
+call Report_Publisher_invoices('debug=ye,filters=no,Invoiced_Month=LM');
+call Report_Publisher_invoices('debug=ye,filters=no,Invoiced_Month=LAST6M');
+call Report_Publisher_invoices('debug=ye,filters=no,Invoiced_Month=LAST12M');
+
+*/

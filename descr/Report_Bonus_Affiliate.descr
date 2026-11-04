@@ -1,0 +1,43 @@
+/*
+PROCEDURE_Report_Bonus_Affiliate.sql - Report Reglas Bonus Affiliate
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Bonus Affiliate. Devuelve filas para consulta/exportación. Procedimiento Report_Bonus_Affiliate. Report Bonus Affiliate
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Action, Status, Affiliate, Brand, Code to Aff (MS), Description, Valid From, Valid Until, Bonus Value, Currcy, CPA minimum, NR  minimum, Last Update, User.
+Tablas clave: Main_Table_Data, account_account, campaign_deal_affiliate_bonus, CURRENT_TIMESTAMP.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Bonus_Affiliate('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id    =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Brand           =[ALL | Brand]. OPCIONAL. Default=ALL.
+Status_bonus    =[ALL | valid | expired ]. OPCIONAL. Default=ALL.
+Status_id       =[ALL | 1 | 0]. OPCIONAL. Default=ALL. 1=Active 0=Inactive
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Bonus_Affiliate('debug=yes'); -- Devuelve todas las MS
+call Report_Bonus_Affiliate('debug=ye,filters=yes');
+call Report_Bonus_Affiliate('debug=ye,filters=no,status=0');
+
+*/

@@ -1,0 +1,28 @@
+/*
+PROCEDURE_Util_TableHistoryCompare.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Util_TableHistoryCompare` del dominio Util_TableHistoryCompare. Procedimiento Util_TableHistoryCompare. 01.09.2022 V1 Compara el diseño de dos tablas en dos db distintas. Genera ALTER para que la TableName1 en DBbase1 quede igual que TableName2 en DBreference 20.09.2022 V2 Optimización 20.09.2022 V2.1 Omite campos Auditoría cuando no es necesario 22.09.2022 V2.2 Campos Auditoría desde modelo db_settings 15.01.2024 v2.3 Validación existencia tablas Compara tabla History con su tabla. Genera ALTER
+Categoría: comparación / auditoría de diferencias.
+Tablas clave: SetFieldsTableHistory, SetFieldsTableBase, CURRENT_TIMESTAMP, SetFieldsTableBaseLastRow, SetFieldsTableAudit.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Util_TableHistoryCompare('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+TableName1 = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Util_TableHistoryCompare('Debug=KeyValues');
+call Util_TableHistoryCompare('Filters=Yes');
+
+*/

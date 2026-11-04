@@ -1,0 +1,53 @@
+/*
+PROCEDURE_Report_Economics_Affiliate_v1.sql - Reporte Financial Mov/Manual Adjustment según filtros
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Economics Affiliate dev. Devuelve filas para consulta/exportación. Procedimiento Report_Economics_Affiliate_dev. D:\Reinaldo\_FRA\db\PROCEDUREs\PROCEDURE_Report_Economics_Affiliate_v1.2_currency.sql Report Financial Mov / Manual Adjustments/ Commis Affiliate
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Affiliate, Date, Op, Desc, currency, Debit, Credit, Balance, Status, Last_Update, User.
+Tablas clave: Movements, account_account, account_financial_movement, account_manual_adjustments, util_settings, TEXT, VARCHAR, monthly_comms_affiliate, monthly_comms_affiliate_v5.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Report_Economics_Affiliate_dev('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Month_From      =[AAAA-MM]. OPCIONAL. Default=Last 6 Month.
+FinMov          =[Yes | No]. OPCIONAL. Incluir Financial Movements. Default=yes
+ManAdj          =[Yes | No]. OPCIONAL. Incluir Manual Adjustements. Default=yes
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+Operation       =[ALL | Product]. OPCIONAL. Default=ALL. Si tiene más de una palabra, separar con "!" en lugar de espacio
+Status          =[ALL | Status]. OPCIONAL. Default=ALL
+Search          =[(dato a buscar]. OPCIONAL. Busca string en Afiliate/Operation/Description/Extra
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+     
+Keys no utilizadas:
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+DealbyProduct   =[No | Yes]. Devuelve último deal activo por cada Product. OPCIONAL. Default=no.
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL. tiene prioridad sobre el resto de
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Economics_Affiliate(''); -- Devuelve todas los movimientos de los últimos 6 meses
+call Report_Economics_Affiliate('debug=ye,Affiliate_id=74,filters=no,meta=yes');
+call Report_Economics_Affiliate('debug=ye,search=invoice,filters=ye');
+call Report_Economics_Affiliate('Affiliate_id="39",status=active,meta=yes,debug=no');
+call Report_Economics_Affiliate('Affiliate_id=39,status=active,DealbyProduct=yes,debug=no');
+call Report_Economics_Affiliate_dev('Affiliate_id=39,debug=YE');
+
+*/

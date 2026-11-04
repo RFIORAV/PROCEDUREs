@@ -1,0 +1,37 @@
+/*
+PROCEDURE_Check_DbD.sql - Check Main Table vs Raw data table (fact1/DbD)
+
+Descripción, cometido y funciones:
+Cometido: Validación o diagnóstico; revisar discrepancias o reglas de negocio. Procedimiento Check_DbD_dev. 05.09.2022 V1 COMPARA Snapshot_day_by_day contra Snapshot_day_by_day_fact1. Devuelve diferencias Mes corriente a partir de día 6. Antes del 6, Last Month 19.10.2022 V1.1 Columna Meta 23.10.2022 Traducción de mensajes. Warning por Deal_Aff=0 07.12.2022 V1.2 Warning por Deal_Aff=0 & Deal_Ges=0. Check LM hasta día 20 06.08.2023 v1.5 Incluye campo `Origin` en grid Parametros (none) 10.01.2024 v1.5.1 Agrega campos al grid: Publisher_id,Advertiser_id,Publisher 11.01.2024 v1.5.2 Karen: preparación para invocar alta missing MS 10.04.2026 v1.6.1 Meta/grid: etiqueta columna nombre publisher -> Operator 13.05.2026 v1.6.2 Agrega parámetro de entrada varchar(20), asumiendo espacio en blanco 13.05.2026 v1.6.3 Agrega parseo key=value para Month y Filters. Filters=Yes devuelve solo Month actual para compatibilidad con invocación tipo multi query en Page=Check&Sync Agrega proyección de CPA a fin de mes con enfoque de regresión lineal simple. v1.6.3 13.05.2026 Check Main Table vs Raw data table (fact1/DbD)
+Categoría: validación, control de calidad o diagnóstico.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Date, Origin, Brand, Accnt id, Account name, Affiliate, Tracker id, Tracker name, Product, Country, MS_ID, Warning, CPAs, NR, Hour Update.
+Tablas clave: Snapshot_day_by_day_fact1, DailyAggregates, Tot_Fact1, CurrentMonthProgress, Detail_Fact1, GROUP, MonthlyStats, campaign_publisher.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Check_DbD_dev('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Month = [yyyy-mm]. OPCIONAL. Si no se informa, usa lógica por día del mes (mes actual o anterior).
+  Filters = [No | Yes]. OPCIONAL. Default=No. Si es Yes devuelve solo catálogo de filtros.
+
+Test:
+
+call Check_DbD_dev('Month=2026-05,Filters=No');
+call Check_DbD_dev('Filters=Yes');
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Check_DbD_dev('Debug=KeyValues');
+call Check_DbD_dev('Filters=Yes');
+
+*/

@@ -1,0 +1,64 @@
+/*
+PROCEDURE_MS_Switch_Affiliate_batch.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `MS_Switch_Affiliate_batch` del dominio MS_Switch_Affiliate_batch. Procedimiento MS_Switch_Affiliate_batch. Funcionalidades principales: Procedimiento MS_Switch_Affiliate_batch.
+Categoría: gestión / reportes de afiliados.
+Tablas clave: campaign_marketing_source, Snapshot_day_by_day_fact1, DATE, para, v_id.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call MS_Switch_Affiliate_batch('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Accounts_origen = [valor1^valor2^...]. Lista de cuentas origen (IDs), separadas por ^.
+Account_destino = [valor]. Cuenta destino (ID).
+Product         = [casino | sport]. Producto a procesar.
+Channel_parking = [valor]. Canal de parking en la cuenta destino.
+Lower_limit_cpa = [valor]. Umbral mínimo de Qualified_Players acumulados (últimos 3 meses).
+Deal_Valid_From = [yyyy-mm-dd]. Fecha efectiva para aplicar en los updates. Default = CURDATE()+7 días.
+                  Tener en cuenta como afecta a las ms que pasan a Parking
+Debug           = [No | Yes]. Default=No. Si Yes: sólo devuelve dos SELECT (paso 1 = mismas filas que el cursor; paso 2 = MS destino parking) y no ejecuta updates.
+
+- Migración masiva de Marketing Sources: Permite transferir múltiples fuentes de marketing desde varias cuentas origen a una cuenta destino
+- Validación de actividad: Solo migra MS con más de X jugadores calificados en los últimos 3 meses
+- Prevención de duplicados: Verifica que no existan registros duplicados en la cuenta destino antes de la migración
+- Actualización automática de estados: Marca las fuentes migradas como inactivas en la cuenta origen
+- Gestión de fechas: Permite fechas de validez futuras para asegurar una transición suave
+
+Características técnicas:
+
+- Procesamiento por lotes mediante cursores para manejo eficiente de múltiples registros
+- Implementación de manejo de errores con CONTINUE HANDLER
+- Modo Debug para verificación previa de registros afectados
+- Validaciones múltiples:
+  * Verificación de actividad histórica
+  * Control de duplicados
+  * Estado de agregación válido
+- Actualización atómica con LIMIT 1 para garantizar integridad
+- Trazabilidad mediante descripción automática de cambios
+- Preservación de información crítica: códigos de afiliado, canales y deals
+   
+   CALL MS_Switch_Affiliate_batch('Accounts_origen=26^28^45^69^85^87^92,Account_destino=86,Product=casino,Channel_parking=10,Lower_limit_cpa=30,Deal_Valid_From=2026-05-15,Debug=Yes');
+   CALL MS_Switch_Affiliate_batch('Accounts_origen=26^28^45^69^85^87^92,Account_destino=27,Product=sport,Channel_parking=10,Lower_limit_cpa=30,Deal_Valid_From=2026-05-15,Debug=Yes');
+   CALL MS_Switch_Affiliate_batch('Accounts_origen=229^230,Account_destino=111,Product=casino,Channel_parking=20,Lower_limit_cpa=30,Deal_Valid_From=2026-05-15,Debug=Yes');
+   CALL MS_Switch_Affiliate_batch('Accounts_origen=229^230,Account_destino=110,Product=sport,Channel_parking=20,Lower_limit_cpa=30,Deal_Valid_From=2026-05-15,Debug=Yes');
+   CALL MS_Switch_Affiliate_batch('Accounts_origen=34^35^36^37^236^237,Account_destino=86,Product=casino,Channel_parking=10,Lower_limit_cpa=30,Deal_Valid_From=2026-05-15,Debug=Yes');
+   CALL MS_Switch_Affiliate_batch('Accounts_origen=229,Account_destino=229,Product=casino,Channel_parking=621,Lower_limit_cpa=0,Deal_Valid_From=2026-05-01,Debug=no');
+   CALL MS_Switch_Affiliate_batch('Accounts_origen=230,Account_destino=230,Product=sport,Channel_parking=621,Lower_limit_cpa=0,Deal_Valid_From=2026-05-01,Debug=no');
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call MS_Switch_Affiliate_batch('Debug=KeyValues');
+call MS_Switch_Affiliate_batch('Filters=Yes');
+
+*/

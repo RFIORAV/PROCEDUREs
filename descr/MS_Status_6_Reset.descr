@@ -1,0 +1,34 @@
+/*
+PROCEDURE_MS_Status_6_Reset_v1.sql - MS_Status 6 (Paused until Next Month) Reset
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `MS_Status_6_Reset` del dominio MS_Status_6_Reset. Procedimiento MS_Status_6_Reset. MS_Status 6 (Paused until Next Month) Reset
+Categoría: marketing sources.
+Tablas clave: account_account, account_landing_pages, campaign_marketing_source, campaign_username, campaign_advertiser, campaign_publisher.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call MS_Status_6_Reset('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call MS_Status_6_Reset('debug=YES');
+
+*/

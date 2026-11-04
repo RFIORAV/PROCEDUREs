@@ -1,0 +1,641 @@
+/*
+PROCEDURE_monthly_comms_affiliate_v5.9.sql - COMISIONES del AFILIADO
+
+Descripción:
+  Calcula comisiones mensuales del afiliado (CPA + Revenue Share) sobre
+  Snapshot_day_by_day_fact2, con tratamiento de RS negativa, RS contra CPA
+  y acumulación según campaign_deal_affiliate.RS_Base.
+  Incluye referral Master Affiliate (master_affiliate_deals_v2) y bonus
+  por objetivos (campaign_deal_affiliate_bonus + _bonus_brand).
+
+Observaciones:
+  p_month = mes a procesar en formato YYYY-MM. Si es NULL, vacío o inválido,
+  usa CURDATE() - 2 meses como inicio del recálculo (borra e inserta desde ese mes).
+
+Modalidades RS (Deal_Aff_RS / Deal_Aff_RS_Against_CPA / Deal_Aff_RS_Base):
+  - Sin RS (Deal_Aff_RS=0): gross_RS_Val=0 y net_RS_Val=0
+  - Con RS y Deal_Aff_RS_Against_CPA=1: la RS negativa se resta de gross_CPA_Val
+    sin dejar net_CPA_Val negativo; el remanente de RS (si existe) sigue el flujo
+    de acumulación
+  - Con RS acumulado negativo (según base): net_RS_Val=0
+  - net_RS_Val nunca es negativo: las RS negativas del grupo se absorben en las
+    positivas del mismo KeyRSAcum (reparto proporcional del neto acumulado ≥ 0)
+  - La base de acumulación RS se toma de campaign_deal_affiliate.RS_Base
+    (fallback: Snapshot Deal_Aff_RS_Base; default brand):
+      account         → Affiliate_id + Account_id
+      Operator        → Affiliate_id + Publisher_id
+      brand           → Affiliate_id + Brand          (default)
+      Operator/brand  → Affiliate_id + Publisher_id + Brand
+    Cualquier otro valor se trata como brand.
+
+Referral / Master Affiliate (Comm_type=REFER) — master_affiliate_deals_v2:
+  Un registro por Sub_Affiliate_id + Month + Master. Por cada SA con CPA+RS:
+    Value_by_CPA        × CPA del SA
+    Perc_on_Tot_Comm    % sobre net_Total_comm del SA
+    Perc_on_CPA_Value   % sobre net_CPA_Val del SA
+    Perc_on_RS          % sobre net_RS_Val del SA
+    Perc_on_Margin_value % sobre Estimated_Margin (fact1: CPA/RS Gestor − Affiliate)
+
+Bonus (Comm_type=BONUS):
+  - Reglas activas (Status_id=1) en campaign_deal_affiliate_bonus_v2
+  - Si el mes solapa Date_Valid_From..Date_Valid_to (NULL to=permanente),
+    acumula CPA/NR/FTD de TODO el mes en fact2 para Affiliate_id + brands
+    (_bonus_brand; 0 filas=all) + Code_to_Affiliate (NULL/''=all)
+  - No recorta métricas al día Date_Valid_to: es NR/CPA/FTD del mes completo
+  - Umbrales CPA_min / NR_min / FTD_min (0=no aplica); Conditions ANY|ALL
+  - Importe = Bonus_Value + NR_mes * Bonus_NR / 100 + CPA_mes * Bonus_Value_per_CPA
+  - Account_id=0; Brand = brands CSV (Advertiser_Name) o ALL si no hay brands en hija
+
+Parámetros:
+  p_month VARCHAR(7)  -- YYYY-MM | NULL | ''
+
+Ejemplos:
+  CALL monthly_comms_affiliate_v5('2026-09');
+  CALL monthly_comms_affiliate_v5(NULL);
+  CALL monthly_comms_affiliate_v5('');
+
+	22.02.2022        Calculos sobre Snapshot_day_by_day_fact1
+	02.04.2022        Se agrega Tracker_ID para estadisticas
+	19.04.2022        Tratamiento de Deal por producto y fecha
+	27.07.2022        Multimoneda
+	13.09.2022        incluye Product
+   10.10.2022 V3.1   incluye group by deal
+   27.10.2022 V3.2   Nuevo cálculo de RS (acumula por Adv Account)
+   28.10.2022 V3.2   Utiliza Brand_Group y Brand_Group_Acum
+-- 28.11.2022 v3.3   Se trata nuevos campos is_indirect,Advertiser_indirect_id,Advertiser_indirect
+   21.01.2023 v3.4   Trata nuevo concepto Publisher (pagador)
+   31.01.2023 v3.5   `Area`
+   10.03.2023 v4     PROCEDURE_monthly_comms_gestor_v4_COver.sql - C.Over
+   11.03.2023 v4     PROCEDURE_monthly_comms_affiliate_v4_COver.sql - C.Over
+   11.01.2024 v4.1   Se agrega cálculo comision referral
+                     Modifica índices monthly_comms_affiliate
+                     compatibilidad con view_monthly_fact_aff4
+   29.07.2024 v5     Tratamiento de Currency del deal
+   09.08.2024 v5.1   Agregado channel y product
+   03.09.2024 v5.1.1 Fix cuando no existe deal afiliado (por error deshabilitando reglas en campaign_mkt_source_deal)
+              v5.2   Tramiento de RS negativas
+   06.09.2024 v5.2.1 Tratamiento From/To master_affiliate_deals_per_affiliate
+   19.09.2024 v5.2.2 Calculo deals referrer por Brand sobre Snapshot_day_by_day_fact2
+   01.11.2024 v5.3   Calculo deals referrer por Brand sobre monthly_comms_affiliate_v5
+                     Incluye % comisión sobre total comisión afiliado. Acumula a comision por CPA
+   20.11.2024 v5.4   Agregado Owner a la tabla
+   11.03.2025 v5.5   Recálculo restringido a mes corriente y mes anterior.
+                     Comm_type
+   11.09.2025 v5.6   Agregado parámetro de entrada para especificar el mes a procesar
+   01.04.2026 v5.6.1 Fix collation al comparar Month (uso de DATE)
+   04.08.2026 v5.6.2 Tratamiento de RS negativas
+   04.08.2026 v5.7   Refactor legibilidad/performance; RS por Deal_Aff_RS_Base
+                     (account | Operator | brand | Operator/brand); CASE unificado
+                     CPA-vs-RS y acumulación por KeyRSAcum
+   09.09.2026 v5.8   Bonus por objetivos (campaign_deal_affiliate_bonus_v2 + brands)
+   11.09.2026 v5.9   Referral con master_affiliate_deals_v2 (Value_by_CPA,
+                     Perc_on_Tot_Comm/CPA_Value/RS/Margin_value)
+**/
+
+-- DROP PROCEDURE IF EXISTS monthly_comms_affiliate_v5_dev;
+DROP PROCEDURE IF EXISTS monthly_comms_affiliate_v5;
+
+DELIMITER $$
+
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE monthly_comms_affiliate_v5(IN p_month VARCHAR(7))
+   COMMENT 'v5.9 11.09.2026 - Comisiones afiliado CPA+RS+REFER(v2)+bonus'
+   LANGUAGE SQL
+   SQL SECURITY DEFINER
+proc_label:BEGIN
+
+DECLARE v_Version          VARCHAR(32)  DEFAULT 'v5.9 11.09.2026';
+DECLARE v_LMonth           VARCHAR(7);
+DECLARE v_LMonthDate       DATE;
+DECLARE v_CurrentMonthDate DATE;
+
+SET v_LMonth = CASE
+    WHEN p_month IS NOT NULL
+         AND p_month != ''
+         AND p_month REGEXP '^[0-9]{4}-[0-9]{2}$'
+         AND STR_TO_DATE(CONCAT(p_month, '-01'), '%Y-%m-%d') IS NOT NULL
+    THEN p_month
+    ELSE LEFT(DATE_SUB(CURDATE(), INTERVAL 2 MONTH), 7)
+END;
+SET v_LMonthDate       = STR_TO_DATE(CONCAT(v_LMonth, '-01'), '%Y-%m-%d');
+SET v_CurrentMonthDate = STR_TO_DATE(CONCAT(DATE_FORMAT(CURDATE(), '%Y-%m'), '-01'), '%Y-%m-%d');
+
+-- Compatibilidad con bloques que aún referencian variables de sesión (LATERAL referrer)
+SET @LMonthDate        = v_LMonthDate;
+SET @CurrentMonthDate  = v_CurrentMonthDate;
+SET @Version           = v_Version;
+
+CREATE TABLE IF NOT EXISTS `monthly_comms_affiliate_v5` (
+	`Owner`            INT            NOT NULL DEFAULT '0',
+	`Account_id`       INT            NOT NULL DEFAULT '0',
+	`Comm_type`        VARCHAR(80)        NULL DEFAULT NULL COMMENT 'null/bonus',
+	`Month`            VARCHAR(7)     NOT NULL DEFAULT '0000-00',
+	`Affiliate`        VARCHAR(80)    NOT NULL DEFAULT '',
+	`Brand`            VARCHAR(80)    NOT NULL DEFAULT '',
+	`Affiliate_id`     INT            NOT NULL DEFAULT '0',
+	`Advertiser_id`    INT            NOT NULL DEFAULT '0',
+	`Currency`         VARCHAR(20)    NOT NULL DEFAULT '',
+	`CPA`              DECIMAL(12,0)  NOT NULL DEFAULT '0',
+	`net_CPA_Val`      DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`net_RS_Val`       DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`net_Total_comm`   DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`RS_carry_NCO`     DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`Net_Revenue`      DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`gross_CPA_Val`    DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`gross_RS_Val`     DECIMAL(12,2)  NOT NULL DEFAULT '0',
+	`Sub_Affiliate`    VARCHAR(80)        NULL DEFAULT '',
+	`Sub_Affiliate_id` INT                NULL DEFAULT '0',
+	`Product`          VARCHAR(80)        NULL DEFAULT '',
+	`Product_Real`     VARCHAR(80)        NULL DEFAULT '',
+	`Channel`          VARCHAR(80)        NULL DEFAULT '',
+	`Channel_id`       INT                NULL DEFAULT '0',
+	INDEX `Month_Affiliate_id` (`Month`, `Affiliate_id`)   USING BTREE,
+	INDEX `Affiliate_id_Month` (`Affiliate_id`, `Month`)   USING BTREE,
+	INDEX `Month_Advertiser_id` (`Month`, `Advertiser_id`) USING BTREE
+);
+
+DELETE FROM `monthly_comms_affiliate_v5`
+WHERE STR_TO_DATE(CONCAT(`Month`, '-01'), '%Y-%m-%d') >= v_LMonthDate;
+
+-- =====================================================================
+-- 1) CPA + RS del afiliado
+-- =====================================================================
+INSERT IGNORE INTO `monthly_comms_affiliate_v5`
+WITH
+-- Filas base: deal, moneda y clave de acumulación RS
+src AS (
+	SELECT
+		 f.`Owner`
+		,f.`Username_id`                                              AS `Account_id`
+		,LEFT(f.`DATE`, 7)                                            AS `Month`
+		,f.`Affiliate_id`
+		,f.`Advertiser_id`
+		,IFNULL(f.`Publisher_id`, 0)                                  AS `Publisher_id`
+		,IFNULL(f.`Qualified_Players`, 0)                             AS `Qualified_Players`
+		,IFNULL(f.`Net_Revenue`, 0)                                   AS `Net_Revenue`
+		,IFNULL(f.`Deal_Aff_id`, 0)                                   AS `Deal_Aff_id`
+		,IFNULL(f.`Deal_Aff_CPA`, 0)                                  AS `Deal_Aff_CPA`
+		,IFNULL(f.`Deal_Aff_Carry_Over`, 0)                           AS `CarryOver`
+		,IFNULL(f.`Deal_Aff_RS_Against_CPA`, 0)                       AS `CPAminusRS`
+		,IFNULL(f.`Deal_Aff_RS`, 0)                                   AS `Deal_Aff_RS`
+		-- Base de acumulación: deal (autoritativo); fallback fact2; default brand
+		,CASE LOWER(TRIM(IFNULL(NULLIF(TRIM(d.`RS_Base`), ''),
+		              IFNULL(NULLIF(TRIM(f.`Deal_Aff_RS_Base`), ''), 'brand'))))
+			WHEN 'account'        THEN 'account'
+			WHEN 'operator'       THEN 'operator'
+			WHEN 'operator/brand' THEN 'operator/brand'
+			ELSE 'brand'
+		 END                                                          AS `RS_Base`
+		,IFNULL(d.`Currency`, f.`Data_Currency`)                      AS `Deal_Currency`
+		,IFNULL(f.`CPA_Value_Affiliate`, 0)                           AS `gross_CPA_Val_raw`
+		,IFNULL(f.`Affiliate`, '')                                    AS `Affiliate`
+		,IFNULL(f.`Brand`, '')                                        AS `Brand`
+		,f.`Product`
+		,f.`Product_Real`
+		,IFNULL(f.`Channel`, '')                                      AS `Channel`
+		,IFNULL(f.`Channel_id`, 0)                                    AS `Channel_id`
+		,f.`Data_Currency`
+		,CASE
+			WHEN f.`Data_Currency` = d.`Currency` THEN 1
+			ELSE getCurrencyConversion(1, f.`Data_Currency`, d.`Currency`)
+		 END                                                          AS `FactorNR`
+	FROM `Snapshot_day_by_day_fact2` f
+	LEFT JOIN `campaign_deal_affiliate` d ON f.`Deal_Aff_id` = d.`id`
+	WHERE f.`DATE` >= v_LMonthDate
+),
+-- Agregación diaria → mensual por dimensiones de comisión
+monthly AS (
+	SELECT
+		 MAX(`Owner`)                                                 AS `Owner`
+		,`Account_id`
+		,`Month`
+		,`Affiliate_id`
+		,`Advertiser_id`
+		,`Publisher_id`
+		,SUM(`Qualified_Players`)                                     AS `CPA`
+		,SUM(`Net_Revenue`)                                           AS `Net_Revenue`
+		,ROUND(SUM(
+			CASE WHEN `Deal_Aff_CPA` > 0
+				THEN `Deal_Aff_CPA` * `Qualified_Players`
+				ELSE `gross_CPA_Val_raw`
+			END
+		 ), 2)                                                        AS `gross_CPA_Val`
+		,ROUND(SUM(
+			CASE WHEN `Deal_Aff_RS` = 0 THEN 0
+			     ELSE `Deal_Aff_RS` * `Net_Revenue` / 100 * `FactorNR`
+			END
+		 ), 2)                                                        AS `gross_RS_Val`
+		,`Deal_Aff_id`
+		,MAX(`Deal_Aff_CPA`)                                          AS `Deal_Aff_CPA`
+		,MAX(`CarryOver`)                                             AS `CarryOver`
+		,MAX(`CPAminusRS`)                                            AS `CPAminusRS`
+		,`RS_Base`
+		,MAX(`Deal_Aff_RS`)                                           AS `Deal_Aff_RS`
+		,`Deal_Currency`
+		,MAX(`Affiliate`)                                             AS `Affiliate`
+		,`Brand`
+		,MAX(`Product`)                                               AS `Product`
+		,`Product_Real`
+		,MAX(`Channel`)                                               AS `Channel`
+		,`Channel_id`
+		-- Clave de acumulación RS según Deal_Aff_RS_Base
+		,CASE `RS_Base`
+			WHEN 'account' THEN CONCAT('A|', `Affiliate_id`, '|', `Account_id`)
+			WHEN 'operator' THEN CONCAT('O|', `Affiliate_id`, '|', `Publisher_id`)
+			WHEN 'operator/brand' THEN CONCAT('OB|', `Affiliate_id`, '|', `Publisher_id`, '|', `Brand`)
+			ELSE CONCAT('B|', `Affiliate_id`, '|', `Brand`)
+		 END                                                          AS `KeyRSAcum`
+	FROM src
+	GROUP BY
+		 `Account_id`, `Month`, `Affiliate_id`, `Advertiser_id`, `Publisher_id`
+		,`Deal_Aff_id`, `RS_Base`, `Deal_Currency`, `Brand`, `Product_Real`, `Channel_id`
+	HAVING `CPA` <> 0 OR MAX(`Deal_Aff_RS`) <> 0
+),
+-- Netting CPA vs RS (sin UNION): Against_CPA solo aplica con RS negativa
+netted AS (
+	SELECT
+		 m.*
+		,CASE
+			WHEN m.`CPAminusRS` = 1 AND m.`gross_RS_Val` < 0 THEN
+				CASE
+					WHEN m.`gross_CPA_Val` >= ABS(m.`gross_RS_Val`)
+					THEN m.`gross_CPA_Val` - ABS(m.`gross_RS_Val`)
+					ELSE 0
+				END
+			ELSE m.`gross_CPA_Val`
+		 END                                                          AS `net_CPA_Val`
+		,CASE
+			WHEN m.`Deal_Aff_RS` = 0 THEN 0
+			WHEN m.`CPAminusRS` = 1 AND m.`gross_RS_Val` < 0 THEN
+				CASE
+					WHEN m.`gross_CPA_Val` >= ABS(m.`gross_RS_Val`)
+					THEN 0
+					ELSE m.`gross_CPA_Val` - ABS(m.`gross_RS_Val`)  -- remanente negativo
+				END
+			ELSE m.`gross_RS_Val`
+		 END                                                          AS `net_RS_pre`
+	FROM monthly m
+),
+-- Acumulación RS por Affiliate_id + KeyRSAcum + Month.
+-- Si el neto del grupo es < 0 → RS neta = 0; si ≥ 0, solo filas con RS positiva
+-- reciben un prorrateo del acumulado (net_RS_Val nunca negativo).
+rs_acum AS (
+	SELECT
+		 `Month`
+		,`Affiliate_id`
+		,`KeyRSAcum`
+		,SUM(`net_RS_pre`)                                            AS `net_RS_Acum`
+		,SUM(CASE WHEN `net_RS_pre` > 0 THEN `net_RS_pre` ELSE 0 END) AS `net_RS_Pos`
+	FROM netted
+	GROUP BY `Month`, `Affiliate_id`, `KeyRSAcum`
+),
+final_rows AS (
+	SELECT
+		 n.`Owner`
+		,n.`Account_id`
+		,n.`Month`
+		,n.`Affiliate`
+		,n.`Brand`
+		,n.`Affiliate_id`
+		,n.`Advertiser_id`
+		,n.`Deal_Currency`
+		,n.`CPA`
+		,n.`net_CPA_Val`
+		,CASE
+			WHEN a.`net_RS_Acum` <= 0 OR n.`net_RS_pre` <= 0 OR a.`net_RS_Pos` <= 0
+			THEN 0
+			ELSE ROUND(n.`net_RS_pre` * a.`net_RS_Acum` / a.`net_RS_Pos`, 2)
+		 END                                                          AS `net_RS_Val`
+		,n.`Net_Revenue`
+		,n.`gross_CPA_Val`
+		,n.`gross_RS_Val`
+		,n.`Product`
+		,n.`Product_Real`
+		,n.`Channel`
+		,n.`Channel_id`
+	FROM netted n
+	INNER JOIN rs_acum a
+		ON a.`Month` = n.`Month`
+	   AND a.`Affiliate_id` = n.`Affiliate_id`
+	   AND a.`KeyRSAcum` = n.`KeyRSAcum`
+)
+SELECT
+	 MAX(`Owner`)                                                     AS `Owner`
+	,`Account_id`
+	,'CPA+RS'                                                         AS `Comm_type`
+	,`Month`
+	,MAX(`Affiliate`)                                                 AS `Affiliate`
+	,MAX(`Brand`)                                                     AS `Brand`
+	,`Affiliate_id`
+	,`Advertiser_id`
+	,MAX(`Deal_Currency`)                                             AS `Deal_Currency`
+	,ROUND(SUM(`CPA`), 0)                                             AS `CPA`
+	,ROUND(SUM(`net_CPA_Val`), 2)                                     AS `net_CPA_Val`
+	,ROUND(SUM(`net_RS_Val`), 2)                                      AS `net_RS_Val`
+	,ROUND(SUM(`net_CPA_Val`) + SUM(`net_RS_Val`), 2)                 AS `net_Total_comm`
+	,0                                                                AS `RS_carry_NCO`
+	,ROUND(SUM(`Net_Revenue`), 2)                                     AS `Net_Revenue`
+	,ROUND(SUM(`gross_CPA_Val`), 2)                                   AS `gross_CPA_Val`
+	,ROUND(SUM(`gross_RS_Val`), 2)                                    AS `gross_RS_Val`
+	,' '                                                              AS `Sub_Affiliate`
+	,0                                                                AS `Sub_Affiliate_id`
+	,MAX(`Product`)                                                   AS `Product`
+	,MAX(`Product_Real`)                                              AS `Product_Real`
+	,MAX(`Channel`)                                                   AS `Channel`
+	,MAX(`Channel_id`)                                                AS `Channel_id`
+FROM final_rows
+GROUP BY `Affiliate_id`, `Account_id`, `Advertiser_id`, `Month`
+ORDER BY `Affiliate_id`, `Account_id`, `Advertiser_id`, `Month`
+;
+
+-- =====================================================================
+-- 2) Comisión Master Aff / Referrer (master_affiliate_deals_v2)
+--    Un registro REFER por Sub_Affiliate_id + Month + Master.
+-- =====================================================================
+INSERT IGNORE INTO `monthly_comms_affiliate_v5`
+WITH
+Master_Sub AS (
+	SELECT
+		 M.`Master_Affiliate_id`                                      AS `Master_Affiliate_id`
+		,MC.`username`                                                AS `Master`
+		,M.`Sub_Affiliate_id`                                         AS `Sub_Affiliate_id`
+		,AC.`username`                                                AS `Sub_Affiliate`
+		,IFNULL(M.`Advertiser_id`, 0)                                 AS `Advertiser_id`
+		,IFNULL(M.`Status_id`, '1')                                   AS `Status_id`
+		,M.`Valid_From`
+		,M.`Valid_To`
+		,M.`Deal_id`
+		,IFNULL(MD.`Value_by_CPA`, 0)                                 AS `Value_by_CPA`
+		,IFNULL(MD.`Perc_on_Tot_Comm`, 0)                             AS `Perc_on_Tot_Comm`
+		,IFNULL(MD.`Perc_on_CPA_Value`, 0)                            AS `Perc_on_CPA_Value`
+		,IFNULL(MD.`Perc_on_RS`, 0)                                   AS `Perc_on_RS`
+		,IFNULL(MD.`Perc_on_Margin_value`, 0)                         AS `Perc_on_Margin_value`
+		,IFNULL(MD.`Deal_Currency`, 'EUR')                            AS `Deal_Currency`
+	FROM `master_affiliate_deals_per_affiliate` M
+	LEFT JOIN `account_account` AC           ON M.`Sub_Affiliate_id` = AC.`id`
+	LEFT JOIN `account_account` MC           ON M.`Master_Affiliate_id` = MC.`id`
+	LEFT JOIN `master_affiliate_deals_v2` MD ON M.`Deal_id` = MD.`id`
+),
+-- SA+mes con producción CPA+RS
+sa_months AS (
+	SELECT
+		 C.`Month`
+		,C.`Affiliate_id`                                             AS `Sub_Affiliate_id`
+		,MAX(C.`Affiliate`)                                           AS `Sub_Affiliate`
+		,MAX(C.`Owner`)                                               AS `Owner`
+		,SUM(C.`CPA`)                                                 AS `CPA`
+		,SUM(C.`net_CPA_Val`)                                         AS `net_CPA_Val`
+		,SUM(C.`net_RS_Val`)                                          AS `net_RS_Val`
+		,SUM(C.`net_Total_comm`)                                      AS `net_Total_comm`
+		,SUM(C.`Net_Revenue`)                                         AS `Net_Revenue`
+	FROM `monthly_comms_affiliate_v5` C
+	WHERE STR_TO_DATE(CONCAT(C.`Month`, '-01'), '%Y-%m-%d') >= v_LMonthDate
+	  AND C.`Comm_type` = 'CPA+RS'
+	GROUP BY C.`Month`, C.`Affiliate_id`
+),
+-- Un deal MA por SA+mes (prioridad: Advertiser_id=0 / ALL brands)
+sa_deal AS (
+	SELECT
+		 S.`Month`
+		,S.`Sub_Affiliate_id`
+		,S.`Sub_Affiliate`
+		,S.`Owner`
+		,S.`CPA`
+		,S.`net_CPA_Val`
+		,S.`net_RS_Val`
+		,S.`net_Total_comm`
+		,S.`Net_Revenue`
+		,MS.`Master_Affiliate_id`
+		,MS.`Master`
+		,MS.`Value_by_CPA`
+		,MS.`Perc_on_Tot_Comm`
+		,MS.`Perc_on_CPA_Value`
+		,MS.`Perc_on_RS`
+		,MS.`Perc_on_Margin_value`
+		,MS.`Deal_Currency`
+	FROM sa_months S
+	INNER JOIN LATERAL (
+		SELECT *
+		FROM Master_Sub MS
+		WHERE MS.`Sub_Affiliate_id` = S.`Sub_Affiliate_id`
+		  AND MS.`Status_id` = '1'
+		  AND STR_TO_DATE(CONCAT(S.`Month`, '-01'), '%Y-%m-%d') >= MS.`Valid_From`
+		  AND STR_TO_DATE(CONCAT(S.`Month`, '-01'), '%Y-%m-%d')
+		      <= COALESCE(MS.`Valid_To`, v_CurrentMonthDate)
+		ORDER BY CASE WHEN MS.`Advertiser_id` = 0 THEN 0 ELSE 1 END
+		        ,MS.`Advertiser_id` DESC
+		LIMIT 1
+	) AS MS
+),
+-- Margen estimado Network−Affiliate por SA+mes (fact1)
+sa_margin AS (
+	SELECT
+		 LEFT(f.`DATE`, 7)                                            AS `Month`
+		,f.`Affiliate_id`
+		,SUM(IFNULL(f.`CPA_Value_Gestor`, 0) - IFNULL(f.`CPA_Value_Affiliate`, 0)
+		   + IFNULL(f.`Revenue_Share_Gestor`, 0) - IFNULL(f.`Revenue_Share_Affiliate`, 0)
+		 )                                                            AS `Estimated_Margin`
+	FROM `Snapshot_day_by_day_fact1` f
+	WHERE f.`DATE` >= v_LMonthDate
+	GROUP BY LEFT(f.`DATE`, 7), f.`Affiliate_id`
+)
+SELECT
+	 D.`Owner`
+	,0                                                                AS `Account_id`
+	,'REFER'                                                          AS `Comm_type`
+	,D.`Month`
+	,D.`Master`                                                       AS `Affiliate`
+	,'ALL'                                                            AS `Brand`
+	,D.`Master_Affiliate_id`                                          AS `Affiliate_id`
+	,0                                                                AS `Advertiser_id`
+	,D.`Deal_Currency`
+	,D.`CPA`
+	,ROUND(
+		  D.`CPA` * D.`Value_by_CPA`
+		+ D.`net_CPA_Val` * D.`Perc_on_CPA_Value` / 100
+	 , 2)                                                             AS `net_CPA_Val`
+	,ROUND(D.`net_RS_Val` * D.`Perc_on_RS` / 100, 2)                 AS `net_RS_Val`
+	,ROUND(
+		  D.`CPA` * D.`Value_by_CPA`
+		+ D.`net_CPA_Val` * D.`Perc_on_CPA_Value` / 100
+		+ D.`net_RS_Val` * D.`Perc_on_RS` / 100
+		+ D.`net_Total_comm` * D.`Perc_on_Tot_Comm` / 100
+		+ IFNULL(Em.`Estimated_Margin`, 0) * D.`Perc_on_Margin_value` / 100
+	 , 2)                                                             AS `net_Total_comm`
+	,0                                                                AS `RS_carry_NCO`
+	,D.`Net_Revenue`
+	,0                                                                AS `gross_CPA_Val`
+	,0                                                                AS `gross_RS_Val`
+	,D.`Sub_Affiliate`                                                AS `Sub_Affiliate`
+	,D.`Sub_Affiliate_id`                                             AS `Sub_Affiliate_id`
+	,''                                                               AS `Product`
+	,''                                                               AS `Product_Real`
+	,''                                                               AS `Channel`
+	,0                                                                AS `Channel_id`
+FROM sa_deal D
+LEFT JOIN sa_margin Em
+	ON Em.`Affiliate_id` = D.`Sub_Affiliate_id`
+   AND Em.`Month` = D.`Month`
+WHERE ROUND(
+		  D.`CPA` * D.`Value_by_CPA`
+		+ D.`net_CPA_Val` * D.`Perc_on_CPA_Value` / 100
+		+ D.`net_RS_Val` * D.`Perc_on_RS` / 100
+		+ D.`net_Total_comm` * D.`Perc_on_Tot_Comm` / 100
+		+ IFNULL(Em.`Estimated_Margin`, 0) * D.`Perc_on_Margin_value` / 100
+	 , 2) <> 0
+ORDER BY D.`Master_Affiliate_id`, D.`Sub_Affiliate_id`, D.`Month`
+;
+
+-- =====================================================================
+-- 3) Bonus por objetivos (campaign_deal_affiliate_bonus_v2 + _brand)
+-- =====================================================================
+INSERT IGNORE INTO `monthly_comms_affiliate_v5`
+WITH
+bonus_rules AS (
+	SELECT
+		 b.`id`                                                         AS `Bonus_id`
+		,b.`Affiliate_id`                                               AS `Rule_Affiliate_id`
+		,NULLIF(TRIM(IFNULL(b.`Code_to_Affiliate`, '')), '')            AS `Code_to_Affiliate`
+		,b.`Date_Valid_From`
+		,IFNULL(b.`Date_Valid_to`, '9999-12-31')                        AS `Date_Valid_to`
+		,IFNULL(b.`Bonus_Value`, 0)                                     AS `Bonus_Value`
+		,IFNULL(b.`Bonus_NR`, 0)                                        AS `Bonus_NR`
+		,IFNULL(b.`Bonus_Value_per_CPA`, 0)                             AS `Bonus_Value_per_CPA`
+		,IFNULL(NULLIF(TRIM(b.`Currency`), ''), 'EUR')                  AS `Currency`
+		,UPPER(TRIM(IFNULL(b.`Conditions`, 'ANY')))                     AS `Conditions`
+		,IFNULL(b.`CPA_min`, 0)                                         AS `CPA_min`
+		,IFNULL(b.`NR_min`, 0)                                          AS `NR_min`
+		,IFNULL(b.`FTD_min`, 0)                                         AS `FTD_min`
+		,EXISTS (
+			SELECT 1
+			FROM `campaign_deal_affiliate_bonus_brand` bb
+			WHERE bb.`Bonus_id` = b.`id`
+		 )                                                              AS `Has_Brands`
+		-- Brands CSV desde hija; sin filas => ALL (máx. 80 por columna Brand)
+		,LEFT(IFNULL((
+			SELECT GROUP_CONCAT(DISTINCT a.`Advertiser_Name` ORDER BY a.`Advertiser_Name` SEPARATOR ',')
+			FROM `campaign_deal_affiliate_bonus_brand` bb
+			INNER JOIN `campaign_advertiser` a ON a.`id` = bb.`Advertiser_id`
+			WHERE bb.`Bonus_id` = b.`id`
+		 ), 'ALL'), 80)                                                 AS `Brand`
+	FROM `campaign_deal_affiliate_bonus_v2` b
+	WHERE IFNULL(b.`Status_id`, 0) = 1
+	  AND b.`Date_Valid_From` IS NOT NULL
+	  AND b.`Date_Valid_From` <= LAST_DAY(v_CurrentMonthDate)
+	  AND IFNULL(b.`Date_Valid_to`, '9999-12-31') >= v_LMonthDate
+),
+-- Todo el mes: aff + brand/MS; vigencia de regla por solape de mes (no por día)
+bonus_agg AS (
+	SELECT
+		 r.`Bonus_id`
+		,LEFT(f.`DATE`, 7)                                              AS `Month`
+		,f.`Affiliate_id`
+		,MAX(f.`Owner`)                                                 AS `Owner`
+		,0                                                              AS `Account_id`
+		,MAX(IFNULL(f.`Affiliate`, ''))                                 AS `Affiliate`
+		,r.`Brand`
+		,r.`Currency`
+		,r.`Bonus_Value`
+		,r.`Bonus_NR`
+		,r.`Bonus_Value_per_CPA`
+		,r.`Conditions`
+		,r.`CPA_min`
+		,r.`NR_min`
+		,r.`FTD_min`
+		,CASE WHEN r.`Has_Brands` AND COUNT(DISTINCT f.`Advertiser_id`) = 1
+			THEN MAX(f.`Advertiser_id`)
+			ELSE 0
+		 END                                                            AS `Advertiser_id`
+		,SUM(IFNULL(f.`Qualified_Players`, 0))                          AS `CPA`
+		,SUM(IFNULL(f.`Net_Revenue`, 0))                                AS `Net_Revenue`
+		,SUM(IFNULL(f.`First_Time_Deposit`, 0))                         AS `FTD`
+	FROM bonus_rules r
+	INNER JOIN `Snapshot_day_by_day_fact2` f
+		ON f.`DATE` >= v_LMonthDate
+	   AND LEFT(f.`DATE`, 7) >= LEFT(r.`Date_Valid_From`, 7)
+	   AND LEFT(f.`DATE`, 7) <= LEFT(r.`Date_Valid_to`, 7)
+	   AND (r.`Rule_Affiliate_id` IS NULL
+	        OR r.`Rule_Affiliate_id` = 0
+	        OR r.`Rule_Affiliate_id` = f.`Affiliate_id`)
+	   AND (r.`Code_to_Affiliate` IS NULL
+	        OR UPPER(TRIM(IFNULL(f.`Code_To_Affiliate`, '')))
+	           = UPPER(r.`Code_to_Affiliate`))
+	   AND (
+			NOT r.`Has_Brands`
+			OR EXISTS (
+				SELECT 1
+				FROM `campaign_deal_affiliate_bonus_brand` bb
+				WHERE bb.`Bonus_id` = r.`Bonus_id`
+				  AND bb.`Advertiser_id` = f.`Advertiser_id`
+			)
+	   )
+	GROUP BY
+		 r.`Bonus_id`, LEFT(f.`DATE`, 7), f.`Affiliate_id`
+		,r.`Brand`, r.`Currency`
+		,r.`Bonus_Value`, r.`Bonus_NR`, r.`Bonus_Value_per_CPA`
+		,r.`Conditions`, r.`CPA_min`, r.`NR_min`, r.`FTD_min`, r.`Has_Brands`
+),
+bonus_ok AS (
+	SELECT
+		 a.*
+		,ROUND(
+			 a.`Bonus_Value`
+			 + a.`Net_Revenue` * a.`Bonus_NR` / 100
+			 + a.`CPA` * a.`Bonus_Value_per_CPA`
+		 , 2)                                                           AS `Bonus_Amount`
+	FROM bonus_agg a
+	WHERE
+		CASE
+			WHEN a.`Conditions` = 'ALL' THEN
+				(a.`CPA_min` <= 0 OR a.`CPA` >= a.`CPA_min`)
+				AND (a.`NR_min`  <= 0 OR a.`Net_Revenue` >= a.`NR_min`)
+				AND (a.`FTD_min` <= 0 OR a.`FTD` >= a.`FTD_min`)
+			ELSE
+				(
+					(a.`CPA_min` <= 0 AND a.`NR_min` <= 0 AND a.`FTD_min` <= 0)
+					OR (a.`CPA_min` > 0 AND a.`CPA` >= a.`CPA_min`)
+					OR (a.`NR_min`  > 0 AND a.`Net_Revenue` >= a.`NR_min`)
+					OR (a.`FTD_min` > 0 AND a.`FTD` >= a.`FTD_min`)
+				)
+		END
+	  AND ROUND(
+			 a.`Bonus_Value`
+			 + a.`Net_Revenue` * a.`Bonus_NR` / 100
+			 + a.`CPA` * a.`Bonus_Value_per_CPA`
+		 , 2) <> 0
+)
+SELECT
+	 `Owner`
+	,`Account_id`
+	,'BONUS'                                                          AS `Comm_type`
+	,`Month`
+	,`Affiliate`
+	,`Brand`
+	,`Affiliate_id`
+	,`Advertiser_id`
+	,`Currency`
+	,ROUND(`CPA`, 0)                                                  AS `CPA`
+	,`Bonus_Amount`                                                   AS `net_CPA_Val`
+	,0                                                                AS `net_RS_Val`
+	,`Bonus_Amount`                                                   AS `net_Total_comm`
+	,0                                                                AS `RS_carry_NCO`
+	,ROUND(`Net_Revenue`, 2)                                          AS `Net_Revenue`
+	,0                                                                AS `gross_CPA_Val`
+	,0                                                                AS `gross_RS_Val`
+	,' '                                                              AS `Sub_Affiliate`
+	,0                                                                AS `Sub_Affiliate_id`
+	,''                                                               AS `Product`
+	,''                                                               AS `Product_Real`
+	,''                                                               AS `Channel`
+	,0                                                                AS `Channel_id`
+FROM bonus_ok
+ORDER BY `Affiliate_id`, `Month`, `Bonus_id`
+;
+
+END$$
+DELIMITER ;
+
+/*
+CALL monthly_comms_affiliate_v5('2026-03');
+CALL monthly_comms_affiliate_v5(NULL);
+CALL monthly_comms_affiliate_v5('');
+*/

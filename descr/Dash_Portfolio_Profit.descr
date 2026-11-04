@@ -1,0 +1,41 @@
+/*
+PROCEDURE_Dash_Portfolio_Profit.sql - Dashboard Portfolio Profit/CPA/NR/FTD by Affiliate
+
+Descripción, cometido y funciones:
+Cometido: Dashboard: Portfolio Profit. Agrega métricas para visualización en panel. Procedimiento Dash_Portfolio_Profit. Dashboard Portfolio. PERFORMANCE - Profit/CPA/NR/FTD by Affiliate
+Categoría: dashboard con KPIs y agregaciones para paneles.
+Tablas clave: grossCommByMonth_fact1, Snapshot_day_by_day_fact1, campaign_publisher.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Dash_Portfolio_Profit('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+Param           =[ALL | Profit | Profit_CPA | Profit_RS | CPA | NR | FTD]. OPCIONAL. Default=Profit
+Publisher_id    =[ALL | Publisher_id]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Affiliate_id    =[ALL | id del Affiliate_id]. OPCIONAL. Default=ALL
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query. [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Dash_Portfolio_Profit(''); -- Asumirá todos los defaults
+call Dash_Portfolio_Profit('param=profit_cpa,publisher_id=all,advertiser_id=all,filters=yes,meta=yes,debug=yes');
+call Dash_Portfolio_Profit('param=profit_rs,publisher_id=all,advertiser_id=all,filters=ye,meta=yes,debug=ye');
+call Dash_Portfolio_Profit('param=cpa,publisher_id=all,advertiser_id=all,filters=yes,meta=yes,debug=yes');
+call Dash_Portfolio_Profit('param=nr,publisher_id=all,advertiser_id=all,filters=yes,meta=yes,debug=yes');
+call Dash_Portfolio_Profit('param=ftd,publisher_id=all,advertiser_id=all,filters=yes,meta=yes,debug=yes');
+
+*/

@@ -1,0 +1,36 @@
+/*
+PROCEDURE_DbD_fact_data_to_history_v1.1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `DbD_fact_data_to_history` del dominio DbD_fact_data_to_history. Procedimiento DbD_fact_data_to_history. v1.1 28.06.2026 - Pasa datos de Snapshot_day_by_day_fact1/2 a Snapshot_day_by_day_fact1_YYYY / fact2_YYYY; Archiva fact1/2 a tablas anuales; elimina origen solo si la transferencia está verificada
+Categoría: datos day-by-day (DbD).
+Tablas clave: Snapshot_day_by_day_fact1, Snapshot_day_by_day_fact2, Snapshot_day_by_day_fact1_, Snapshot_day_by_day_fact2_.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Transaccional: START TRANSACTION / COMMIT / ROLLBACK.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call DbD_fact_data_to_history('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+month_param = [YYYY-MM | vacío]. Mes límite de antigüedad a archivar.
+    Default (vacío): LEFT(DATE_SUB(CURDATE(), INTERVAL 24 MONTH), 7).
+
+  - Pasa datos de Snapshot_day_by_day_fact1/2 a Snapshot_day_by_day_fact1_YYYY / fact2_YYYY
+  - Transfiere del 01-01 del año indicado hasta month_param (inclusive)
+  - Solo elimina del origen tras comprobar que cada fila existe en la tabla destino
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL DbD_fact_data_to_history_dev('');
+CALL DbD_fact_data_to_history_dev('2022-12');
+
+*/

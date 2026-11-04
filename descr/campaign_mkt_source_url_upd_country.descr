@@ -1,0 +1,30 @@
+/*
+PROCEDURE_campaign_mkt_source_url_upd_country_v1.sql - Update Country_web from account_landing_pages
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `campaign_mkt_source_url_upd_country` del dominio campaign_mkt_source_url_upd_country. Procedimiento campaign_mkt_source_url_upd_country. Update Country_web from account_landing_pages
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: account_landing_pages, campaign_mkt_source_url, Country_web, campaign_marketing_source.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call campaign_mkt_source_url_upd_country('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call campaign_mkt_source_url_upd_country('Debug=KeyValues');
+call campaign_mkt_source_url_upd_country('Filters=Yes');
+
+*/

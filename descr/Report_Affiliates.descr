@@ -1,0 +1,46 @@
+/*
+PROCEDURE_Report_Affiliates.sql - Report Affiliates (account_account)
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Affiliates. Devuelve filas para consulta/exportación. Procedimiento Report_Affiliates. v1.6.2 26.06.2026 - Report Affiliates
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): id, username, first name, last name, Referrer, tag_info, Status, date joined, last login, is active, is staff, is forex, is gambling, email, Last Update, User.
+Tablas clave: account_account, master_affiliate_deals_per_affiliate, Main_Table_Data, account_account_groups, account_account_tags, CURRENT_TIMESTAMP, account_account_tags_list, FilterByTag.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Affiliates('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id, Channel_id (no ALL). Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Mode            =[Affiliate | Gestor | MAF]. OPCIONAL. Default=affiliate
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO para MODE=MAF
+LoginInit       =[Caracteres]. OPCIONAL. Default=ALL. Primeras letras del login
+Type_Aff        =[ALL | MAF | REF | REFD]. Reporta sólo un tipo de Afiliado o todos. OPCIONAL. Default=ALL.
+Status          =[ALL | 1 | 0]. OPCIONAL. Default=ALL. 1=Active 0=Inactive
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [Yes]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Affiliates(''); -- Devuelve todos los datos
+call Report_Affiliates('debug=ye,filters=yes');
+call Report_Affiliates('debug=ye,filters=YEs,TAG=9');
+call Report_Affiliates('debug=ye,filters=no,Type_Aff=REF');
+call Report_Affiliates('debug=ye,filters=no,Type_Aff=REFD');
+
+*/

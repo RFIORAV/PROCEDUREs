@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Add Bonus</title>
+  <style>
+    :root {
+      --bg-page: #07111f;
+      --bg-modal: #0b1626;
+      --bg-input: #0f1c2e;
+      --border: #2a3b52;
+      --border-focus: #4a6a94;
+      --text: #f3f6fb;
+      --muted: #8fa3bd;
+      --label: #c9d6e8;
+      --accent: #e11d2e;
+      --accent-hover: #c41625;
+      --chip: #15263d;
+      --ok: #2ecc71;
+      --radius: 10px;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background: radial-gradient(1200px 600px at 50% -10%, #132744 0%, var(--bg-page) 55%);
+      color: var(--text);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px 48px;
+    }
+
+    .backdrop {
+      width: 100%;
+      max-width: 460px;
+    }
+
+    .modal {
+      background: var(--bg-modal);
+      border: 1px solid #1c2b40;
+      border-radius: 16px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      padding: 22px 22px 18px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .header h1 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 1.55rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .header p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .close {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      font-size: 1.35rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 6px;
+    }
+
+    .close:hover { color: var(--text); }
+
+    form { display: grid; gap: 14px; }
+
+    .field { display: grid; gap: 5px; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    label {
+      color: var(--label);
+      font-size: 0.86rem;
+      font-weight: 600;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.75rem;
+      line-height: 1.35;
+      margin: 0;
+    }
+
+    .section {
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid #1a2a3f;
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      color: #a9bdd8;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    input[type="number"],
+    select,
+    textarea {
+      width: 100%;
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 11px 12px;
+      font: inherit;
+      font-size: 0.95rem;
+      outline: none;
+    }
+
+    textarea { min-height: 64px; resize: vertical; }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(74, 106, 148, 0.25);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      min-height: 44px;
+      padding: 8px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--chip);
+      border: 1px solid #2e4666;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.82rem;
+    }
+
+    .chip button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.9rem;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .add-brand {
+      border: 1px dashed #3a5475;
+      background: transparent;
+      color: #b7c9e0;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+
+    .add-brand:hover { border-color: #5b7aa3; color: var(--text); }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 8px;
+      padding-top: 14px;
+    }
+
+    .btn {
+      border-radius: 10px;
+      padding: 10px 18px;
+      font: inherit;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid #6b7f99;
+    }
+
+    .btn-cancel:hover { border-color: #93a7c2; }
+
+    .btn-submit {
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid var(--accent);
+    }
+
+    .btn-submit:hover { background: var(--accent-hover); }
+
+    .formula {
+      margin: 0;
+      padding: 10px 12px;
+      background: #101f33;
+      border: 1px solid #243652;
+      border-radius: 8px;
+      color: #b8cbe3;
+      font-size: 0.78rem;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 520px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="backdrop">
+    <div class="modal" role="dialog" aria-labelledby="bonus-title">
+      <div class="header">
+        <div>
+          <h1 id="bonus-title">Add Bonus</h1>
+          <p>Configure an affiliate performance bonus rule</p>
+        </div>
+        <button type="button" class="close" aria-label="Close">×</button>
+      </div>
+
+      <form action="#" method="post" onsubmit="return false;">
+        <div class="field">
+          <label for="status">Rule status</label>
+          <select id="status" name="Status_id">
+            <option value="1" selected>Enabled</option>
+            <option value="0">Disabled</option>
+          </select>
+          <p class="hint">Only enabled rules are evaluated in the monthly commission run.</p>
+        </div>
+
+        <div class="field">
+          <label for="description">Description</label>
+          <input id="description" name="Description" type="text" placeholder="e.g. Q3 PlanetWin incentive" />
+          <p class="hint">Internal label used to identify this bonus on commission statements.</p>
+        </div>
+
+        <div class="field">
+          <label for="affiliate">Affiliate</label>
+          <select id="affiliate" name="Affiliate_id">
+            <option value="">Any affiliate</option>
+            <option value="440" selected>EnricoBetTipster (440)</option>
+            <option value="55">Aff55</option>
+          </select>
+          <p class="hint">Leave as “Any affiliate” to apply the rule to all affiliates.</p>
+        </div>
+
+        <div class="field">
+          <label for="ms">Marketing source</label>
+          <select id="ms" name="Code_to_Affiliate">
+            <option value="" selected>Any marketing source</option>
+            <option value="ENRICO_CASINO">ENRICO_CASINO</option>
+            <option value="KINGBET">KINGBET</option>
+          </select>
+          <p class="hint">Optional tracker code (`Code_to_Affiliate`). “Any” includes all marketing sources.</p>
+        </div>
+
+        <div class="field">
+          <label>Brands</label>
+          <div class="chips" aria-label="Selected brands">
+            <span class="chip">PlanetWin365 <button type="button" aria-label="Remove PlanetWin365">×</button></span>
+            <button type="button" class="add-brand">+ Add brand</button>
+          </div>
+          <p class="hint">One or more brands (`Advertiser_id`). Leave empty to include all brands.</p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="from">Valid from</label>
+            <input id="from" name="Date_Valid_From" type="date" value="2026-09-01" required />
+            <p class="hint">Required. First month of eligibility.</p>
+          </div>
+          <div class="field">
+            <label for="to">Valid to</label>
+            <input id="to" name="Date_Valid_to" type="date" />
+            <p class="hint">Optional. Leave blank for an open-ended (permanent) rule.</p>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="currency">Currency</label>
+            <select id="currency" name="Currency">
+              <option value="EUR" selected>EUR</option>
+              <option value="USD">USD</option>
+              <option value="GBP">GBP</option>
+            </select>
+            <p class="hint">Currency of the bonus payout amounts.</p>
+          </div>
+          <div class="field">
+            <label for="conditions">Threshold logic</label>
+            <select id="conditions" name="Conditions">
+              <option value="ANY" selected>Any (OR)</option>
+              <option value="ALL">All (AND)</option>
+            </select>
+            <p class="hint">Any = meet one active threshold; All = meet every active threshold.</p>
+          </div>
+        </div>
+
+        <div class="section">
+          <p class="section-title">Bonus amount — at least one value must be greater than zero</p>
+          <p class="formula">
+            Monthly bonus = Fixed amount + (Month Net Revenue × Bonus % NR / 100) + (Month CPA × Amount per CPA)
+          </p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="bonus_value">Fixed bonus amount</label>
+            <input id="bonus_value" name="Bonus_Value" type="number" step="0.01" min="0" value="120.00" />
+            <p class="hint">Flat amount paid when thresholds are met (optional).</p>
+          </div>
+          <div class="field">
+            <label for="bonus_nr">Bonus % of Net Revenue</label>
+            <input id="bonus_nr" name="Bonus_NR" type="number" step="0.01" min="0" value="5.00" />
+            <p class="hint">Percentage of the month’s Net Revenue for the selected scope (optional).</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="bonus_per_cpa">Bonus amount per CPA</label>
+          <input id="bonus_per_cpa" name="Bonus_Value_per_CPA" type="number" step="0.01" min="0" value="0.00" />
+          <p class="hint">Fixed amount multiplied by Qualified Players (CPA) in the month (optional).</p>
+        </div>
+
+        <div class="section">
+          <p class="section-title">Performance thresholds — set to 0 to ignore</p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="cpa_min">Minimum CPA</label>
+            <input id="cpa_min" name="CPA_min" type="number" step="1" min="0" value="0" />
+            <p class="hint">Minimum Qualified Players in the month. 0 = not used.</p>
+          </div>
+          <div class="field">
+            <label for="nr_min">Minimum Net Revenue</label>
+            <input id="nr_min" name="NR_min" type="number" step="1" min="0" value="0" />
+            <p class="hint">Minimum Net Revenue in the month. 0 = not used.</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="ftd_min">Minimum FTD</label>
+          <input id="ftd_min" name="FTD_min" type="number" step="1" min="0" value="0" />
+          <p class="hint">Minimum First-Time Deposits in the month. 0 = not used.</p>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="btn btn-cancel">Cancel</button>
+          <button type="submit" class="btn btn-submit">Submit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

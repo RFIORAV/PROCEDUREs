@@ -1,0 +1,40 @@
+/*
+PROCEDURE_DbD_to_fact1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `DbD_to_fact1` del dominio dbd_to_fact1. Procedimiento DbD_to_fact1. Actualiza FACT1 desde DbD - Parámetros: Month, Publisher_id, Advertiser_id, Account_id
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: campaign_username, Snapshot_day_by_day_fact1, campaign_mkt_source_deal, Snapshot_day_by_day, account_account, account_landing_pages, campaign_advertiser, campaign_advertiser_status, campaign_deal_affiliate, campaign_deal_gestor.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call DbD_to_fact1('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Month           =[AAAA-MM | CM | LM | ALLALL]. OPCIONAL. Default=CM=Current Month. (ALLALL indica procesar toda la tabla desde el principio)
+Publisher_id    =[ALL | Affiliate_id ]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | SubAffiliate_id ]. OPCIONAL. Default=ALL
+Account_id      =[ALL | Status_id ]. OPCIONAL. Default=ALL
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call DbD_to_fact1('MS_id=130,debug=no');
+
+*/

@@ -1,0 +1,33 @@
+/*
+PROCEDURE_DbD_data_to_history.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `DbD_data_to_history` del dominio DbD_data_to_history.sql. Procedimiento DbD_data_to_history. Pasa datos de Snapshot_day_by_day a Snapshot_day_by_day_YYYY
+Categoría: datos day-by-day (DbD).
+Tablas clave: Snapshot_day_by_day, Snapshot_day_by_day_.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call DbD_data_to_history('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+month_param = [valor]. Parámetro de entrada.
+   
+   - Pasa datos de Snapshot_day_by_day a Snapshot_day_by_day_YYYY
+   - Se ejecuta cada mes y transfiere datos de 4 meses de antigüedad DEFAULT (depende de parametro Month en CALL)
+   - Borra de la tabla original los que ha insertado en Snapshot_day_by_day_YYYY
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL DbD_data_to_history ('');
+CALL DbD_data_to_history ('2024-12');
+
+*/

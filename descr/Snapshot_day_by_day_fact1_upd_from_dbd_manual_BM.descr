@@ -1,0 +1,32 @@
+/*
+PROCEDURE_Sync_fact1_from_manual_day_by_day.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Snapshot_day_by_day_fact1_upd_from_dbd_manual_BM` del dominio Snapshot_day_by_day_fact1_upd_from_dbd_manual_BM. Procedimiento Snapshot_day_by_day_fact1_upd_from_dbd_manual_BM. BETMEDIA Actualiza FACT1 desde Manual_DbD - Last Month y Cte / AAAA-MM
+Categoría: generación o refresco de snapshots históricos.
+Tablas clave: Snapshot_day_by_day_fact1, campaign_marketing_source, campaign_mkt_source_deal, Snapshot_day_by_day_manual, account_account, account_landing_pages, campaign_advertiser, campaign_advertiser_status, campaign_deal_affiliate, campaign_deal_gestor.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Snapshot_day_by_day_fact1_upd_from_dbd_manual_BM('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Curr_Last_Month = [valor]. Parámetro de entrada.
+
+	**	Actualiza tabla Snapshot_day_by_day_fact1 desde Manual_Snapshot_day_by_day
+	**	Se lanza desde EVENT
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Snapshot_day_by_day_fact1_upd_from_dbd_manual_BM('Debug=KeyValues');
+call Snapshot_day_by_day_fact1_upd_from_dbd_manual_BM('Filters=Yes');
+
+*/

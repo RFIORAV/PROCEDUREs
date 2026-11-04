@@ -1,0 +1,43 @@
+/*
+PROCEDURE_Aff_Channels.sql - Report Aff_Channel_DealMS
+
+Descripción, cometido y funciones:
+Cometido: Reporte del portal de afiliado que lista marketing sources (MS) de un canal concreto, sus deals activos, métricas del mes corriente (CPA, FTD, clics, depósitos, etc.) desde `Snapshot_day_by_day_fact2`, shortlinks, landing pages y anuncios (Ads). Filtra MS activas (`Stat_aggreg` in 1,4,6) y deals vigentes según `DateLimitView`. Soporta subafiliados (grupo 6 en `account_account_groups`). Salida orientada a grilla con Meta=Yes (columnas Logo, Brand, Code, Deal, CPA Current/Limit, LP, Ads).
+Categoría: portal afiliado: canales y deals por MS.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Logo, Brand, Country, Operative Status, Code, Shortlink, CPA Current, Deal, Landing page, Landing Valid to, Other LP.
+Tablas clave: campaign_marketing_source, campaign_username, account_account, campaign_advertiser, campaign_advertiser_ads_v2, mkt_source_deal_Code_To_Affiliate, Snapshot_day_by_day_fact2, account_account_groups, account_landing_pages, campaign_deal_affiliate.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Aff_Channel_DealMS('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id, Channel_id (no ALL). Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Affiliate_id    =[ALL | Affiliate_id ]. OBLIGATORIO.
+Channel_id      =[ALL | Channel_id ]. OBLIGATORIO.
+DateLimitView   =[Fecha AAAA-MM-DD]. OPCIONAL. Default=CURDATE()
+Mode            =[String]. OPCIONAL.
+Month           =[String]. OPCIONAL. Default=LEFT(CURDATE(),7)
+View            =[String]. OPCIONAL.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Aff_Channel_DealMS('affiliate_id=39,channel_id=1,debug=non');
+call Aff_Channel_DealMS('affiliate_id=506,channel_id=264,debug=non');
+
+*/

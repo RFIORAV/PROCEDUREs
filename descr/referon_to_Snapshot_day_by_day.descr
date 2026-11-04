@@ -1,0 +1,35 @@
+/*
+PROCEDURE_referon_to_Snapshot_day_by_day_v1.0.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `referon_to_Snapshot_day_by_day` del dominio referon_to_Snapshot_day_by_day. Migra datos de gambling_day_by_day_referon a Snapshot_day_by_day para un mes, replicando Bot_Helper.gambling_referon_to_dbd y el post-proceso replace_username por cada publisher Referon presente en el mes. Carga gambling_day_by_day_referon en Snapshot_day_by_day (mes) con replace_username
+Categoría: generación o refresco de snapshots históricos.
+Tablas clave: gambling_day_by_day_referon, Snapshot_day_by_day, campaign_username, campaign_advertiser, DATE, campaign_publisher, v_FilasOrigen, v_Publisher_id.
+Modos y comportamiento:
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Transaccional: START TRANSACTION / COMMIT / ROLLBACK.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call referon_to_Snapshot_day_by_day('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas
+  Cada par Key=Value debe ir seguido de una COMA
+  El conjunto de pares debe ir entre '' (comillas simples) como único parámetro string
+
+Keys:
+Data_Month = [YYYY-MM]. Mes a migrar. OPCIONAL. Default=mes calendario actual.
+  Run = [No | Yes]. No=solo controles; Yes=DELETE+INSERT+replace_username. OPCIONAL. Default=No.
+  Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call referon_to_Snapshot_day_by_day('Data_Month=2026-05,Debug=KeyValues');
+call referon_to_Snapshot_day_by_day('Data_Month=2026-05,Run=No');
+call referon_to_Snapshot_day_by_day('Data_Month=2026-05,Run=Yes');
+
+*/

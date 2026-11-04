@@ -1,0 +1,31 @@
+/*
+PROCEDURE_Compare_DbD_DbD_lm.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Compare_DbD_DbD_lm` del dominio Compare_DbD_DbD_lm. Procedimiento Compare_DbD_DbD_lm. 05.09.2022 V1 COMPARA Snapshot_day_by_day contra Snapshot_day_by_day_lm. Devuelve diferencias 10.09.2022 v2 Identifica Afiliado 21.09.2022 v2.1 INSERT por la diferencia y también para reemplazar todos los registros de la cuenta v2.2 Hour_Update v2.3 Invoca call Sync_MS_DbD_DbD_lm('view'); Parametros (none) 05.11.2024 v2.4 No se ejecuta si no hay datos de last month en Snapshot_day_by_day_lm COMPARA Snapshot_day_by_day vs Snapshot_day_by_day_lm
+Categoría: comparación / auditoría de diferencias.
+Tablas clave: Snapshot_day_by_day_lm, last.
+Modos y comportamiento:
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Compare_DbD_DbD_lm('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Compare_DbD_DbD_lm('Debug=KeyValues');
+call Compare_DbD_DbD_lm('Filters=Yes');
+
+*/

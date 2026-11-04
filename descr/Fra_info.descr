@@ -1,0 +1,32 @@
+/*
+PROCEDURE_Fra_info_.sql - Info FRA
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Fra_info` del dominio Fra_info. Procedimiento Fra_info. Info FRA
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: tmp_balance_by_affiliate, account_account, account_financial_movement, v_SQL.
+Modos y comportamiento:
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Fra_info('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                 [No] NO EJECUTA QUERY y devuelve el código del Query.
+                 [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+InputCommLine = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL  Fra_info('');
+CALL  Fra_info('debug=YE');
+
+*/

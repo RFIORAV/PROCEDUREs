@@ -1,0 +1,157 @@
+/*
+PROCEDURE_Check_and_Notify_Reward_Plan_v1.sql
+
+Descripción:
+  Detecta Reward_plan nuevos en Snapshot_day_by_day_fact1 (últimos N días)
+  por Operator_id / Account_id, los guarda en Snapshot_day_by_day_rew_plan
+  si aún no existen, y notifica en account_notifications los pendientes
+  (Notified=0 → Notified=1).
+
+Observaciones:
+  Cada Key debe estar seguida de = y el valor deseado SIN comillas
+  Cada par Key=Value debe ir seguido de una COMA
+  El conjunto de pares debe ir entre '' (comillas simples) como único parámetro string
+
+Keys:
+  Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+          Yes       → muestra candidatos a insertar y pendientes de notificar SIN escribir.
+          KeyValues → muestra parámetros parseados y ejecuta normalmente.
+  Days  = [número]. Días hacia atrás a considerar en fact1. OPCIONAL. Default=90.
+  Notify = [Yes | No]. Si No, solo incorpora faltantes sin notificar. OPCIONAL. Default=Yes.
+  Init   = [No | Yes]. Primera carga: incorpora planes y marca Notified=1 SIN emitir
+           notificaciones. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]']')
+
+Ejemplos:
+  CALL Check_and_Notify_Reward_Plan_dev('');
+  CALL Check_and_Notify_Reward_Plan('Init=Yes');
+  CALL Check_and_Notify_Reward_Plan('Days=90,Notify=Yes');
+  CALL Check_and_Notify_Reward_Plan('Debug=KeyValues');
+
+24.09.2026 v1   Primera versión operativa
+08.10.2026 v1.1 Añadido Advertiser en notificación
+*/
+
+SET NAMES 'utf8mb4';
+
+DROP PROCEDURE IF EXISTS Check_and_Notify_Reward_Plan;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Check_and_Notify_Reward_Plan`(IN InputCommLine VARCHAR(250))
+COMMENT 'v1.1 08.10.2026 - Detecta Reward_plan nuevos en fact1 y notifica a SysOp'
+SQL SECURITY DEFINER
+proc_label:BEGIN
+
+  DECLARE v_Version       VARCHAR(32)  DEFAULT 'v1.1 08.10.2026';
+  DECLARE v_Debug         VARCHAR(20)  DEFAULT 'NO';
+  DECLARE v_Notify        VARCHAR(5)   DEFAULT 'YES';
+  DECLARE v_Init          VARCHAR(5)   DEFAULT 'NO';
+  DECLARE v_Days          INT          DEFAULT 90;
+  DECLARE v_InputCommLine VARCHAR(400) DEFAULT '';
+  DECLARE v_e             INT          DEFAULT 0;
+  DECLARE v_c             INT          DEFAULT 0;
+  DECLARE v_k             VARCHAR(80)  DEFAULT '';
+  DECLARE v_v             VARCHAR(250) DEFAULT '';
+  DECLARE v_Error         INT          DEFAULT 0;
+  DECLARE v_Msg           VARCHAR(250) DEFAULT '';
+  DECLARE v_Inserted      INT          DEFAULT 0;
+  DECLARE v_Notified      INT          DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_Msg = MESSAGE_TEXT;
+    SET v_Error = 1;
+    ROLLBACK;
+    SELECT v_Version AS Version, v_Error AS Error, v_Msg AS Message;
+  END;
+
+  -- ── Parseo InputCommLine ──────────────────────────────────────────────────────
+  SET v_InputCommLine = CONCAT(IFNULL(InputCommLine, ''), ',');
+  SET v_InputCommLine = REPLACE(v_InputCommLine, '"', '');
+
+  WHILE v_InputCommLine > ' ' AND INSTR(v_InputCommLine, '=') > 0 DO
+    SET v_e = INSTR(v_InputCommLine, '=');
+    SET v_c = INSTR(v_InputCommLine, ',');
+    SET v_k = TRIM(SUBSTRING(v_InputCommLine, 1, v_e - 1));
+    SET v_v = TRIM(SUBSTRING(v_InputCommLine, v_e + 1, v_c - (v_e + 1)));
+    SET v_InputCommLine = SUBSTRING(v_InputCommLine, v_c + 1);
+
+    IF       LOWER(v_k) = 'debug'  THEN SET v_Debug  = UPPER(v_v);
+      ELSEIF LOWER(v_k) = 'notify' THEN SET v_Notify = UPPER(v_v);
+      ELSEIF LOWER(v_k) = 'init'   THEN SET v_Init   = UPPER(v_v);
+      ELSEIF LOWER(v_k) = 'days'   THEN SET v_Days   = CAST(v_v AS SIGNED);
+    END IF;
+  END WHILE;
+
+  -- ── Tabla de planes conocidos ─────────────────────────────────────────────────
+  CREATE TABLE IF NOT EXISTS `Snapshot_day_by_day_rew_plan` (
+    `id`            INT          NOT NULL AUTO_INCREMENT,
+    `Operator`      VARCHAR(100) NULL DEFAULT NULL,
+    `Operator_id`   INT          NOT NULL DEFAULT 0,
+    `Account`       VARCHAR(100) NULL DEFAULT NULL,
+    `Account_id`    INT          NOT NULL DEFAULT 0,
+    `Reward_plan`   VARCHAR(100) NOT NULL DEFAULT '',
+    `Notified`      TINYINT      NOT NULL DEFAULT 0 COMMENT '0=pendiente notificar; 1=ya notificado',
+    `Creation_date` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_account_id_reward_plan` (`Account_id`, `Reward_plan`)
+  ) ENGINE=InnoDB COMMENT='Reward_plan distintos por Operator/Account detectados en fact1';
+
+  START TRANSACTION;
+
+  -- ── Incorporar Reward_plan faltantes ──────────────────────────────────────────
+  INSERT IGNORE INTO `Snapshot_day_by_day_rew_plan` (
+     `Operator`
+    ,`Operator_id`
+    ,`Account`
+    ,`Account_id`
+    ,`Reward_plan`
+    ,`Notified`
+    ,`Creation_date`
+  )
+  SELECT
+     MAX(IFNULL(P.`Advertiser_Name`, '')) AS `Operator`
+    ,F.`Publisher_id`                     AS `Operator_id`
+    ,MAX(IFNULL(F.`Username`, ''))        AS `Account`
+    ,F.`Username_id`                      AS `Account_id`
+    ,F.`Reward_plan`
+    ,IF(v_Init = 'YES', 1, 0)
+    ,NOW()
+  FROM `Snapshot_day_by_day_fact1` F
+  LEFT JOIN `campaign_publisher` P ON P.`id` = F.`Publisher_id`
+  WHERE F.`Date` >= DATE_SUB(CURDATE(), INTERVAL v_Days DAY)
+    AND IFNULL(TRIM(F.`Reward_plan`), '') <> ''
+    AND IFNULL(F.`Username_id`, 0) > 0
+  GROUP BY F.`Username_id`, F.`Reward_plan`;
+
+  SET v_Inserted = ROW_COUNT();
+
+  -- ── Notificar pendientes ──────────────────────────────────────────────────────
+  INSERT INTO `account_notifications` (
+    `id`, `Affiliate_id`, `Extra_id_1`, `Extra_id_2`, `Extra_id_3`,
+    `Testo`, `FromUser`, `Type`, `Status`, `Status_id`,
+    `Read_Status`, `Comm_Status`, `Date`, `Owner`, `Subtype`,
+    `Detail`, `Action`, `Creation_Date`, `Last_Update`, `Operator`
+  )
+  SELECT
+    NULL, '2', '', '', '',
+    CONCAT_WS(' - ', 'NEW REWARD PLAN', RP.`Reward_plan`, RP.`Operator`, A.`Advertiser_Name`, RP.`Account`),
+    'Manager', 'New Reward Plan', 'Pending', '0',
+    0, '', NOW(), '', '',
+    '', '', NOW(), NOW(), 'SysOp'
+  FROM `Snapshot_day_by_day_rew_plan` RP
+  LEFT JOIN `campaign_username` U ON U.`id` = RP.`Account_id`
+  LEFT JOIN `campaign_advertiser` A ON A.`id` = U.`Advertiser_id`
+  WHERE RP.`Notified` = 0;
+
+  SET v_Notified = ROW_COUNT();
+
+  UPDATE `Snapshot_day_by_day_rew_plan`
+  SET `Notified` = 1
+  WHERE `Notified` = 0;
+
+  COMMIT;
+
+END$$
+DELIMITER ;

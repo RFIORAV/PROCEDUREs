@@ -37,6 +37,9 @@
    22.06.2026 v1.8.16 Recálculo de log dashboard CM y LM
    24.06.2026 v1.8.17 Cálculo y generación de movimientos DbD_manual para compensar CPA que no llegan al baseline del afiliado
    20.07.2026 v1.8.18 Actualiza Product_Real=Product en Snapshot_day_by_day hasta que se actualicen los bots
+   24.09.2026 v1.8.19 Ejecución de Check_and_Notify_Reward_Plan
+   12.10.2026 v1.8.20 Deshabilitado postback se reenvía automáticamente a traves de ETS_postback_process_event
+   19.10.2026 v1.8.21 Agregado TRANSACTION para evitar bloqueo de la tabla Snapshot_day_by_day
 */
 
 DROP EVENT IF EXISTS Snapshot_day_by_day_fact1_event;
@@ -46,11 +49,11 @@ DELIMITER //
 CREATE EVENT `Snapshot_day_by_day_fact1_event`
 	ON SCHEDULE EVERY 30 MINUTE STARTS '2025-01-01 00:15:00'
 	ON COMPLETION PRESERVE ENABLE
-	COMMENT 'v1.8.18 20.07.2026: Update Snapshot_day_by_day_fact1/fact2+Commiss+log dashboard+Baseline_check_to_DbD_manual+Actualiza Product_Real=Product en Snapshot_day_by_day hasta que se actualicen los bots'
+	COMMENT 'v1.8.21 19.10.2026: Update Snapshot_day_by_day_fact1/fact2+Commiss+log dashboard+Baseline_check_to_DbD_manual+Actualiza Product_Real=Product en Snapshot_day_by_day hasta que se actualicen los bots+Ejecución de Check_and_Notify_Reward_Plan+Deshabilitado postback se reenvía automáticamente a traves de ETS_postback_process_event+Agregado TRANSACTION para evitar bloqueo de la tabla Snapshot_day_by_day'
    DO 
    
 Main_Label: BEGIN
-   SET @Version         ='v1.8.18 20.07.2026';
+   SET @Version         ='v1.8.21 19.10.2026';
    SET @CurrentDay      =curdate();
    
    -- Pasa actualizaciones tablas comunues desde ea2 a las otras db
@@ -73,8 +76,11 @@ Main_Label: BEGIN
    CALL Snapshot_day_by_day_fact1_upd_from_dbd_manual('LM');   
    
    -- 20.07.2026 Actualiza Product_Real=Product en Snapshot_day_by_day hasta que se actualicen los bots
+   -- 19.10.2026 Agregado TRANSACTION para evitar bloqueo de la tabla Snapshot_day_by_day
+   START TRANSACTION;
    UPDATE Snapshot_day_by_day f SET f.Product_Real=f.Product,f.Product="" 
    WHERE DATE>="2026-04-01" AND LEFT(f.Product, 20) REGEXP "[0-9]{2}";
+   COMMIT; 
 
    CALL Snapshot_day_by_day_fact1_upd();        -- Determina cuando debe procesal LM, además de CM
    CALL Snapshot_day_by_day_fact2_upd_cm();
@@ -89,6 +95,9 @@ Main_Label: BEGIN
    
    -- Update Country_web en campaign_mkt_source_url -- 22.02.2025
    CALL `campaign_mkt_source_url_upd_country`();
+
+   -- Check and Notify Reward Plan -- 24.09.2026
+   CALL Check_and_Notify_Reward_Plan('');
    
    -- -------------------------------------------------------------------------------------
    -- Proceso de generación de postbacks - 25.03.2025
@@ -96,7 +105,9 @@ Main_Label: BEGIN
    -- THEN CALL Postback_for_Affiliate(''); 
    -- END IF;
    -- Habilitado para todas las db 06.04.2025
-   CALL Postback_for_Affiliate(''); 
+ 
+   -- Deshabilitado 12.10.2026 RS postback se reenvía automáticamente
+   -- CALL Postback_for_Affiliate(''); 
    
    /*-----------------------------------------------------------------*/ 
    -- Restablece Status activo para los que estaban con Status=6 (Paused until next month)

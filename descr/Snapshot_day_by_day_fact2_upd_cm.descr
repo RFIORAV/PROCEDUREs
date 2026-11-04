@@ -1,0 +1,31 @@
+/*
+PROCEDURE_Snapshot_day_by_day_fact2_upd_cm_v1.4.sql - Snapshot_day_by_day_fact2_upd_cm
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Snapshot_day_by_day_fact2_upd_cm` del dominio Snapshot_day_by_day_fact2_upd_cm. Procedimiento Snapshot_day_by_day_fact2_upd_cm. Exige cambiar VIEW_monthly_fact_aff2.sql FACT2-UPDATE CurrMonth desde FACT1 - Considera Mes Cte hasta dia 3 del mes sigte - CALL Sync_Fact2_from_Fact1
+Categoría: generación o refresco de snapshots históricos.
+Tablas clave: CurrMonth.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Snapshot_day_by_day_fact2_upd_cm('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Snapshot_day_by_day_fact2_upd_cm('Debug=KeyValues');
+call Snapshot_day_by_day_fact2_upd_cm('Filters=Yes');
+
+*/

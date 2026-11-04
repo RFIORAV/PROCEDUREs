@@ -33,6 +33,19 @@ SET @Dest_Deal_id          =188;            -- CPA=0 RS=0 BL=0
 SET @Dest_Deal_Valid_From  ='2025-05-01';   -- MODIFICAR SEGUN CORRESPONDA
 SET @Dest_Product_Deal     ='';
 
+-- Constantes para mymonsteraffiliates -> euroaffiliati -- REVISAR Y MODIFICAR EN CADA EJECUCIÓN
+
+SET @Orig_DB               ="mymonsteraffiliates";  
+SET @Orig_Affiliate_id     =15;            -- Afiliado en origen
+SET @Orig_Last_Update      ='';             -- para afinar selección de MS en origen si es necesario. Si no, dejar en blanco
+
+SET @Dest_DB               ="euroaffiliati2";  
+SET @Dest_Affiliate_id     =84;             -- Parking
+SET @Dest_Channel_id       =531;            -- Parking
+SET @Dest_Publisher_id     =107;            -- fivestars
+SET @Dest_Deal_id          =188;            -- CPA=0 RS=0 BL=0
+SET @Dest_Deal_Valid_From  ='2026-09-01';   -- MODIFICAR SEGUN CORRESPONDA
+SET @Dest_Product_Deal     ='';
 -- ----------------------------------------------------------------------
 -- ----------------------------------------------------------------------
 

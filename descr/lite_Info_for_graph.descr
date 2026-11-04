@@ -1,0 +1,41 @@
+/*
+PROCEDURE_lite_Info_for_graph_v1.sql - Produce una grilla para gráficos LITE
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `lite_Info_for_graph` del dominio Lite_Info_for_graph. Procedimiento lite_Info_for_graph. LITE - Movimientos para graficos
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: MonthFilter, campaign_advertiser, campaign_publisher, campaign_username, MainDataDetail, Snapshot_day_by_day_fact1, monthly_comms_gestor_v5.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call lite_Info_for_graph('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada
+
+Keys:
+Month         =[AAAA-MM]. OPCIONAL. Default=Current Month.
+Advertiser_id =[ALL | Advertiser_id]. OPCIONAL. Default=ALL
+Username_id   =[ALL | Username_id]. OPCIONAL. Default=ALL
+Publisher_id  =[ALL | Publisher_id]. OPCIONAL. Default=ALL
+InfoSource    =[Comms | MainData]. OPCIONAL. Default=Comms
+InfoBy        =[Brand | Publisher | Username]. OPCIONAL. Default=Brand
+Filters       =[Yes | No]. OPCIONAL. Default=No
+Meta          =[No | Yes]. OPCIONAL. Default=Yes
+Debug         =[No | Yes]. OPCIONAL. Default=No
+InputCommLine = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call lite_Info_for_graph('filters=yes,debug=ye');
+call lite_Info_for_graph('filters=yes,InfoSource=MainData,debug=ye');
+call lite_Info_for_graph('month=CM,InfoSource=Comms,info_by=Brand,meta=ye,debug=ye');
+call lite_Info_for_graph('month=CM,InfoSource=MainData,info_by=Brand,meta=ye,debug=ye');
+
+*/

@@ -1,0 +1,35 @@
+/*
+PROCEDURE_Baseline_check_to_DbD_manual_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Baseline_check_to_DbD_manual` del dominio Baseline_check_to_DbD_manual. Procedimiento PROCEDURE_Baseline_check_to_DbD_manual_v1. Cálculo y generación de movimientos en DbD_manual para compensar CPA que no llegan al baseline del afiliado v1 24.06.2026 - Cálculo y generación de movimientos DbD_manual para compensar CPA que no llegan al baseline del afiliado
+Categoría: datos day-by-day (DbD).
+Tablas clave: Players_info, Snapshot_day_by_day_manual, campaign_deal_affiliate, campaign_marketing_source, players_general_API_idx, util_settings.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Baseline_check_to_DbD_manual('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Month = [AAAA-MM | CM | LM]. Mes a procesar. OPCIONAL. Default=CM (mes actual).
+  Debug = [No | Yes ]. Modo depuración. OPCIONAL. Default=No.
+          Yes       → muestra
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Baseline_check_to_DbD_manual('');
+call Baseline_check_to_DbD_manual('Month=CM');
+call Baseline_check_to_DbD_manual('Month=LM,Debug=Yes');
+call Baseline_check_to_DbD_manual('Month=2024-05');
+call Baseline_check_to_DbD_manual('Debug=Yes');
+call Baseline_check_to_DbD_manual('Month=2025-01,Debug=Yes');
+
+*/

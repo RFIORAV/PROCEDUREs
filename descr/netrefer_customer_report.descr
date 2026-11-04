@@ -1,0 +1,38 @@
+/*
+PROCEDURE_Report_players_netrefer_v1.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `netrefer_customer_report` del dominio netrefer_customer_report. Procedimiento netrefer_customer_report. Netrefer Customer Report
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: players_net_refer_extract_lm, Main_Table_Data, Main_Table_Data_Raw, account_account, campaign_deal_affiliate, campaign_marketing_source, players_netrefer_API.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call netrefer_customer_report('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+data_month      [ALL | YYYY-MM]. OPCIONAL. Default=LM.
+
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call netrefer_customer_report('debug=ye'); -- Devuelve todas las MS
+call netrefer_customer_report('debug=ye,data_month=LM');
+call netrefer_customer_report('debug=ye,data_month=2025-01');
+
+*/

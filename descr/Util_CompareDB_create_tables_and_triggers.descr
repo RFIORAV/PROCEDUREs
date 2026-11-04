@@ -1,0 +1,18 @@
+/*
+PROCEDURE_Util_CompareDB_create_tables_and_triggers.sql - Util CompareDB (sin CREATE PROCEDURE)
+
+Descripción, cometido y funciones:
+Cometido: Utilidad interactiva que compara la BD activa contra euroaffiliati2
+y genera sentencias CREATE TABLE (y triggers) faltantes. Pensado para ejecutar manualmente
+copiando el resultado de los SELECT generados.
+
+Observaciones:
+Ejecutar interactivamente; revisar cada CREATE antes de aplicar en destino.
+
+Keys:
+(No aplica — script directo)
+
+Ejemplos:
+SOURCE d:/Reinaldo/_FRA/db/PROCEDUREs/PROCEDURE_Util_CompareDB_create_tables_and_triggers.sql;
+
+*/

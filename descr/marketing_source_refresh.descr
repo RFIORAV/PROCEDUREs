@@ -1,0 +1,29 @@
+/*
+PROCEDURE_marketing_source_refresh.SQL -
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `marketing_source_refresh` del dominio marketing_source_refresh. Procedimiento marketing_source_refresh. 14.02.2024 V1 Cambio de MS antiguas por nuevas Cambio de MS antiguas por nuevas
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: campaign_marketing_source_refresh, campaign_tracking_sources, newID.
+Modos y comportamiento:
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call marketing_source_refresh('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Sin
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call marketing_source_refresh('Debug=KeyValues');
+call marketing_source_refresh('Filters=Yes');
+
+*/

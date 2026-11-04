@@ -1,0 +1,25 @@
+/*
+PROCEDURE_Snapshot_day_by_day_fact1_upd_lm
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Snapshot_day_by_day_fact1_upd_lm` del dominio Snapshot_day_by_day_fact1_upd_lm. Procedimiento Snapshot_day_by_day_fact1_upd_lm. ** Actualiza tabla Snapshot_day_by_day_fact1 desde view Snapshot_day_by_day_fact ** Se lanza desde EVENT 14.05.2022 Primeros dias del mes actualiza mes corriente y anterior antes de las 07:00 14.05.2022 Snapshot_day_by_day_fact1_upd_lm Actualiza mes corriente y anterior 14.05.2022 EVENT Snapshot_day_by_day_fact1_event lanza Procedure Snapshot_day_by_day_fact1_upd cada 30 minutos 05.09.2022 Preparado para la actualización automática junto con el resto de los PROCEDURES 29.09.2022 Llama a Snapshot_day_by_day_fact1_upd_from_dbd Actualiza FACT1 desde DbD - Last Month y Cte
+Categoría: generación o refresco de snapshots históricos.
+Cuándo proponer el CALL: Construir `call Snapshot_day_by_day_fact1_upd_lm('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Sin
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Snapshot_day_by_day_fact1_upd_lm('Debug=KeyValues');
+call Snapshot_day_by_day_fact1_upd_lm('Filters=Yes');
+
+*/

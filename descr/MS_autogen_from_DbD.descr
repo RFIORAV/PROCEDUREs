@@ -1,0 +1,34 @@
+/*
+PROCEDURE_MS_autogen_from_DbD_v1.sql - Auto-generación de Marketing Sources desde Snapshot_day_by_day
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `MS_autogen_from_DbD` del dominio MS_autogen_from_DbD. Procedimiento MS_autogen_from_DbD. MS_autogen_from_DbD - Auto-generación de Marketing Sources desde Snapshot_day_by_day
+Categoría: marketing sources.
+Tablas clave: util_settings, campaign_marketing_source, Snapshot_day_by_day, campaign_marketing_source_missing, campaign_username.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call MS_autogen_from_DbD('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Month           =[YYYY-MM]. OBLIGATORIO. Mes para seleccionar datos de Snapshot_day_by_day (campo DATE)
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call MS_autogen_from_DbD('month=CM,debug=no');
+call MS_autogen_from_DbD('month=LM,debug=no');
+
+*/

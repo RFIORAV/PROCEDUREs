@@ -1,0 +1,31 @@
+/*
+PROCEDURE_sub_Snapshot_day_by_day_fact3_upd.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `sub_Snapshot_day_by_day_fact3_upd` del dominio sub_Snapshot_day_by_day_fact3_upd. Procedimiento sub_Snapshot_day_by_day_fact3_upd. Actualiza FACT3 desde fact2 - Last Month y Cte / AAAA-MM
+Categoría: generación o refresco de snapshots históricos.
+Tablas clave: sub_Snapshot_day_by_day_fact3, Snapshot_day_by_day_fact2, sub_campaign_mkt_source_deal, account_account, account_account_groups, sub_account_landing_pages, sub_campaign_deal_affiliate, sub_campaign_marketing_source.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call sub_Snapshot_day_by_day_fact3_upd('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Curr_Last_Month = [valor]. Parámetro de entrada.
+
+	**	Actualiza tabla sub_Snapshot_day_by_day_fact3 desde Snapshot_day_by_day_fact2
+	**	Se lanza desde EVENT
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call sub_Snapshot_day_by_day_fact3_upd('Debug=KeyValues');
+call sub_Snapshot_day_by_day_fact3_upd('Filters=Yes');
+
+*/

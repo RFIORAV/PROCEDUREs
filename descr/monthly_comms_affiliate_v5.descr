@@ -1,0 +1,50 @@
+/*
+PROCEDURE_monthly_comms_affiliate_v5.7.sql - COMISIONES del AFILIADO
+
+Descripción, cometido y funciones:
+Cometido: Calcula o actualiza comisiones mensuales de afiliados o gestores. Calcula comisiones mensuales del afiliado (CPA + Revenue Share) sobre Snapshot_day_by_day_fact2, con tratamiento de RS negativa, RS contra CPA y acumulación según campaign_deal_affiliate.RS_Base. v5.7 04.08.2026 - Comisiones afiliado CPA+RS con acumulación por RS_Base
+Categoría: cálculo de comisiones mensuales.
+Tablas clave: monthly_comms_affiliate_v5, account_account, netted, Master_Sub, Snapshot_day_by_day_fact2, campaign_deal_affiliate, final_rows, master_affiliate_deals, master_affiliate_deals_per_affiliate, monthly.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call monthly_comms_affiliate_v5('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+p_month = mes a procesar en formato YYYY-MM. Si es NULL, vacío o inválido,
+  usa CURDATE() - 2 meses como inicio del recálculo (borra e inserta desde ese mes).
+
+Modalidades RS (Deal_Aff_RS / Deal_Aff_RS_Against_CPA / Deal_Aff_RS_Base):
+  - Sin RS (Deal_Aff_RS=0): gross_RS_Val=0 y net_RS_Val=0
+  - Con RS y Deal_Aff_RS_Against_CPA=1: la RS negativa se resta de gross_CPA_Val
+    sin dejar net_CPA_Val negativo; el remanente de RS (si existe) sigue el flujo
+    de acumulación
+  - Con RS acumulado negativo (según base): net_RS_Val=0
+  - net_RS_Val nunca es negativo: las RS negativas del grupo se absorben en las
+    positivas del mismo KeyRSAcum (reparto proporcional del neto acumulado ≥ 0)
+  - La base de acumulación RS se toma de campaign_deal_affiliate.RS_Base
+    (fallback: Snapshot Deal_Aff_RS_Base; default brand):
+      account         → Affiliate_id + Account_id
+      Operator        → Affiliate_id + Publisher_id
+      brand           → Affiliate_id + Brand          (default)
+      Operator/brand  → Affiliate_id + Publisher_id + Brand
+    Cualquier otro valor se trata como brand.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+CALL monthly_comms_affiliate_v5('2026-03');
+CALL monthly_comms_affiliate_v5(NULL);
+CALL monthly_comms_affiliate_v5_dev('');
+
+*/

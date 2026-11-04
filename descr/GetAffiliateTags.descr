@@ -1,0 +1,27 @@
+/*
+PROCEDURE_GetAffiliateTags.sql - Report Tags Affiliate
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `GetAffiliateTags` del dominio GetAffiliateTags. Procedimiento GetAffiliateTags. Get Affiliate Tags
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: account_account_tags, account_account_tags_list, CURRENT_TIMESTAMP, account_account.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call GetAffiliateTags('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+affiliate_id = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call GetAffiliateTags(39);
+
+*/

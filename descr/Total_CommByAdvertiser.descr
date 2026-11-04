@@ -1,0 +1,35 @@
+/*
+PROCEDURE_Total_CommByAdvertiser.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Total_CommByAdvertiser` del dominio Total_CommByAdvertiser. Procedimiento Total_CommByAdvertiser. 06.09.2022 V2 Pasa de 2 a 4 parámetros 10.09.2022 Data Currency 02.10.2022 Utiliza total_monthy_comm_ges en lugar de view_monthly_fact_gestor3 02.10.2022 REEMPLAZADA POR Dash_Gestor_TotalByAdvertiser Comisiones Advertiser/ALL] [Month] x [Owner/ALL]
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: exchange_rate, view_monthly_fact_aff2, total_monthy_comm_ges.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Total_CommByAdvertiser('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Parámetro ROLLUP se aplica al GROUP BY Data_Currency,OWNER,Brand
+
+Keys:
+AdvertiserID = [valor]. Parámetro de entrada.
+
+   Observaciones: 
+      Parámetro ROLLUP se aplica al GROUP BY Data_Currency,OWNER,Brand
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Total_CommByAdvertiser('ALL','2022-09','ALL','EUR','ROLLUP');
+call Total_CommByAdvertiser('ALL','2022-09','ALL','EUR','');
+call Total_CommByAdvertiser('ALL','2022-06','2'  ,'ALL','ROLLUP');
+call Total_CommByAdvertiser('64' ,'2022-08','ALL','EUR','');
+
+*/

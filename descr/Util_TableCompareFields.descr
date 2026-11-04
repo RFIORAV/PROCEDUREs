@@ -1,0 +1,27 @@
+/*
+PROCEDURE_Util_TableCompareFields_v2.4.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Util_TableCompareFields` del dominio Util_TableCompareFields. Procedimiento Util_TableCompareFields. Compara el diseño de dos tablas (referencia vs destino) y genera ALTER para que TableName2 en DBtable2 quede igual que TableName1 en DBtable1. Detecta: columnas de más o de menos, tipo, NULL, DEFAULT, EXTRA y orden. v2.4 23.06.2026 Compara estructura de tablas. Genera ALTER
+Categoría: utilidad de administración de BD.
+Tablas clave: SetFieldsTableBase, SetFieldsTableComp, SetFieldsTableBaseLastRow.
+Cuándo proponer el CALL: Construir `call Util_TableCompareFields('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Util_TableCompareFields('campaign_marketing_source','euroaffiliati2','campaign_marketing_source','affiliaterevolution');
+
+*/

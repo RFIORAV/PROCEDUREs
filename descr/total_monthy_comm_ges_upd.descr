@@ -1,0 +1,28 @@
+/*
+PROCEDURE_total_monthy_comm_ges_upd_v5.6.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `total_monthy_comm_ges_upd` del dominio total_monthly_comm_ges_upd. Procedimiento total_monthy_comm_ges_upd. ** Actualiza tabla total_monthy_comm_ges desde tabla monthly_comms_gestor_v5 ** ** Recibe parámetro de entrada YYYY-MM para invocar monthly_comms_gestor ** Si el parámetro es inválido o inexistente, usa MES de CURDATE() 02.10.2022 V1 Materializa view_monthly_fact_gestor3 por performance (Est 0.6" a 0.1") 28.11.2022 Agrega nuevos campos de view is_indirect,Advertiser_indirect_id,Advertiser_indirect 31.01.2023 v1.1 Area 15.03.2023 v4 Utiliza PROCEDURE_monthly_comms_gestor_v4.1_COver.sql 17.05.2024 v5 Adaptación a cambios en PROCEDURE y tabla monthly_comms_gestor_v5 11.09.2025 v5.6 Agrega parámetro de entrada YYYY-MM para monthly_comms_gestor total_monthy_comm_ges desde tabla monthly_comms_gestor_v5 con parámetro YYYY-MM
+Categoría: totales mensuales de comisiones.
+Tablas clave: CURRENT_TIMESTAMP, monthly_comms_gestor_v5, total_monthy_comm_ges.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call total_monthy_comm_ges_upd('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+p_month = [valor]. Parámetro de entrada.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call total_monthy_comm_ges_upd('Debug=KeyValues');
+call total_monthy_comm_ges_upd('Filters=Yes');
+
+*/

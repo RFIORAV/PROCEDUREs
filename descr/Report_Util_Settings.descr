@@ -1,0 +1,36 @@
+/*
+PROCEDURE_Report_Util_Settings_v1.1.sql - Reporte de configuracion util_settings_v2
+
+Descripción, cometido y funciones:
+Cometido: Reporte de Util Settings. Devuelve filas para consulta/exportación. Procedimiento Report_Util_Settings. v1.3 26.06.2026 - Report: configuracion util_settings
+Categoría: reporte tabular / exportación para grids dinámicos.
+Tablas clave: util_settings.
+Modos y comportamiento:
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Report_Util_Settings('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Meta          = [No | Yes]                 OPCIONAL. Default Yes. Fila Meta=setting con anchos/grid; filas de datos Meta=data.
+  EditableOnly  = [No | Yes]                 OPCIONAL. Default No. Si Yes, solo filas con Edit_enabled=1.
+  Setting       = [Nombre exacto de setting] OPCIONAL. Si se informa, solo devuelve ese setting.
+  Debug         = [No | Yes | KeyValues]     OPCIONAL. Default No.
+  InputCommLine = [valor]. Parámetro de entrada.
+
+Historial de versiones:
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_Util_Settings('Debug=KeyValues');
+call Report_Util_Settings('Filters=Yes');
+
+*/

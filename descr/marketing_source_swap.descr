@@ -1,0 +1,38 @@
+/*
+PROCEDURE_marketing_source_swap.SQL - Swapping a un Afiliado de una MS por otra equivalente
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `marketing_source_swap` del dominio marketing_source_swap. Procedimiento marketing_source_swap. Swapping de una MS por otra equivalente
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: campaign_marketing_source, campaign_advertiser, DEBE.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call marketing_source_swap('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Affiliate_id    =[id del Affiliate_id]. OBIGATORIO.
+Date            =[AAAA-MM-DD]. OPCIONAL. Default=Current Date
+MS_id           =[MS_id]. MS que será reemplazada. OBIGATORIO. Debe existir y pertenecer a Affiliate_id
+MS_id_swap      =[MS_id]. MS de reemplazo. OBIGATORIO. Debe existir.
+Brand           =[Brand]. Nombre de la Brand/advertiser. OBIGATORIO. Ambas MS deben tener el mismo Brand
+
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call marketing_source_swap('Debug=KeyValues');
+call marketing_source_swap('Filters=Yes');
+
+*/

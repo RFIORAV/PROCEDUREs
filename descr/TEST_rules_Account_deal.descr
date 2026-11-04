@@ -1,0 +1,32 @@
+/*
+PROCEDURE_TEST_rules_Account_deal.sql - Utiliza algoritmos de PROCEDURE_Snapshot_day_by_day_fact1_upd_from_dbd.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `TEST_rules_Account_deal` del dominio TEST_rules_Account_deal.sql. Procedimiento TEST_rules_Account_deal. Test RULES deals Accounts
+Categoría: pruebas de reglas de negocio.
+Tablas clave: Fact1, Snapshot_day_by_day_fact1, campaign_deal_gestor, campaign_deal_gestor_prod_date.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call TEST_rules_Account_deal('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Username_id = [valor]. Parámetro de entrada.
+
+	**	Prueba el resultado tras un cambio de rules en `campaign_deal_gestor_prod_date`
+
+   CALL TEST_rules_Account_deal(24);
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call TEST_rules_Account_deal('Debug=KeyValues');
+call TEST_rules_Account_deal('Filters=Yes');
+
+*/

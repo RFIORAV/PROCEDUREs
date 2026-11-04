@@ -1,0 +1,18 @@
+/*
+PROCEDURE_Check_CAP_limit_v1.sql - Script Check CAP limit (sin CREATE PROCEDURE)
+
+Descripción, cometido y funciones:
+Cometido: Script de consulta/diagnóstico de límites CPA (CAP) del mes corriente.
+Compara CPA acumulado en snapshots contra límites configurados en publisher, brand, username, affiliate y MS.
+No es un stored procedure invocable con CALL; ejecutar el script SQL completo en la sesión MySQL.
+
+Observaciones:
+No usa InputCommLine. Parámetro de sesión `@Margen_Limit` (default 0.95) al inicio del script.
+
+Keys:
+(No aplica — script directo, no SP)
+
+Ejemplos:
+SOURCE d:/Reinaldo/_FRA/db/PROCEDUREs/PROCEDURE_Check_CAP_limit_v1.sql;
+
+*/

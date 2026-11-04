@@ -1,0 +1,47 @@
+/*
+PROCEDURE_Sync_Fact2_from_Fact1() - Sync one/all MS for a given month and/of affiliate_id
+
+Descripción, cometido y funciones:
+Cometido: Proceso de sincronización/replicación de datos entre fuentes del sistema. Version 1.6.5 05.08.2026: Sync one/all MS for a given month and/of affiliate_id
+Categoría: sincronización ETL entre tablas o entornos.
+Tablas clave: fact1, fact2, util_settings.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call Sync_Fact2_from_Fact1('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Mode            =[View | Run]. OPCIONAL. Default=View
+Month           =[AAAA-MM | CM | LM]. OPCIONAL. Default=CM=Current Month (Curr Month implica MS_id=ALL)
+DB              =[ database name ]. Default=Current DB. OBLIGATORIO para MS_id=AllAll
+Affiliate_id    =[ALL | id del Affiliate]. OPCIONAL. Default='all'
+MS_id           =[ALL | id de la MS]. OBLIGATORIO.
+						MS_id=ALL: SOLO VALIDO PARA MES CORRIENTE
+						MS_id=ALLALL: VALIDO PARA CUALQUIER OTRO MES (OBLIGATORIO informar DB)
+Debug           =[No | Yes | Other value ]. OPCIONAL. Default=No
+                  [No]  EJECUTA QUERY y devuelve resultado.
+                  [Yes] NO EJECUTA QUERY y devuelve el código del Query.
+                  [Other value] EJECUTA QUERY y devuelve el código del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Sync_Fact2_from_Fact1('');  -- Sync all curr month
+call Sync_Fact2_from_Fact1('mode=view,month=LM,debug=yes');  -- asume curr month
+call Sync_Fact2_from_Fact1('month=2025-10,Affiliate_id=39,MS_id=allall,debug=YE');  -- error: falta db
+call Sync_Fact2_from_Fact1('month=2026-01,Affiliate_id=39,MS_id=allall,db=euroaffiliati_dev,debug=YE');  -- MS_id debe ser AllAll
+call Sync_Fact2_from_Fact1('month=2022-10,Affiliate_id=39,MS_id=allall,db=euroaffiliati2,debug=YES');
+call Sync_Fact2_from_Fact1('month=2022-10,MS_id=1581,debug=yes');
+call Sync_Fact2_from_Fact1('month=2022-12,Affiliate_id=all,debug=YE');
+call Sync_Fact2_from_Fact1('month=2022-10,MS_id=all,debug=YES'); 		-- error MS_id=ALL Only for Curr Month
+call Sync_Fact2_from_Fact1('month=2022-10,MS_id=allall,debug=YEs');  	-- error: falta db
+call Sync_Fact2_from_Fact1('mode=run,month=LM,Affiliate_id=ALL,MS_id=ALLALL,db=euroaffiliati_dev,debug=ye');
+
+*/

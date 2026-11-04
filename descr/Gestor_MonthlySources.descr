@@ -1,0 +1,44 @@
+/*
+PROCEDURE_Gestor_MonthlySources_v4_daily.sql - Reporte multimodo diario de las MS
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Gestor_MonthlySources` del dominio Gestor_MonthlySources. Procedimiento Gestor_MonthlySources con acumulación diaria. v4.1.2 21.07.2026 Monthly/Daily Sources PARAMETROS MULTIVALOR y Tags. Fix tamaño de InputCommLine cuando se seleccionan muchos días
+Categoría: portal gestor / publisher.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): date, Area, Owner_id, Operator, Platform, Brand, Account, Referrer, Affiliate, MS_id, MS_Status, Cap, Tracker_ID, Cod2Aff.
+Tablas clave: BaseCount, account_account, MonthFilter, account_account_tags, campaign_marketing_source, DayFilter, Seleccion_base, Snapshot_day_by_day_fact1, account_account_tags_list, campaign_publisher.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Gestor_MonthlySources('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+MS_id           =[ALL | id de la MS]. OPCIONAL. Default=ALL. tiene prioridad sobre el resto de
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Gestor_MonthlySources('');              -- Todos los valores de selección por default
+call Gestor_MonthlySources('mode=daily,debug=ye');      -- Todos los valores de selección por default usando debug
+call Gestor_MonthlySources('^owner=^864^865,affiliate_id=^39^130^850,debug=ye');
+call Gestor_MonthlySources('^owner=^864,affiliate_id=^39^130^850,debug=ye');
+call Gestor_MonthlySources('month=2026-04,filters=yes,debug=ye');
+call Gestor_MonthlySources('^day=^2026-05-01^2026-05-06,debug=ye');
+call Gestor_MonthlySources('^owner=^864^865,Brand=^LeoVegas^Lottomatica^PlanetWin365,debug=ye');
+call Gestor_MonthlySources('^affiliate_id=^39^506^450,filters=yes,debug=ye');
+call Gestor_MonthlySources('filters=yes,debug=ye');
+call Gestor_MonthlySources('^tag=^1^2^3,filters=ye,debug=ye');
+call Gestor_MonthlySources('^month=^2025-11^2025-12,^tag=^1,filters=ye,debug=ye');
+call Gestor_MonthlySources('mode=daily,^month=^2026-06,Brand=PlanetWin365,Affiliate_id=469,filters=yes,debug=ye');
+call Gestor_MonthlySources('mode=daily,^month=^2026-06,debug=ye,^day=^2026-06-01^2026-06-02^2026-06-03^2026-06-04^2026-06-05^2026-06-06^2026-06-07^2026-06-08^2026-06-09^2026-06-10^2026-06-11^2026-06-12^2026-06-13^2026-06-14^2026-06-15^2026-06-16^2026-06-17^2026-06-18^2026-06-19^2026-06-20^2026-06-21^2026-06-22^2026-06-23^2026-06-24^2026-06-25^2026-06-26^2026-06-27^2026-06-28^2026-06-29,^Brand=^PlanetWin365,^Affiliate_id=^469,filters=ye,debug=ye');
+
+*/

@@ -1,0 +1,35 @@
+/*
+PROCEDURE_Monitor_CPA_trend.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Monitor_CPA_trend` del dominio Monitor_CPA_trend. Procedimiento Monitor_CPA_trend. Monitor CPA trend
+Categoría: monitorización de tendencias.
+Tablas clave: SetFact1, SetFact1Calc, Snapshot_day_by_day_fact1.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Monitor_CPA_trend('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+ 
+Filters          =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta             =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [No]
+Debug            =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Monitor_CPA_trend('Debug=yes');
+
+*/

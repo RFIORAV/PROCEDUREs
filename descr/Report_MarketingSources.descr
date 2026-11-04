@@ -1,0 +1,55 @@
+/*
+PROCEDURE_Report_MarketingSources_v1.2.sql - Reporte multimodo de MS de segun filtros
+
+Descripción, cometido y funciones:
+Cometido: Reporte de MarketingSources. Devuelve filas para consulta/exportación. Procedimiento Report_MarketingSources. Report_MarketingSources
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): MS_id, Owner_id, Brand, Account, Tracker_ID, Affiliate, Shortlink_id, Description, Operator.
+Tablas clave: campaign_marketing_source_updated, campaign_marketing_source, campaign_mkt_source_deal, account_account, account_landing_pages, campaign_advertiser, campaign_deal_affiliate, campaign_username, más.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Report_MarketingSources('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Parámetros obligatorios detectados: Affiliate_id. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser]. OPCIONAL. Default=ALL
+Account_id      =[ALL | id del Adv_Account. OPCIONAL. Default=ALL
+Affiliate_id    =[ALL | id del Affiliate]. OBLIGATORIO. Default=''
+Channel_id      =[ALL | id del Channel]. OPCIONAL. Default=ALL
+Product         =[ALL | Product]. OPCIONAL. Default=ALL
+Status          =[ALL | Status]. OPCIONAL. Default=ALL
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [No] OPCIONAL. Columna 1 como METADATO: total/data/setting.
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Keys no utilizadas:
+Month           =[AAAA-MM]. OPCIONAL. Default=Current Month.
+GroupByMS       =[Yes | No]. Agrupa Product by MS. OPCIONAL. Default=No
+ByAccount       =[No | Yes]. Info acumulada por Account/Advertiser. OPCIONAL. Default=No
+ByDay           =[No | Yes]. Info acumulada por Dia/Mes. OPCIONAL. Default=No
+View            =[viewAFF | viewGES]. Info de Fact2 (viewAFF) o de Fact1 (viewGES). OPCIONAL. Default=viewAFF
+OrderBy         =[CPA | CPAvalue | Profit | Advertiser]. OPCIONAL. Default=CPA
+Order           =[Desc | Asc]. OPCIONAL. Default=Desc
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_MarketingSources(''); -- Devuelve todas las MS
+call Report_MarketingSources('debug=ye,status=active,filters=yes');
+call Report_MarketingSources('Affiliate_id="440",status=active,meta=yes,debug=yes');
+call Report_MarketingSources('Affiliate_id=39,debug=YES');
+
+*/

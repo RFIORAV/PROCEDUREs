@@ -1,0 +1,30 @@
+/*
+PROCEDURE_total_monthy_comm_aff_upd.sql
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `sub_total_monthy_comm_aff_upd` del dominio sub_total_monthy_comm_aff_upd. Procedimiento sub_total_monthy_comm_aff_upd. ** Actualiza TABLA view_monthly_fact_aff3 TABLA sub_view_monthly_fact_aff4 desde tabla sub_monthly_comms_affiliate
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: CURRENT_TIMESTAMP, campaign_username, sub_monthly_comms_affiliate, sub_view_monthly_fact_aff4.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call sub_total_monthy_comm_aff_upd('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call sub_total_monthy_comm_aff_upd('Debug=KeyValues');
+call sub_total_monthy_comm_aff_upd('Filters=Yes');
+
+*/

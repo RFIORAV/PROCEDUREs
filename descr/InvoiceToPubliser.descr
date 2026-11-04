@@ -1,0 +1,45 @@
+/*
+PROCEDURE_InvoiceToPubliser_v1.sql - Report: Invoicing to Publisher
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `InvoiceToPubliser` del dominio InvoiceToPubliser. Procedimiento InvoiceToPubliser. Report: Invoicing to Publisher
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: BaseCount, SetConverted, monthly_comms_gestor_v5, account_account, MonthFilter, MonthFilterAll, SetConverted_total_global, SetConverted_total_parcial, campaign_marketing_source, campaign_username.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call InvoiceToPubliser('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguidO por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Month           =[AAAA-MM].            OPCIONAL. Default=Current Month.
+Area            =[ALL | forex | gaming ]. OPCIONAL. Default=ALL
+Publisher_id    =[ALL | Publisher_id]. OPCIONAL. Default=ALL
+Advertiser_id   =[ALL | id del Advertiser_id]. OPCIONAL. Default=ALL
+Brand           =[ALL | NOMBRE de Brand]. OPCIONAL. Default=ALL
+Currency        =[EUR | Original].     Moneda a la que se convierten los resultados. Original  No hace conversiones. El Profit NO SE CALCULARÁ cuando sean monedas distintas. OPCIONAL. Default=EUR.
+HideDetails     =[No | Yes]. OPCIONAL. Default=No
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. [No] OPCIONAL. Coluna 1 como METADATO: total/data/setting
+Debug           =[No | Yes | KeyValues]. [No] NO EJECUTA QUERY y devuelve el código del Query. [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query. OPCIONAL. Default=No
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call InvoiceToPubliser(' '); -- Asumirá todos los defaults
+call InvoiceToPubliser('meta=yes'); -- Asumirá todos los defaults
+call InvoiceToPubliser('Debug=KeyValues');
+call InvoiceToPubliser('Debug=yes');
+call InvoiceToPubliser('Currency=original,Debug=KeyValues');
+
+*/

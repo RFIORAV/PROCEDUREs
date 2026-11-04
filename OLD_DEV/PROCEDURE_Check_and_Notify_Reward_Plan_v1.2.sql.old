@@ -1,0 +1,313 @@
+/*
+PROCEDURE_Check_and_Notify_Reward_Plan_v1.2.sql
+
+Descripción:
+  Detecta Reward_plan nuevos en Snapshot_day_by_day_fact1 (últimos N días)
+  por Operator_id / Account_id, los guarda en Snapshot_day_by_day_rew_plan
+  si aún no existen, notifica en account_notifications los pendientes,
+  crea la entrada en campaign_deal_gestor_rewp parseando CPA/RS/BL
+  y marca Notified=1.
+
+Observaciones:
+  Cada Key debe estar seguida de = y el valor deseado SIN comillas
+  Cada par Key=Value debe ir seguido de una COMA
+  El conjunto de pares debe ir entre '' (comillas simples) como único parámetro string
+
+Keys:
+  Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+          Yes       → muestra candidatos a insertar y pendientes de notificar SIN escribir.
+          KeyValues → muestra parámetros parseados y ejecuta normalmente.
+  Days  = [número]. Días hacia atrás a considerar en fact1. OPCIONAL. Default=90.
+  Notify = [Yes | No]. Si No, solo incorpora faltantes sin notificar. OPCIONAL. Default=Yes.
+  Init   = [No | Yes]. Primera carga: incorpora planes y marca Notified=1 SIN emitir
+           notificaciones. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]']')
+
+Ejemplos:
+  CALL Check_and_Notify_Reward_Plan_dev('');
+  CALL Check_and_Notify_Reward_Plan('Init=Yes');
+  CALL Check_and_Notify_Reward_Plan('Days=90,Notify=Yes');
+  CALL Check_and_Notify_Reward_Plan('Debug=KeyValues');
+
+24.09.2026 v1   Primera versión operativa
+08.10.2026 v1.1 Añadido Advertiser en notificación
+16.10.2026 v1.2 Inserta entrada en campaign_deal_gestor_rewp parseando CPA, RS y BL antes del update final
+*/
+
+SET NAMES 'utf8mb4';
+
+-- DROP PROCEDURE IF EXISTS Check_and_Notify_Reward_Plan;
+DROP PROCEDURE IF EXISTS Check_and_Notify_Reward_Plan_dev;
+
+DELIMITER $$
+CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Check_and_Notify_Reward_Plan_dev`(IN InputCommLine VARCHAR(250))
+COMMENT 'v1.2 16.10.2026 - Detecta Reward_plan nuevos en fact1, notifica e inserta en campaign_deal_gestor_rewp'
+SQL SECURITY DEFINER
+proc_label:BEGIN
+
+  DECLARE v_Version       VARCHAR(32)  DEFAULT 'v1.2 16.10.2026';
+  DECLARE v_Debug         VARCHAR(20)  DEFAULT 'NO';
+  DECLARE v_Notify        VARCHAR(5)   DEFAULT 'YES';
+  DECLARE v_Init          VARCHAR(5)   DEFAULT 'NO';
+  DECLARE v_Days          INT          DEFAULT 90;
+  DECLARE v_InputCommLine VARCHAR(400) DEFAULT '';
+  DECLARE v_e             INT          DEFAULT 0;
+  DECLARE v_c             INT          DEFAULT 0;
+  DECLARE v_k             VARCHAR(80)  DEFAULT '';
+  DECLARE v_v             VARCHAR(250) DEFAULT '';
+  DECLARE v_Error         INT          DEFAULT 0;
+  DECLARE v_Msg           VARCHAR(250) DEFAULT '';
+  DECLARE v_Inserted      INT          DEFAULT 0;
+  DECLARE v_Notified      INT          DEFAULT 0;
+  DECLARE v_RewpInserted  INT          DEFAULT 0;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_Msg = MESSAGE_TEXT;
+    SET v_Error = 1;
+    ROLLBACK;
+    SELECT v_Version AS Version, v_Error AS Error, v_Msg AS Message;
+  END;
+
+  -- ── Parseo InputCommLine ──────────────────────────────────────────────────────
+  SET v_InputCommLine = CONCAT(IFNULL(InputCommLine, ''), ',');
+  SET v_InputCommLine = REPLACE(v_InputCommLine, '"', '');
+
+  WHILE v_InputCommLine > ' ' AND INSTR(v_InputCommLine, '=') > 0 DO
+    SET v_e = INSTR(v_InputCommLine, '=');
+    SET v_c = INSTR(v_InputCommLine, ',');
+    SET v_k = TRIM(SUBSTRING(v_InputCommLine, 1, v_e - 1));
+    SET v_v = TRIM(SUBSTRING(v_InputCommLine, v_e + 1, v_c - (v_e + 1)));
+    SET v_InputCommLine = SUBSTRING(v_InputCommLine, v_c + 1);
+
+    IF       LOWER(v_k) = 'debug'  THEN SET v_Debug  = UPPER(v_v);
+      ELSEIF LOWER(v_k) = 'notify' THEN SET v_Notify = UPPER(v_v);
+      ELSEIF LOWER(v_k) = 'init'   THEN SET v_Init   = UPPER(v_v);
+      ELSEIF LOWER(v_k) = 'days'   THEN SET v_Days   = CAST(v_v AS SIGNED);
+    END IF;
+  END WHILE;
+
+  -- ── Tabla de planes conocidos ─────────────────────────────────────────────────
+  CREATE TABLE IF NOT EXISTS `Snapshot_day_by_day_rew_plan` (
+    `id`            INT          NOT NULL AUTO_INCREMENT,
+    `Operator`      VARCHAR(100) NULL DEFAULT NULL,
+    `Operator_id`   INT          NOT NULL DEFAULT 0,
+    `Account`       VARCHAR(100) NULL DEFAULT NULL,
+    `Account_id`    INT          NOT NULL DEFAULT 0,
+    `Reward_plan`   VARCHAR(100) NOT NULL DEFAULT '',
+    `Notified`      TINYINT      NOT NULL DEFAULT 0 COMMENT '0=pendiente notificar; 1=ya notificado',
+    `Creation_date` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_account_id_reward_plan` (`Account_id`, `Reward_plan`)
+  ) ENGINE=InnoDB COMMENT='Reward_plan distintos por Operator/Account detectados en fact1';
+
+  -- ── Tabla de deals generados desde Reward_plan ────────────────────────────────
+  CREATE TABLE IF NOT EXISTS `campaign_deal_gestor_rewp` (
+    `id`                      INT           NOT NULL AUTO_INCREMENT,
+    `Multilevel`              TINYINT       NULL DEFAULT NULL,
+    `Owner`                   VARCHAR(30)   NULL DEFAULT NULL,
+    `Deal_Name`               VARCHAR(150)  NULL DEFAULT NULL,
+    `Description`             VARCHAR(150)  NULL DEFAULT NULL,
+    `traffic_source`          VARCHAR(250)  NULL DEFAULT NULL,
+    `CPA_Value`               DECIMAL(12,2) NULL DEFAULT '0.00',
+    `RS_Percentage`           DECIMAL(6,2)  NULL DEFAULT '0.00',
+    `RS_Percentage_Displayed` DECIMAL(6,2)  NULL DEFAULT '0.00',
+    `RS_Base`                 VARCHAR(50)   NULL DEFAULT 'Account',
+    `Carry_Over`              TINYINT       NULL DEFAULT '0',
+    `RS_Against_CPA`          TINYINT       NULL DEFAULT '0',
+    `Valid_From`              DATE          NULL DEFAULT (CURRENT_DATE),
+    `Status`                  VARCHAR(30)   NULL DEFAULT '',
+    `Status_id`               TINYINT       NULL DEFAULT '1',
+    `Baseline`                INT           NULL DEFAULT NULL,
+    `Deal_Type`               VARCHAR(10)   NULL DEFAULT NULL,
+    `Country`                 VARCHAR(50)   NULL DEFAULT NULL,
+    `Currency`                VARCHAR(5)    NULL DEFAULT NULL,
+    `Product`                 VARCHAR(100)  NULL DEFAULT NULL,
+    `Advertiser`              VARCHAR(150)  NULL DEFAULT NULL,
+    `Advertiser_id`           INT           NULL DEFAULT NULL,
+    `Account`                 VARCHAR(150)  NULL DEFAULT NULL,
+    `Account_id`              INT           NULL DEFAULT NULL,
+    `Operator`                VARCHAR(150)  NULL DEFAULT NULL,
+    `Operator_id`             INT           NULL DEFAULT NULL,
+    `Campaign_id`             INT           NULL DEFAULT NULL,
+    `Last_Update`             DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `Creation_Date`           DATETIME      NULL DEFAULT CURRENT_TIMESTAMP,
+    `User`                    VARCHAR(30)   NULL DEFAULT '',
+    PRIMARY KEY (`id`) USING BTREE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+  START TRANSACTION;
+
+  -- ── Incorporar Reward_plan faltantes ──────────────────────────────────────────
+  INSERT IGNORE INTO `Snapshot_day_by_day_rew_plan` (
+     `Operator`
+    ,`Operator_id`
+    ,`Account`
+    ,`Account_id`
+    ,`Reward_plan`
+    ,`Notified`
+    ,`Creation_date`
+  )
+  SELECT
+     MAX(IFNULL(P.`Advertiser_Name`, '')) AS `Operator`
+    ,F.`Publisher_id`                     AS `Operator_id`
+    ,MAX(IFNULL(F.`Username`, ''))        AS `Account`
+    ,F.`Username_id`                      AS `Account_id`
+    ,F.`Reward_plan`
+    ,IF(v_Init = 'YES', 1, 0)
+    ,NOW()
+  FROM `Snapshot_day_by_day_fact1` F
+  LEFT JOIN `campaign_publisher` P ON P.`id` = F.`Publisher_id`
+  WHERE F.`Date` >= DATE_SUB(CURDATE(), INTERVAL v_Days DAY)
+    AND IFNULL(TRIM(F.`Reward_plan`), '') <> ''
+    AND IFNULL(F.`Username_id`, 0) > 0
+  GROUP BY F.`Username_id`, F.`Reward_plan`;
+
+  SET v_Inserted = ROW_COUNT();
+
+  -- ── Notificar pendientes ──────────────────────────────────────────────────────
+  INSERT INTO `account_notifications` (
+    `id`, `Affiliate_id`, `Extra_id_1`, `Extra_id_2`, `Extra_id_3`,
+    `Testo`, `FromUser`, `Type`, `Status`, `Status_id`,
+    `Read_Status`, `Comm_Status`, `Date`, `Owner`, `Subtype`,
+    `Detail`, `Action`, `Creation_Date`, `Last_Update`, `Operator`
+  )
+  SELECT
+    NULL, '2', '', '', '',
+    CONCAT_WS(' - ', 'NEW REWARD PLAN', RP.`Reward_plan`, RP.`Operator`, A.`Advertiser_Name`, RP.`Account`),
+    'Manager', 'New Reward Plan', 'Pending', '0',
+    0, '', NOW(), '', '',
+    '', '', NOW(), NOW(), 'SysOp'
+  FROM `Snapshot_day_by_day_rew_plan` RP
+  LEFT JOIN `campaign_username` U ON U.`id` = RP.`Account_id`
+  LEFT JOIN `campaign_advertiser` A ON A.`id` = U.`Advertiser_id`
+  WHERE RP.`Notified` = 0;
+
+  SET v_Notified = ROW_COUNT();
+
+  -- ── Crear entradas en campaign_deal_gestor_rewp ───────────────────────────────
+  -- Nota MySQL 8.x: REGEXP_SUBSTR no admite grupo de captura; se extrae el dígito
+  -- con REGEXP_REPLACE sobre el match completo.
+  INSERT INTO `campaign_deal_gestor_rewp` (
+     `id`
+    ,`Multilevel`
+    ,`Owner`
+    ,`Deal_Name`
+    ,`Description`
+    ,`traffic_source`
+    ,`CPA_Value`
+    ,`RS_Percentage`
+    ,`RS_Percentage_Displayed`
+    -- ,`RS_Base`
+    -- ,`Carry_Over`
+    -- ,`RS_Against_CPA`
+    -- ,`Valid_From`
+    -- ,`Status`
+    -- ,`Status_id`
+    ,`Baseline`
+    -- ,`Deal_Type`
+    -- ,`Country`
+    -- ,`Currency`
+    ,`Product`
+    ,`Advertiser`
+    ,`Advertiser_id`
+    ,`Account`
+    ,`Account_id`
+    ,`Operator`
+    ,`Operator_id`
+    ,`Campaign_id`
+    ,`Last_Update`
+    ,`Creation_Date`
+    ,`User`
+  )
+  SELECT
+     NULL                                                AS `id`
+    ,NULL                                                AS `Multilevel`
+    ,NULL                                                AS `Owner`
+    ,P.Reward_plan                                       AS `Deal_Name`
+    ,P.Reward_plan                                       AS `Description`
+    ,NULL                                                AS `traffic_source`
+    ,CAST(IFNULL(P.raw_cpa, 0) AS UNSIGNED)              AS `CPA_Value`
+    ,CAST(IFNULL(P.raw_rs,  0) AS UNSIGNED)              AS `RS_Percentage`
+    ,CAST(IFNULL(P.raw_rs,  0) AS UNSIGNED)              AS `RS_Percentage_Displayed`
+    -- ,NULL                                                AS `RS_Base`
+    -- ,NULL                                                AS `Carry_Over`
+    -- ,NULL                                                AS `RS_Against_CPA`
+    -- ,NULL                                                AS `Valid_From`
+    -- ,NULL                                                AS `Status`
+    -- ,NULL                                                AS `Status_id`
+    ,CAST(NULLIF(IFNULL(P.raw_bl, ''), '') AS UNSIGNED)  AS `Baseline`
+    -- ,NULL                                                AS `Deal_Type`
+    -- ,NULL                                                AS `Country`
+    -- ,NULL                                                AS `Currency`
+    ,P.Reward_plan                                       AS `Product`
+    ,P.Advertiser_Name                                   AS `Advertiser`
+    ,P.Advertiser_id                                     AS `Advertiser_id`
+    ,P.Account                                           AS `Account`
+    ,P.Account_id                                        AS `Account_id`
+    ,P.Operator                                          AS `Operator`
+    ,P.Operator_id                                       AS `Operator_id`
+    ,NULL                                                AS `Campaign_id`
+    ,NOW()                                               AS `Last_Update`
+    ,NOW()                                               AS `Creation_Date`
+    ,'SysOp'                                             AS `User`
+  FROM (
+    SELECT
+       S.Reward_plan
+      ,S.Operator
+      ,S.Operator_id
+      ,S.Advertiser_Name
+      ,S.Advertiser_id
+      ,S.Account
+      ,S.Account_id
+      ,COALESCE(
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '[0-9]+[[:space:]]*(EUR|€)?[[:space:]]*CPA', 1, 1, 'i'), '[^0-9].*$', ''), ''),
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, 'CPA[[:space:]]*[0-9]+', 1, 1, 'i'), '[^0-9]', ''), ''),
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '[0-9]+[[:space:]]*€[[:space:]]*\\+', 1, 1, 'i'), '[^0-9].*$', ''), ''),
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '^[0-9]+[[:space:]]*\\+[[:space:]]*[0-9]+[[:space:]]*%', 1, 1, 'i'), '[^0-9].*$', ''), ''),
+          /* N+M (sin %): CPA = primer número — ej. 80+30 */
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '^[0-9]+[[:space:]]*\\+[[:space:]]*[0-9]+$', 1, 1, 'i'), '[^0-9].*$', ''), '')
+       ) AS raw_cpa
+      ,COALESCE(
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '[0-9]+[[:space:]]*%', 1, 1, 'i'), '[^0-9].*$', ''), ''),
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '[0-9]+[[:space:]]*RS([^A-Za-z]|$)', 1, 1, 'i'), '[^0-9].*$', ''), ''),
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '(^|[^A-Za-z])RS[[:space:]]*[0-9]+', 1, 1, 'i'), '[^0-9]', ''), ''),
+          /* N+M (sin %): RS = segundo número — ej. 80+30 */
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '^[0-9]+[[:space:]]*\\+[[:space:]]*[0-9]+$', 1, 1, 'i'), '^[0-9]+[[:space:]]*\\+[[:space:]]*', ''), '')
+       ) AS raw_rs
+      ,COALESCE(
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '(^|[^A-Za-z])BL[[:space:]]*[0-9]+', 1, 1, 'i'), '[^0-9]', ''), ''),
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '[0-9]+[[:space:]]*BL([^A-Za-z]|$)', 1, 1, 'i'), '[^0-9].*$', ''), ''),
+          NULLIF(REGEXP_REPLACE(REGEXP_SUBSTR(S.rp, '\\([0-9]+', 1, 1, 'i'), '[^0-9]', ''), '')
+       ) AS raw_bl
+    FROM (
+      SELECT
+         RP.Reward_plan
+        ,RP.Operator
+        ,RP.`Operator_id`
+        ,A.`Advertiser_Name` AS Advertiser_Name
+        ,U.`Advertiser_id`   AS Advertiser_id
+        ,RP.Account
+        ,RP.`Account_id`
+        ,TRIM(RP.Reward_plan) AS rp
+      FROM `Snapshot_day_by_day_rew_plan` RP
+      LEFT JOIN `campaign_username` U ON U.`id` = RP.`Account_id`
+      LEFT JOIN `campaign_advertiser` A ON A.`id` = U.`Advertiser_id`
+      WHERE RP.`Notified` = 0
+    ) S
+  ) P
+  WHERE P.raw_cpa IS NOT NULL
+     OR P.raw_rs  IS NOT NULL
+  ORDER BY P.Account_id, P.Reward_plan;
+
+  SET v_RewpInserted = ROW_COUNT();
+
+  UPDATE `Snapshot_day_by_day_rew_plan`
+  SET `Notified` = 1
+  WHERE `Notified` = 0;
+
+  COMMIT;
+
+END$$
+DELIMITER ;

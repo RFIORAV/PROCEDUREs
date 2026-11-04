@@ -1,0 +1,37 @@
+/*
+PROCEDURE_CopyTablesToDEV.sql -  ACTUALIZAR TABLAS euroaffiliati_dev desde euroaffiliati2
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `CopyTablesToDEV` del dominio CopyTablesToDEV. Procedimiento CopyTablesToDEV. v1.3 - 15.07.2026 Procedimiento CopyTablesToDEV.
+Categoría: copia de tablas entre entornos.
+Tablas clave: account_account, euroaffiliati2, tableName.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Manejo de errores con HANDLER.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call CopyTablesToDEV('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+DB_destination = [valor]. Parámetro de entrada.
+  
+Examples:
+
+CALL CopyTablesToDEV('');
+CALL CopyTablesToDEV('affacc_dev');
+CALL CopyTablesToDEV('euroaffiliati_mkt');
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call CopyTablesToDEV('Debug=KeyValues');
+call CopyTablesToDEV('Filters=Yes');
+
+*/

@@ -1,0 +1,31 @@
+/*
+PROCEDURE_CreateSnapshotDbDView.SQL - CreateSnapshotDbDView
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `CreateSnapshotDbDView` del dominio CreateSnapshotDbDView.SQL. Procedimiento CreateSnapshotDbDView. -- y generar la tabla affiliateaccess.Snapshot_day_by_day -- Combina datos de Snapshot_day_by_day y la tabla del año más reciente desde euroaffiliati2 -- Se utiliza al regenerar db affiliateaccess desde euroaffiliati2 -- en REGENERA_db_AFFILIATEACCESS_desde_EUROAFFILIATI_v2.cmd Procedimiento CreateSnapshotDbDView.
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: euroaffiliati2, Snapshot_DbD, affiliateaccess.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call CreateSnapshotDbDView('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Uso batch/ETL; no es consulta ad hoc de usuario final.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [Key=Value,...]. Parámetro único de entrada.
+
+Debug = [No | Yes | KeyValues]. OPCIONAL. Default=No.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call CreateSnapshotDbDView('Debug=KeyValues');
+call CreateSnapshotDbDView('Filters=Yes');
+
+*/

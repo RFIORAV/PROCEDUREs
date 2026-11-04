@@ -1,0 +1,40 @@
+/*
+PROCEDURE_DashTotalByMonth_v1.sql - Obtiene GRAND TOTAL por mes para un año
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `DashTotalByMonth` del dominio DashTotalByMonth. Procedimiento DashTotalByMonth. Obtiene TOTALes Dashboard por mes desde el mes de inicio y los siguientes 11 meses (total 12 meses)
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: dash_total_by_month, campaign_log_dashboard_temp.
+Modos y comportamiento:
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call DashTotalByMonth('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+p_start_month = [valor]. Parámetro de entrada.
+
+Recibe como parámetro @start_month (formato YYYY-MM) y ejecuta call Dash_Gestor_TotalByAdvertiser ('Month=YYYY-MM') 
+para ese mes y los siguientes 11 meses (total 12 meses).
+
+El procedimiento se detiene automáticamente si el mes a procesar es posterior a la fecha actual.
+
+Con el resultado de cada call guarda la línea de GRAND TOTAL en la tabla dash_total_by_month.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call DashTotalByMonth('2025-09');
+call DashTotalByMonth('2024-01');
+call DashTotalByMonth('2023-06');
+call DashTotalByMonth('CM');
+call DashTotalByMonth('LM');
+call DashTotalByMonth('debug=yes');
+
+*/

@@ -1,0 +1,28 @@
+/*
+PROCEDURE_monthly_comms_affiliate_v4_COver  - COMISIONES del AFILIADO
+
+Descripción, cometido y funciones:
+Cometido: Calcula o actualiza comisiones mensuales de afiliados o gestores. Procedimiento sub_monthly_comms_affiliate. 22.02.2022 Calculos sobre Snapshot_day_by_day_fact1 02.04.2022 Se agrega Tracker_ID para estadisticas 19.04.2022 Tratamiento de Deal por producto y fecha 27.07.2022 Multimoneda 13.09.2022 incluye Product 10.10.2022 V3.1 incluye group by deal 27.10.2022 V3.2 Nuevo cálculo de RS (acumula por Adv Account) 28.10.2022 V3.2 Utiliza Brand_Group y Brand_Group_Acum -- 28.11.2022 v3.3 Se trata nuevos campos is_indirect,Advertiser_indirect_id,Advertiser_indirect 21.01.2023 v3.4 Trata nuevo concepto Publisher (pagador) 31.01.2023 v3.5 `Area` 10.03.2023 v4 PROCEDURE_monthly_comms_gestor_v4_COver.sql - C.Over 11.03.2023 v4 PROCEDURE_monthly_comms_affiliate_v4_COver.sql - C.Over 11.01.2024 v4.1 Se agrega cálculo comision referral Modifica índices monthly_comms_affiliate compatibilidad con view_monthly_fact_aff3 18.06.2024 v4.1 Tratamiento de Subafiliados Commission calc using C.Over and CPAminusRS
+Categoría: cálculo de comisiones mensuales.
+Tablas clave: DbD_Fact1_Account_monthly, Snapshot_day_by_day_fact2, account_account, sub_monthly_comms_affiliate, DbD_Fact1_Account_monthly_CPA_versus_RS, DbD_Fact1_Account_monthly_CPA_versus_RS_acum, DbD_Fact1_Account_monthly_CarryOver, Master_Sub, master_affiliate_deals, master_affiliate_deals_per_affiliate.
+Modos y comportamiento:
+  - Incluye operaciones DML (escritura o mantenimiento).
+Cuándo proponer el CALL: Construir `call sub_monthly_comms_affiliate('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+Sin
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call sub_monthly_comms_affiliate('Debug=KeyValues');
+call sub_monthly_comms_affiliate('Filters=Yes');
+
+*/

@@ -1,0 +1,42 @@
+/*
+PROCEDURE_Analisys_customer_report_v2.sql - Reporte de jugadores con comportamiento compatible con fraude de afiliados
+
+Descripción, cometido y funciones:
+Cometido: Procedimiento `Analisys_customer_report_v2` del dominio Analisys_customer_report. Procedimiento Analisys_customer_report_v2. Reporte de jugadores con comportamiento compatible con fraude de afiliados (esquema API 4)
+Categoría: procedimiento almacenado euroaffiliati.
+Tablas clave: cpa_months, filtered_by_signup, customer_report_API_4_analysis, fraud_flags, has_later_activity, normalized, per_player, tmp_fraud_detail_v2, with_months.
+Cuándo proponer el CALL: Construir `call Analisys_customer_report_v2('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value debe ir seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputParams = [valor]. Parámetro de entrada.
+
+Tabla fuente: customer_report_API_4_analysis (esquema: Affiliate, Affiliate_id, Tracker_Name, Tracker_id, MS_id, Date, Customer_ID, Signup_Date, CPA_Processed_Date, Deposits, Payouts, Turnover, ...)
+Objetivo: Detectar patrones F1, F2, F3 que sugieren fraude por parte de afiliados (no por jugadores).
+
+Patrones detectados:
+  F1: CPA Triggered y Deposits < umbral en el mismo mes, y Signup_Date del mismo mes o del mes anterior
+  F2: CPA Triggered y Deposits = Payouts
+  F3: CPA Triggered y Deposits < umbral y no hay más actividad en los meses siguientes
+
+CPA Triggered: CPA_Processed_Date informado (no NULL ni vacío).
+Recomendación de índice para tablas grandes: (Date, Affiliate_id, Customer_ID).
+
+Datos: la tabla puede cargarse desde el dump en dump/customer_report_API_4_analysis-*.sql
+  (ej. customer_report_API_4_analysis-2026-02-16 12_31_18-12.31.sql). Incluye Signup_Date/CPA_Processed_Date en DD-MM-YYYY.
+
+Compatible: MySQL 8.0.37 / 8.4
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Analisys_customer_report_v2('Debug=KeyValues');
+call Analisys_customer_report_v2('Filters=Yes');
+
+*/

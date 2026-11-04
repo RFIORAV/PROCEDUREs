@@ -1,0 +1,43 @@
+/*
+PROCEDURE_Report_DashTotalByMonth.sql - Report Dashboard Total By Month
+
+Descripción, cometido y funciones:
+Cometido: Reporte de DashTotalByMonth. Devuelve filas para consulta/exportación. Procedimiento Report_DashTotalByMonth. Report Dashboard Total By Month
+Categoría: reporte tabular / exportación para grids dinámicos.
+Columnas visibles del reporte (fila Meta=setting, sin omit=yes/true): Year, Month, Owner, CPA, CPA Volume, Rev Share Volume, Tot_Comm, Gross Margin.
+Tablas clave: Main_Table_Data, dash_total_by_month, Main_Table_Data_total.
+Modos y comportamiento:
+  - Filters=Yes → devuelve valores disponibles por filtro (Korder, Key, Value, Caption, id, extra).
+  - Meta=Yes → primera fila `setting`, datos en `data`, totales en `total` para grids dinámicos.
+  - Debug=Yes → SQL generado sin ejecutar; Debug=KeyValues → parámetros parseados.
+Cuándo proponer el CALL: Construir `call Report_DashTotalByMonth('Key=valor,...')` con valores sin comillas, cada par terminado en coma dentro del string. Si el usuario pide un listado o panel del mismo dominio, usar Filters=Yes para descubrir valores válidos y Meta=Yes si consume la UI de reportes.
+
+Observaciones:
+
+Cada Key debe estar seguida de = y el valor deseado SIN comillas (ni simples ' ni dobles ")
+Cada par Key=Value de estar seguido por una COMA
+El conjunto de pares [Key=Value] debe ir entre '' (comillas simples) porque forman UN UNICO PARAMETRO string de entrada para el PROCEDURE.
+
+Keys:
+InputCommLine = [valor]. Parámetro de entrada.
+
+Year            =[ALL | Año]. OPCIONAL. Default=ALL
+Month           =[ALL | Mes]. OPCIONAL. Default=ALL
+Owner           =[ALL | id del Owner]. OPCIONAL. Default=ALL
+Misc            =[Refresh]. OPCIONAL. Refresca los datos. Default=NO 
+Filters         =[Yes | No]. Devuelve la lista de filtros. OPCIONAL. Default=no.
+Meta            =[No | Yes]. OPCIONAL. Columna 1 como METADATO: total/data/setting. Default [Yes]
+Debug           =[No | Yes | KeyValues]. OPCIONAL. Default=No
+                  [No] NO EJECUTA QUERY y devuelve el código del Query.
+                  [KeyValues] EJECUTA QUERY y devuelve KeyValues del Query.
+
+Parámetros ('[Key=Value[,...]]')
+
+Ejemplos:
+
+call Report_DashTotalByMonth('debug=ye'); -- Devuelve todas las líneas
+call Report_DashTotalByMonth('year=2026,owner=fullmt,debug=ye');
+call Report_DashTotalByMonth('year=2026,month=01,owner=fullmt,debug=ye');
+call Report_DashTotalByMonth('year=2026,filters=yes,debug=ye');
+
+*/

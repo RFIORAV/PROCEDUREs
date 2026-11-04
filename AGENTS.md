@@ -5,6 +5,17 @@ Debe ser leído por cualquier asistente de IA antes de generar o modificar códi
 
 ---
 
+## Principios generales
+
+1. No des nada por sentado. No ocultes la confusión. Resalta las ventajas y desventajas.
+
+2. Código mínimo que resuelva el problema. Nada especulativo.
+
+3. Toca solo lo que sea necesario. Limpia solo tu propio desorden.
+
+4. Definir los criterios de éxito. Repetir hasta que se verifiquen.
+
+
 ## Entorno
 
 - **Sistema operativo:** Windows 11 Pro (exclusivo)
@@ -308,6 +319,25 @@ END IF;
 
 - Registrar estado/versión cuando aplique y devolver resultado trazable
 - Usar `LEAVE proc_label` para salida anticipada con mensaje claro ante parámetros inválidos
+
+---
+
+## DDL / CREATE TABLE
+
+- En definiciones `CREATE TABLE` / `ALTER TABLE ... ADD COLUMN`, **cada columna y todos sus atributos van en una sola línea** (tipo, NULL/NOT NULL, DEFAULT, COMMENT, etc.).
+- No partir `COMMENT`, `DEFAULT` u otros atributos de columna en líneas siguientes.
+- Índices y `CONSTRAINT` también preferentemente en una sola línea cada uno, cuando quepan de forma legible.
+
+Ejemplo correcto:
+```sql
+`Bonus_NR` DECIMAL(8,2) NOT NULL DEFAULT 0 COMMENT '% sobre NR acumulado del mes filtrado',
+```
+
+Ejemplo incorrecto:
+```sql
+`Bonus_NR` DECIMAL(8,2) NOT NULL DEFAULT 0
+   COMMENT '% sobre NR acumulado del mes filtrado',
+```
 
 ---
 
