@@ -1,3 +1,5 @@
+Escribe siempre el código de forma limpia, modular y con una arquitectura adecuada y una separación de responsabilidades. Nunca añadas una funcionalidad simplemente porque yo te la haya pedido. Si no encuentras una forma sencilla de implementarla de manera natural, y crees que sería mejor realizar una refactorización para que todo quede limpio, detén tu trabajo antes de tiempo y dilo.
+
 # CLAUDE.md — Contexto de desarrollo: proyecto **euroaffiliati**
 
 Este archivo describe el entorno, convenciones y patrones de desarrollo del proyecto.

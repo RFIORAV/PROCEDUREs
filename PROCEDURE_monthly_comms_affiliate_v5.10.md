@@ -1,3 +1,7 @@
+La especificación vigente del cálculo está en PROCEDURE_monthly_comms_affiliate.md
+(alineada a PROCEDURE_monthly_comms_affiliate_v5.10.sql). Este archivo queda como
+pedido original de la v5.10.
+
 Modificar el procedure monthly_comms_affiliate_v5 (archivo
 PROCEDURE_monthly_comms_affiliate_v5.10.sql) para:
 

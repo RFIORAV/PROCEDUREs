@@ -1,59 +1,94 @@
 /*
-PROCEDURE_monthly_comms_affiliate_v5.10.sql - COMISIONES del AFILIADO
+PROCEDURE_monthly_comms_affiliate_v5.11.sql - COMISIONES del AFILIADO
+
+Especificación de aggregate_all_ms: PROCEDURE_monthly_comms_affiliate_v5.11_over_all_ms.md
+(el valor en campaign_deal_affiliate.RS_Base y fact2.Deal_Aff_RS_Base es aggregate_all_ms).
+El resto del cálculo sigue PROCEDURE_monthly_comms_affiliate.md.
 
 Descripción:
-  Calcula comisiones mensuales del afiliado (CPA + Revenue Share) sobre
-  Snapshot_day_by_day_fact2, con tratamiento de RS negativa, RS contra CPA
-  y acumulación según campaign_deal_affiliate.RS_Base.
-  Incluye referral Master Affiliate (master_affiliate_deals_v2) y bonus
-  por objetivos (campaign_deal_affiliate_bonus + _bonus_brand).
+  Recalcula monthly_comms_affiliate_v5 desde un mes de corte, en tres INSERT
+  sucesivos (Comm_type):
+    1. CPA+RS  — afiliado, sobre Snapshot_day_by_day_fact2 + campaign_deal_affiliate
+    2. REFER   — Master Affiliate, sobre las filas CPA+RS recién grabadas
+                 + master_affiliate_deals_per_affiliate / master_affiliate_deals_v2
+                 + margen en Snapshot_day_by_day_fact1
+    3. BONUS   — objetivos, sobre fact2 + campaign_deal_affiliate_bonus_v2
+                 + campaign_deal_affiliate_bonus_brand
+  RS_carry_NCO se graba en 0. Carry_Over del deal no se aplica.
+  No hay clave única: el DELETE previo evita duplicar la ventana.
 
-Observaciones:
-  p_month = mes a procesar en formato YYYY-MM. Si es NULL, vacío o inválido,
-  usa CURDATE() - 2 meses como inicio del recálculo (borra e inserta desde ese mes).
-
-Modalidades RS (Deal_Aff_RS / Deal_Aff_RS_Against_CPA / Deal_Aff_RS_Base):
-  - Sin RS (Deal_Aff_RS=0): gross_RS_Val=0 y net_RS_Val=0
-  - Con RS y Deal_Aff_RS_Against_CPA=1: la RS negativa se resta de gross_CPA_Val
-    sin dejar net_CPA_Val negativo; el remanente de RS (si existe) sigue el flujo
-    de acumulación
-  - Con RS acumulado negativo (según base): net_RS_Val=0
-  - net_RS_Val nunca es negativo: las RS negativas del grupo se absorben en las
-    positivas del mismo KeyRSAcum (reparto proporcional del neto acumulado ≥ 0)
-  - La base de acumulación RS se toma de campaign_deal_affiliate.RS_Base
-    (fallback: Snapshot Deal_Aff_RS_Base; default brand):
-      account         → Affiliate_id + Account_id
-      Operator        → Affiliate_id + Publisher_id
-      brand           → Affiliate_id + Brand          (default)
-      Operator/brand  → Affiliate_id + Publisher_id + Brand
-    Cualquier otro valor se trata como brand.
-
-Referral / Master Affiliate (Comm_type=REFER) — master_affiliate_deals_v2:
-  Un registro por Sub_Affiliate_id + Month + Master + Brand (accounts agregados).
-  Deal MA: Advertiser_id=0 (todas) o match de brand; prioridad deal específico.
-  Por cada fila CPA+RS del SA (agregada por brand):
-    Value_by_CPA        × CPA del SA+brand
-    Perc_on_Tot_Comm    % sobre net_Total_comm del SA+brand
-    Perc_on_CPA_Value   % sobre net_CPA_Val del SA+brand
-    Perc_on_RS          % sobre net_RS_Val del SA+brand
-    Perc_on_Margin_value % sobre Estimated_Margin (fact1: CPA/RS Gestor − Affiliate)
-                         del SA+brand+mes
-
-Bonus (Comm_type=BONUS):
-  - Reglas activas (Status_id=1) en campaign_deal_affiliate_bonus_v2
-  - Si el mes solapa Date_Valid_From..Date_Valid_to (NULL to=permanente),
-    acumula CPA/NR/FTD de TODO el mes en fact2 para Affiliate_id + brands
-    (_bonus_brand; 0 filas=all) + Code_to_Affiliate (NULL/''=all)
-  - No recorta métricas al día Date_Valid_to: es NR/CPA/FTD del mes completo
-  - Umbrales CPA_min / NR_min / FTD_min (0=no aplica); Conditions ANY|ALL
-  - Importe = Bonus_Value + NR_mes * Bonus_NR / 100 + CPA_mes * Bonus_Value_per_CPA
-  - Account_id=0; Brand = brands CSV (Advertiser_Name) o ALL si no hay brands en hija
-
-Parámetros:
+Parámetro:
   p_month VARCHAR(7)  -- YYYY-MM | NULL | ''
+  Válido solo si REGEXP '^[0-9]{4}-[0-9]{2}$' y STR_TO_DATE(p_month+'-01') no es NULL.
+  Si no, corte = LEFT(DATE_SUB(CURDATE(), INTERVAL 2 MONTH), 7).
+  Borra e inserta todo Month >= corte (incluido el mes corriente y posteriores
+  que existan en fact). No recorta el extremo superior.
+
+CPA + RS (grano final: Affiliate_id + Account_id + Advertiser_id + Month):
+  gross_CPA = si Deal_Aff_CPA>0 entonces Deal_Aff_CPA*Qualified_Players
+              si no CPA_Value_Affiliate
+  gross_RS  = si Deal_Aff_RS=0 entonces 0
+              si no Deal_Aff_RS * Net_Revenue / 100 * FactorNR
+  FactorNR  = 1 si Data_Currency = Currency del deal;
+              si no getCurrencyConversion(1, Data_Currency, Currency del deal)
+  Currency de salida = Currency del deal, o Data_Currency si no hay deal.
+  Se descarta el grupo mensual si CPA=0 y Deal_Aff_RS=0.
+  Against_CPA (Deal_Aff_RS_Against_CPA=1) solo con gross_RS<0:
+    si gross_CPA >= ABS(gross_RS) → net_CPA = gross_CPA-ABS(gross_RS), RS previa=0
+    si no → net_CPA=0 y RS previa = gross_CPA-ABS(gross_RS) (sigue negativa)
+  Si no aplica Against_CPA: net_CPA=gross_CPA; RS previa=gross_RS (0 si no hay RS).
+  Acumulación por Month + Affiliate_id + KeyRSAcum. RS_Base del deal
+  (fallback fact2.Deal_Aff_RS_Base; default brand; otro valor = brand),
+  salvo aggregate_all_ms:
+      account           A|Affiliate_id|Account_id
+      operator          O|Affiliate_id|Publisher_id
+      operator/brand    OB|Affiliate_id|Publisher_id|Brand
+      brand             B|Affiliate_id|Brand
+      aggregate_all_ms  M|Affiliate_id|Data_Currency
+  Bases distintas de aggregate_all_ms:
+    net_RS_Val = 0 si el neto del grupo <=0, o la fila previa <=0, o no hay positivas.
+    Si no: ROUND(RS_previa * neto_grupo / suma_positivas, 2). Nunca negativo.
+  aggregate_all_ms (ritemood):
+    gross/net RS del detalle = suma algebraica de fact2.Revenue_Share_Affiliate
+    por Affiliate + Account + Brand + Month + moneda. Puede ser negativa.
+    No aplica Against_CPA ni prorrateo. Sin carry over.
+    RS pagado del pool = MAX(S, 0). Si S < 0, fila Comm_type=RS-OFFSET
+    (Account_id=0, Advertiser_id=0, net_RS_Val=-S) para que el total sea 0.
+  net_Total_comm = net_CPA_Val + net_RS_Val.
+  Owner/Brand/Affiliate/Product/Channel = MAX. Owner no entra en GROUP BY.
+
+REFER (grano: Master + Sub_Affiliate + Advertiser_id + Brand + Month):
+  Solo filas CPA+RS de la ventana, agregadas por SA+Advertiser+Brand+Month.
+  Enlace activo (Status_id NULL se toma como '1'): Advertiser_id=0 o el de la brand,
+  mes >= Valid_From y mes <= COALESCE(Valid_To, primer día del mes corriente).
+  Un solo deal: ORDER BY Advertiser_id DESC LIMIT 1 (específico gana a 0).
+  net_CPA_Val = CPA*Value_by_CPA + net_CPA_Val*Perc_on_CPA_Value/100
+  net_RS_Val  = net_RS_Val*Perc_on_RS/100
+  net_Total   = esas dos + net_Total_comm*Perc_on_Tot_Comm/100
+                + Estimated_Margin*Perc_on_Margin_value/100
+  Estimated_Margin = SUM(CPA_Value_Gestor - CPA_Value_Affiliate
+                       + Revenue_Share_Gestor - Revenue_Share_Affiliate) en fact1,
+                     por SA+Advertiser+Month. Account_id=0. Se omite si el total es 0.
+  Affiliate_id/Affiliate de la fila = el Master; Sub_Affiliate_* = el SA.
+
+BONUS (grano: regla + Affiliate_id de fact2 + Month):
+  Reglas Status_id=1, Date_Valid_From NOT NULL, From <= fin del mes corriente
+  y To (NULL=9999-12-31) >= corte.
+  Métricas del mes calendario completo dentro de From..To (no se recorta al día):
+    CPA=Qualified_Players, NR=Net_Revenue, FTD=First_Time_Deposit.
+  Affiliate_id NULL o 0 = todos. Code_to_Affiliate NULL/'' = todas las MS
+  (comparación UPPER/TRIM). Sin filas en _bonus_brand = todas las brands.
+  Brand = CSV de Advertiser_Name (máx. 80) o ALL.
+  Advertiser_id = el único de fact2 si la regla tiene brands y solo aparece uno;
+  si no, 0. Account_id=0.
+  Conditions distinto de ALL se trata como ANY.
+    ALL: cada umbral >0 debe cumplirse (0 = no aplica).
+    ANY: basta un umbral >0; si los tres son 0, la regla pasa.
+  Importe = Bonus_Value + NR*Bonus_NR/100 + CPA*Bonus_Value_per_CPA.
+  Va a net_CPA_Val y net_Total_comm; net_RS_Val=0. Se omite si el importe es 0.
 
 Ejemplos:
-  CALL monthly_comms_affiliate_v5('2026-08');
+  CALL monthly_comms_affiliate_v5('2026-11');
   CALL monthly_comms_affiliate_v5(NULL);
   CALL monthly_comms_affiliate_v5('');
 
@@ -94,6 +129,11 @@ Ejemplos:
    11.09.2026 v5.9   Referral con master_affiliate_deals_v2 (Value_by_CPA,
                      Perc_on_Tot_Comm/CPA_Value/RS/Margin_value)
    12.09.2026 v5.10  Fix REFER: detalle por Brand (no acumular en ALL)
+   04.11.2026 v5.11  RS_Base aggregate_all_ms: suma algebraica de
+                     Revenue_Share_Affiliate de todas las MS del afiliado y mes.
+                     Se paga solo si el total es positivo. Sin carry over.
+                     Detalle account/brand con signo. Si el total es negativo,
+                     fila RS-OFFSET para dejar la suma en cero.
 **/
 
 -- DROP PROCEDURE IF EXISTS monthly_comms_affiliate_v5_dev;
@@ -102,12 +142,12 @@ DROP PROCEDURE IF EXISTS monthly_comms_affiliate_v5;
 DELIMITER $$
 
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE monthly_comms_affiliate_v5(IN p_month VARCHAR(7))
-   COMMENT 'v5.10 12.09.2026 - Comisiones afiliado CPA+RS+REFER(v2)+bonus'
+   COMMENT 'v5.11 04.11.2026 - CPA+RS aggregate_all_ms + REFER(v2) + bonus'
    LANGUAGE SQL
    SQL SECURITY DEFINER
 proc_label:BEGIN
 
-DECLARE v_Version          VARCHAR(32)  DEFAULT 'v5.10 12.09.2026';
+DECLARE v_Version          VARCHAR(32)  DEFAULT 'v5.11 04.11.2026';
 DECLARE v_LMonth           VARCHAR(7);
 DECLARE v_LMonthDate       DATE;
 DECLARE v_CurrentMonthDate DATE;
@@ -184,13 +224,21 @@ src AS (
 		-- Base de acumulación: deal (autoritativo); fallback fact2; default brand
 		,CASE LOWER(TRIM(IFNULL(NULLIF(TRIM(d.`RS_Base`), ''),
 		              IFNULL(NULLIF(TRIM(f.`Deal_Aff_RS_Base`), ''), 'brand'))))
-			WHEN 'account'        THEN 'account'
-			WHEN 'operator'       THEN 'operator'
-			WHEN 'operator/brand' THEN 'operator/brand'
+			WHEN 'account'          THEN 'account'
+			WHEN 'operator'         THEN 'operator'
+			WHEN 'operator/brand'   THEN 'operator/brand'
+			WHEN 'aggregate_all_ms' THEN 'aggregate_all_ms'
 			ELSE 'brand'
 		 END                                                          AS `RS_Base`
-		,IFNULL(d.`Currency`, f.`Data_Currency`)                      AS `Deal_Currency`
+		-- aggregate_all_ms suma Revenue_Share_Affiliate en Data_Currency, sin convertir
+		,CASE
+			WHEN LOWER(TRIM(IFNULL(NULLIF(TRIM(d.`RS_Base`), ''),
+			          IFNULL(NULLIF(TRIM(f.`Deal_Aff_RS_Base`), ''), 'brand')))) = 'aggregate_all_ms'
+			THEN IFNULL(f.`Data_Currency`, '')
+			ELSE IFNULL(d.`Currency`, f.`Data_Currency`)
+		 END                                                          AS `Deal_Currency`
 		,IFNULL(f.`CPA_Value_Affiliate`, 0)                           AS `gross_CPA_Val_raw`
+		,IFNULL(f.`Revenue_Share_Affiliate`, 0)                       AS `Revenue_Share_Affiliate`
 		,IFNULL(f.`Affiliate`, '')                                    AS `Affiliate`
 		,IFNULL(f.`Brand`, '')                                        AS `Brand`
 		,f.`Product`
@@ -224,8 +272,10 @@ monthly AS (
 			END
 		 ), 2)                                                        AS `gross_CPA_Val`
 		,ROUND(SUM(
-			CASE WHEN `Deal_Aff_RS` = 0 THEN 0
-			     ELSE `Deal_Aff_RS` * `Net_Revenue` / 100 * `FactorNR`
+			CASE
+				WHEN `RS_Base` = 'aggregate_all_ms' THEN `Revenue_Share_Affiliate`
+				WHEN `Deal_Aff_RS` = 0 THEN 0
+				ELSE `Deal_Aff_RS` * `Net_Revenue` / 100 * `FactorNR`
 			END
 		 ), 2)                                                        AS `gross_RS_Val`
 		,`Deal_Aff_id`
@@ -246,19 +296,23 @@ monthly AS (
 			WHEN 'account' THEN CONCAT('A|', `Affiliate_id`, '|', `Account_id`)
 			WHEN 'operator' THEN CONCAT('O|', `Affiliate_id`, '|', `Publisher_id`)
 			WHEN 'operator/brand' THEN CONCAT('OB|', `Affiliate_id`, '|', `Publisher_id`, '|', `Brand`)
+			WHEN 'aggregate_all_ms' THEN CONCAT('M|', `Affiliate_id`, '|', `Deal_Currency`)
 			ELSE CONCAT('B|', `Affiliate_id`, '|', `Brand`)
 		 END                                                          AS `KeyRSAcum`
 	FROM src
 	GROUP BY
 		 `Account_id`, `Month`, `Affiliate_id`, `Advertiser_id`, `Publisher_id`
 		,`Deal_Aff_id`, `RS_Base`, `Deal_Currency`, `Brand`, `Product_Real`, `Channel_id`
-	HAVING `CPA` <> 0 OR MAX(`Deal_Aff_RS`) <> 0
+	HAVING `CPA` <> 0
+	    OR MAX(`Deal_Aff_RS`) <> 0
+	    OR SUM(CASE WHEN `RS_Base` = 'aggregate_all_ms' THEN `Revenue_Share_Affiliate` ELSE 0 END) <> 0
 ),
 -- Netting CPA vs RS (sin UNION): Against_CPA solo aplica con RS negativa
 netted AS (
 	SELECT
 		 m.*
 		,CASE
+			WHEN m.`RS_Base` = 'aggregate_all_ms' THEN m.`gross_CPA_Val`
 			WHEN m.`CPAminusRS` = 1 AND m.`gross_RS_Val` < 0 THEN
 				CASE
 					WHEN m.`gross_CPA_Val` >= ABS(m.`gross_RS_Val`)
@@ -268,6 +322,7 @@ netted AS (
 			ELSE m.`gross_CPA_Val`
 		 END                                                          AS `net_CPA_Val`
 		,CASE
+			WHEN m.`RS_Base` = 'aggregate_all_ms' THEN m.`gross_RS_Val`
 			WHEN m.`Deal_Aff_RS` = 0 THEN 0
 			WHEN m.`CPAminusRS` = 1 AND m.`gross_RS_Val` < 0 THEN
 				CASE
@@ -302,9 +357,11 @@ final_rows AS (
 		,n.`Affiliate_id`
 		,n.`Advertiser_id`
 		,n.`Deal_Currency`
+		,n.`RS_Base`
 		,n.`CPA`
 		,n.`net_CPA_Val`
 		,CASE
+			WHEN n.`RS_Base` = 'aggregate_all_ms' THEN n.`net_RS_pre`
 			WHEN a.`net_RS_Acum` <= 0 OR n.`net_RS_pre` <= 0 OR a.`net_RS_Pos` <= 0
 			THEN 0
 			ELSE ROUND(n.`net_RS_pre` * a.`net_RS_Acum` / a.`net_RS_Pos`, 2)
@@ -321,33 +378,99 @@ final_rows AS (
 		ON a.`Month` = n.`Month`
 	   AND a.`Affiliate_id` = n.`Affiliate_id`
 	   AND a.`KeyRSAcum` = n.`KeyRSAcum`
+),
+-- Detalle de las bases distintas de aggregate_all_ms (mismo grano que v5.10)
+detail AS (
+	SELECT
+		 MAX(`Owner`)                                                 AS `Owner`
+		,`Account_id`
+		,'CPA+RS'                                                     AS `Comm_type`
+		,`Month`
+		,MAX(`Affiliate`)                                             AS `Affiliate`
+		,MAX(`Brand`)                                                 AS `Brand`
+		,`Affiliate_id`
+		,`Advertiser_id`
+		,MAX(`Deal_Currency`)                                         AS `Currency`
+		,ROUND(SUM(`CPA`), 0)                                         AS `CPA`
+		,ROUND(SUM(`net_CPA_Val`), 2)                                 AS `net_CPA_Val`
+		,ROUND(SUM(`net_RS_Val`), 2)                                  AS `net_RS_Val`
+		,ROUND(SUM(`net_CPA_Val`) + SUM(`net_RS_Val`), 2)             AS `net_Total_comm`
+		,0                                                            AS `RS_carry_NCO`
+		,ROUND(SUM(`Net_Revenue`), 2)                                 AS `Net_Revenue`
+		,ROUND(SUM(`gross_CPA_Val`), 2)                               AS `gross_CPA_Val`
+		,ROUND(SUM(`gross_RS_Val`), 2)                                AS `gross_RS_Val`
+		,' '                                                          AS `Sub_Affiliate`
+		,0                                                            AS `Sub_Affiliate_id`
+		,MAX(`Product`)                                               AS `Product`
+		,MAX(`Product_Real`)                                          AS `Product_Real`
+		,MAX(`Channel`)                                               AS `Channel`
+		,MAX(`Channel_id`)                                            AS `Channel_id`
+	FROM final_rows
+	WHERE `RS_Base` <> 'aggregate_all_ms'
+	GROUP BY `Affiliate_id`, `Account_id`, `Advertiser_id`, `Month`
+),
+-- Detalle aggregate_all_ms: RS con signo, partido por account/brand/moneda
+detail_ms AS (
+	SELECT
+		 MAX(`Owner`)                                                 AS `Owner`
+		,`Account_id`
+		,'CPA+RS'                                                     AS `Comm_type`
+		,`Month`
+		,MAX(`Affiliate`)                                             AS `Affiliate`
+		,MAX(`Brand`)                                                 AS `Brand`
+		,`Affiliate_id`
+		,`Advertiser_id`
+		,`Deal_Currency`                                              AS `Currency`
+		,ROUND(SUM(`CPA`), 0)                                         AS `CPA`
+		,ROUND(SUM(`net_CPA_Val`), 2)                                 AS `net_CPA_Val`
+		,ROUND(SUM(`net_RS_Val`), 2)                                  AS `net_RS_Val`
+		,ROUND(SUM(`net_CPA_Val`) + SUM(`net_RS_Val`), 2)             AS `net_Total_comm`
+		,0                                                            AS `RS_carry_NCO`
+		,ROUND(SUM(`Net_Revenue`), 2)                                 AS `Net_Revenue`
+		,ROUND(SUM(`gross_CPA_Val`), 2)                               AS `gross_CPA_Val`
+		,ROUND(SUM(`gross_RS_Val`), 2)                                AS `gross_RS_Val`
+		,' '                                                          AS `Sub_Affiliate`
+		,0                                                            AS `Sub_Affiliate_id`
+		,MAX(`Product`)                                               AS `Product`
+		,MAX(`Product_Real`)                                          AS `Product_Real`
+		,MAX(`Channel`)                                               AS `Channel`
+		,MAX(`Channel_id`)                                            AS `Channel_id`
+	FROM final_rows
+	WHERE `RS_Base` = 'aggregate_all_ms'
+	GROUP BY `Affiliate_id`, `Account_id`, `Advertiser_id`, `Month`, `Deal_Currency`
 )
+SELECT * FROM detail
+UNION ALL
+SELECT * FROM detail_ms
+UNION ALL
+-- Pool negativo: importe positivo para que el RS pagado del afiliado sea 0
 SELECT
 	 MAX(`Owner`)                                                     AS `Owner`
-	,`Account_id`
-	,'CPA+RS'                                                         AS `Comm_type`
+	,0                                                                AS `Account_id`
+	,'RS-OFFSET'                                                      AS `Comm_type`
 	,`Month`
 	,MAX(`Affiliate`)                                                 AS `Affiliate`
-	,MAX(`Brand`)                                                     AS `Brand`
+	,''                                                               AS `Brand`
 	,`Affiliate_id`
-	,`Advertiser_id`
-	,MAX(`Deal_Currency`)                                             AS `Deal_Currency`
-	,ROUND(SUM(`CPA`), 0)                                             AS `CPA`
-	,ROUND(SUM(`net_CPA_Val`), 2)                                     AS `net_CPA_Val`
-	,ROUND(SUM(`net_RS_Val`), 2)                                      AS `net_RS_Val`
-	,ROUND(SUM(`net_CPA_Val`) + SUM(`net_RS_Val`), 2)                 AS `net_Total_comm`
+	,0                                                                AS `Advertiser_id`
+	,`Currency`
+	,0                                                                AS `CPA`
+	,0                                                                AS `net_CPA_Val`
+	,-SUM(`net_RS_Val`)                                               AS `net_RS_Val`
+	,-SUM(`net_RS_Val`)                                               AS `net_Total_comm`
 	,0                                                                AS `RS_carry_NCO`
-	,ROUND(SUM(`Net_Revenue`), 2)                                     AS `Net_Revenue`
-	,ROUND(SUM(`gross_CPA_Val`), 2)                                   AS `gross_CPA_Val`
-	,ROUND(SUM(`gross_RS_Val`), 2)                                    AS `gross_RS_Val`
-	,' '                                                              AS `Sub_Affiliate`
+	,0                                                                AS `Net_Revenue`
+	,0                                                                AS `gross_CPA_Val`
+	,0                                                                AS `gross_RS_Val`
+	,''                                                               AS `Sub_Affiliate`
 	,0                                                                AS `Sub_Affiliate_id`
-	,MAX(`Product`)                                                   AS `Product`
-	,MAX(`Product_Real`)                                              AS `Product_Real`
-	,MAX(`Channel`)                                                   AS `Channel`
-	,MAX(`Channel_id`)                                                AS `Channel_id`
-FROM final_rows
-GROUP BY `Affiliate_id`, `Account_id`, `Advertiser_id`, `Month`
+	,''                                                               AS `Product`
+	,''                                                               AS `Product_Real`
+	,''                                                               AS `Channel`
+	,0                                                                AS `Channel_id`
+FROM detail_ms
+GROUP BY `Affiliate_id`, `Month`, `Currency`
+HAVING SUM(`net_RS_Val`) < 0
 ORDER BY `Affiliate_id`, `Account_id`, `Advertiser_id`, `Month`
 ;
 

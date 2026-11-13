@@ -1,0 +1,163 @@
+/*
+CREATE_TABLE_util_options_v1.sql
+
+Catálogo genérico de opciones para componentes de la app (select, radio, multiselect)
+con etiqueta y explicación traducidas al idioma seleccionado.
+
+Tablas:
+  - util_options       : una fila por opción (grupo + valor técnico + orden + estado)
+  - util_options_i18n  : una fila por opción e idioma (etiqueta visible + explicación)
+
+Conceptos:
+  - Option_group : código del conjunto de opciones (ej. YES_NO, PAYMENT_METHOD).
+                   Reutilizable por cualquier componente/campo de la app.
+  - Option_value : valor técnico que se guarda en el campo (ej. YES, BankTransfer).
+                   Es lo que se persiste; nunca se traduce.
+  - Lang         : código de idioma de la app en mayúsculas (EN, ES, IT, ...).
+                   Añadir un idioma = solo INSERTs en util_options_i18n, sin ALTER.
+  - Label        : texto corto visible en el componente.
+  - Description  : explicación de la opción (tooltip / texto de ayuda).
+
+Fallback de idioma:
+  Si no existe traducción para el idioma pedido se usa EN; si tampoco existe,
+  Label = Option_value y Description = ''.
+
+Enlace con util_settings (compatible hacia atrás):
+  Value_01_Options / Value_02_Options pueden contener:
+    - un código de grupo existente en util_options (ej. 'YES_NO') -> opciones desde la tabla
+    - el texto actual 'A/B/C' o una pista ('Date YYYY-MM-DD')     -> comportamiento actual
+  La detección se hace con EXISTS sobre util_options.Option_group.
+
+Compatibilidad: MySQL 8.0.37 (CHECK aplicado desde 8.0.16). Sin sintaxis 8.4+.
+
+Pasos:
+  1. Crear tablas.
+  2. Carga inicial de grupos usados hoy en util_settings (YES_NO, PRODUCT_EDITION, PAYMENT_METHOD).
+  3. (NO EJECUTAR TODAVÍA) Repuntar util_settings a los códigos de grupo: requiere antes
+     adaptar Report_Util_Settings y el frontend, si no el componente mostraría 'YES_NO'
+     como única opción.
+
+06.11.2026 v1   Primera versión
+*/
+
+-- ============================================================================
+-- 1. Tablas
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `util_options` (
+   `id`            INT          NOT NULL AUTO_INCREMENT,
+   `Option_group`  VARCHAR(50)  NOT NULL                 COMMENT 'Código del conjunto de opciones. Ej: YES_NO',
+   `Option_value`  VARCHAR(100) NOT NULL                 COMMENT 'Valor técnico que se guarda en el campo',
+   `Sort_order`    SMALLINT     NOT NULL DEFAULT 0       COMMENT 'Orden de presentación dentro del grupo',
+   `Is_active`     TINYINT      NOT NULL DEFAULT 1       COMMENT '1=visible en componentes, 0=oculta (se conserva por histórico)',
+   `Creation_Date` DATETIME     NULL     DEFAULT (NOW()),
+   `Last_Update`   DATETIME     NULL     DEFAULT (NOW()) ON UPDATE CURRENT_TIMESTAMP,
+   `Operator`      VARCHAR(30)  NULL     DEFAULT ' ',
+   PRIMARY KEY (`id`) USING BTREE,
+   UNIQUE INDEX `UX_util_options_group_value` (`Option_group`, `Option_value`) USING BTREE,
+   INDEX `IX_util_options_group_order` (`Option_group`, `Is_active`, `Sort_order`) USING BTREE,
+   CONSTRAINT `chk_util_options_active` CHECK (`Is_active` IN (0,1))
+)
+COMMENT='Catálogo genérico de opciones para componentes de la app'
+COLLATE='utf8mb4_0900_ai_ci'
+ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `util_options_i18n` (
+   `id`            INT          NOT NULL AUTO_INCREMENT,
+   `Option_id`     INT          NOT NULL                 COMMENT 'FK util_options.id',
+   `Lang`          VARCHAR(5)   NOT NULL                 COMMENT 'Idioma de la app: EN, ES, IT...',
+   `Label`         VARCHAR(100) NOT NULL                 COMMENT 'Texto corto visible',
+   `Description`   VARCHAR(500) NULL     DEFAULT NULL    COMMENT 'Explicación de la opción (tooltip / ayuda)',
+   `Creation_Date` DATETIME     NULL     DEFAULT (NOW()),
+   `Last_Update`   DATETIME     NULL     DEFAULT (NOW()) ON UPDATE CURRENT_TIMESTAMP,
+   `Operator`      VARCHAR(30)  NULL     DEFAULT ' ',
+   PRIMARY KEY (`id`) USING BTREE,
+   UNIQUE INDEX `UX_util_options_i18n_option_lang` (`Option_id`, `Lang`) USING BTREE,
+   CONSTRAINT `fk_util_options_i18n_option`
+      FOREIGN KEY (`Option_id`) REFERENCES `util_options` (`id`)
+      ON DELETE CASCADE ON UPDATE CASCADE
+)
+COMMENT='Traducciones (etiqueta + explicación) de util_options por idioma'
+COLLATE='utf8mb4_0900_ai_ci'
+ENGINE=InnoDB;
+
+-- ============================================================================
+-- 2. Carga inicial (idempotente) — grupos usados hoy en util_settings
+-- ============================================================================
+
+INSERT IGNORE INTO `util_options` (`Option_group`, `Option_value`, `Sort_order`, `Operator`) VALUES
+   ('YES_NO',          'YES',          1, 'setup'),
+   ('YES_NO',          'NO',           2, 'setup'),
+   ('PRODUCT_EDITION', 'Lite',         1, 'setup'),
+   ('PRODUCT_EDITION', 'Network',      2, 'setup'),
+   ('PAYMENT_METHOD',  'BankTransfer', 1, 'setup'),
+   ('PAYMENT_METHOD',  'CreditCard',   2, 'setup'),
+   ('PAYMENT_METHOD',  'Paypal',       3, 'setup'),
+   ('PAYMENT_METHOD',  'Crypto',       4, 'setup');
+
+INSERT IGNORE INTO `util_options_i18n` (`Option_id`, `Lang`, `Label`, `Description`, `Operator`)
+SELECT O.`id`, T.`Lang`, T.`Label`, T.`Description`, 'setup'
+FROM `util_options` O
+JOIN (
+             SELECT 'YES_NO' AS Grp, 'YES' AS Val, 'EN' AS Lang, 'Yes' AS Label, 'The option is enabled' AS Description
+   UNION ALL SELECT 'YES_NO', 'YES', 'ES', 'Sí',  'La opción está activada'
+   UNION ALL SELECT 'YES_NO', 'YES', 'IT', 'Sì',  'L''opzione è attivata'
+   UNION ALL SELECT 'YES_NO', 'NO',  'EN', 'No',  'The option is disabled'
+   UNION ALL SELECT 'YES_NO', 'NO',  'ES', 'No',  'La opción está desactivada'
+   UNION ALL SELECT 'YES_NO', 'NO',  'IT', 'No',  'L''opzione è disattivata'
+
+   UNION ALL SELECT 'PRODUCT_EDITION', 'Lite',    'EN', 'Lite',    'Basic edition of the product'
+   UNION ALL SELECT 'PRODUCT_EDITION', 'Lite',    'ES', 'Lite',    'Edición básica del producto'
+   UNION ALL SELECT 'PRODUCT_EDITION', 'Lite',    'IT', 'Lite',    'Edizione base del prodotto'
+   UNION ALL SELECT 'PRODUCT_EDITION', 'Network', 'EN', 'Network', 'Full edition for affiliate networks'
+   UNION ALL SELECT 'PRODUCT_EDITION', 'Network', 'ES', 'Network', 'Edición completa para redes de afiliados'
+   UNION ALL SELECT 'PRODUCT_EDITION', 'Network', 'IT', 'Network', 'Edizione completa per reti di affiliazione'
+
+   UNION ALL SELECT 'PAYMENT_METHOD', 'BankTransfer', 'EN', 'Bank transfer', 'Payment by bank transfer to the registered account'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'BankTransfer', 'ES', 'Transferencia bancaria', 'Pago por transferencia a la cuenta registrada'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'BankTransfer', 'IT', 'Bonifico bancario', 'Pagamento tramite bonifico sul conto registrato'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'CreditCard',   'EN', 'Credit card', 'Payment to a credit or debit card'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'CreditCard',   'ES', 'Tarjeta de crédito', 'Pago a una tarjeta de crédito o débito'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'CreditCard',   'IT', 'Carta di credito', 'Pagamento su carta di credito o debito'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'Paypal',       'EN', 'PayPal', 'Payment to a PayPal account'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'Paypal',       'ES', 'PayPal', 'Pago a una cuenta PayPal'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'Paypal',       'IT', 'PayPal', 'Pagamento su un conto PayPal'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'Crypto',       'EN', 'Crypto', 'Payment in cryptocurrency to a wallet'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'Crypto',       'ES', 'Cripto', 'Pago en criptomoneda a un monedero'
+   UNION ALL SELECT 'PAYMENT_METHOD', 'Crypto',       'IT', 'Cripto', 'Pagamento in criptovaluta su un wallet'
+) T ON T.Grp = O.`Option_group` AND T.Val = O.`Option_value`;
+
+-- ============================================================================
+-- 3. (NO EJECUTAR TODAVÍA) Repuntar util_settings a códigos de grupo
+--    Requiere antes adaptar Report_Util_Settings + frontend.
+-- ============================================================================
+/*
+UPDATE `util_settings` SET `Value_01_Options` = 'YES_NO'          WHERE `Value_01_Options` = 'YES/NO';
+UPDATE `util_settings` SET `Value_02_Options` = 'YES_NO'          WHERE `Value_02_Options` = 'YES/NO';
+UPDATE `util_settings` SET `Value_01_Options` = 'PRODUCT_EDITION' WHERE `Value_01_Options` = 'Lite/Network';
+UPDATE `util_settings` SET `Value_01_Options` = 'PAYMENT_METHOD'  WHERE `Value_01_Options` = 'BankTransfer/CreditCard/Paypal/Crypto';
+*/
+
+-- ============================================================================
+-- Consultas de prueba
+-- ============================================================================
+
+-- a) Opciones de un grupo en un idioma, con fallback a EN
+SET @Lang = 'ES', @Grp = 'PAYMENT_METHOD';
+SELECT O.`Option_value`                                   AS `Value`
+      ,COALESCE(T.`Label`, E.`Label`, O.`Option_value`)   AS `Label`
+      ,COALESCE(T.`Description`, E.`Description`, '')     AS `Description`
+FROM `util_options` O
+LEFT JOIN `util_options_i18n` T ON T.`Option_id` = O.`id` AND T.`Lang` = @Lang
+LEFT JOIN `util_options_i18n` E ON E.`Option_id` = O.`id` AND E.`Lang` = 'EN'
+WHERE O.`Option_group` = @Grp
+  AND O.`Is_active` = 1
+ORDER BY O.`Sort_order`, O.`Option_value`;
+
+-- b) Control: opciones activas sin traducción en algún idioma (EN, ES, IT)
+SELECT O.`Option_group`, O.`Option_value`, L.`Lang` AS `Lang_faltante`
+FROM `util_options` O
+CROSS JOIN (SELECT 'EN' AS Lang UNION ALL SELECT 'ES' UNION ALL SELECT 'IT') L
+LEFT JOIN `util_options_i18n` T ON T.`Option_id` = O.`id` AND T.`Lang` = L.`Lang`
+WHERE O.`Is_active` = 1 AND T.`id` IS NULL
+ORDER BY O.`Option_group`, O.`Sort_order`, L.`Lang`;

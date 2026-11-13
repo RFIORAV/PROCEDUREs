@@ -414,12 +414,12 @@ SELECT
    ,"width=150px,tooltip=yes" as `Tracker ID`
    ,"width=150px,tooltip=yes" as `Tracker name`
    ,if(@Affiliate_id="ALL" AND @ProductEdition<>"lite","width=160px","omit=true") as Affiliate  -- K 23.07.2026
-   ,"width=080px,right=true,colBg=blue"    as `CPA`
-   ,"width=080px,right=true,colBg=blue"    as `RS`
-   ,"width=080px,right=true,colBg=#034F3B" as `CPA aff`
-   ,"width=080px,right=true,colBg=#034F3B" as `RS aff`
-   ,"width=080px,right=true,colBg=#1C1917" as `CPA marg`
-   ,"width=080px,right=true,colBg=#1C1917" as `RS marg`
+   ,"width=080px,right=true,colorBg=[>0:yellow;>=0:yellow;<0:yellow]" as `CPA`
+   ,"width=080px,right=true,colorBg=[>0:yellow;>=0:yellow;<0:yellow]" as `RS`
+   ,"width=080px,right=true,colorBg=[>0:blue;>=0:blue;<0:blue]" as `CPA aff`
+   ,"width=080px,right=true,colorBg=[>0:blue;>=0:blue;<0:blue]" as `RS aff`
+   ,"width=080px,right=true,colorBg=[>0:green;>=0:green;<0:green]" as `CPA marg`
+   ,"width=080px,right=true,colorBg=[>0:green;>=0:green;<0:green]" as `RS marg`
    ,if(@Channel!="ALL" or @Channel_id!="ALL","omit=true","width=150px") Channel
    ,if(@Product!="ALL","omit=true","width=100px") Product
    -- -----------------------------------------------------

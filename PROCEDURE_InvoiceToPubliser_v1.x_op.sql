@@ -40,6 +40,7 @@ call InvoiceToPubliser('Currency=original,Debug=KeyValues');
 29.05.2024 v1.1   Bonus/fee
 09.01.2025 V1.2   Filtro por todos los meses (RS)
 10.04.2026 v1.3   Meta/filtros: etiqueta Publisher -> Operator; ORDER BY alinea nombre de columna
+05.11.2026 v1.4   Meta/filtros: etiqueta total -> subtotal
 
 */
 DROP PROCEDURE IF EXISTS InvoiceToPubliser;
@@ -49,7 +50,7 @@ CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `InvoiceToPubliser`(IN
    InputCommLine    VARCHAR(250)
    )
 
-COMMENT 'Report: Invoicing to Publisher'
+COMMENT 'v1.4 05.11.2026 Report: Invoicing to Publisher'
 
 BEGIN
 
@@ -83,7 +84,7 @@ DECLARE v_SQL               LONGTEXT;
 DECLARE v_SQLfilters        LONGTEXT;
 
 -- Defaults
-SET v_Version      ='v1.3 10.04.2026';
+SET v_Version      ='v1.4 05.11.2026';
 SET v_Owner        ='all';
 SET v_Month        =LEFT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),7);
 SET v_Advertiser_id='ALL';
@@ -233,7 +234,7 @@ SetConverted as (
 ),
 SetConverted_total_parcial as (
    SELECT
-       ',IF(v_HideDetails="YES",'"data"','"total"'),' as `Meta`,
+       ',IF(v_HideDetails="YES",'"data"','"subtotal"'),' as `Meta`,
        Date
       ,Owner_id
       ,`Owner`
@@ -267,7 +268,7 @@ SetConverted_total_global as (
        "total" as `Meta`,
        "~~~~~"   as `a02`
       ,"~~~~~"   as `a03`
-      ,"~~TOTAL~~"   as `a04`
+      ,"TOTAL"   as `a04`
       ,"~~~~~"   as `a05`
       ,"~~~~~"   as `a06`
       ,"~~~~~"   as `a07`

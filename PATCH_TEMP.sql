@@ -2,6 +2,34 @@
       MODIFICAR ANTES DE USAR
 */
 
+-- 12.11.2026
+
+DROP TABLE `players_general_API_idx`;
+call Report_players_general('genidx=yes');
+
+-- 06.11.2026
+
+-- ALTER TABLE `util_settings`
+   -- CHANGE COLUMN `Value_01_MultiSelect` `Value_01_DataType` VARCHAR(15) NULL DEFAULT NULL AFTER `Value_01_Required`,
+   -- CHANGE COLUMN `Value_02_MultiSelect` `Value_02_DataType` VARCHAR(15) NULL DEFAULT NULL AFTER `Value_02_Required`;
+   
+-- 05.11.2026
+
+-- ALTER TABLE `multi_query` ADD COLUMN `Group_id` INT NULL DEFAULT 2 AFTER `Orden`;
+
+-- 04.11.2026
+
+-- SET FOREIGN_KEY_CHECKS = 0;
+
+-- REPLACE INTO `changelog` (`id`, `Version`, `Release_Date`, `Tag`, `Type`, `Title`, `Description`, `Order`, `Status_id`, `Creation_Date`, `Last_Update`, `User`) VALUES (46, '202610270832', '2026-10-27', NULL, 'new', 'Marketing Source editing in Operators, Brands and Accounts', 'You can now edit a Marketing Source directly from the Operators, Brands and Accounts modules.', 2, 1, '2026-10-27 20:48:12', '2026-11-04 09:40:13', 'admin');
+-- REPLACE INTO `changelog` (`id`, `Version`, `Release_Date`, `Tag`, `Type`, `Title`, `Description`, `Order`, `Status_id`, `Creation_Date`, `Last_Update`, `User`) VALUES (47, '202611030914', '2026-11-03', 'latest', 'new', 'Players Report and Daily Detail in affiliate Reports', 'The Players Report and Daily Detail reports are now available in the Reports section of the affiliate menu.', 1, 1, '2026-11-04 09:40:14', '2026-11-04 09:40:14', 'admin');
+-- REPLACE INTO `changelog` (`id`, `Version`, `Release_Date`, `Tag`, `Type`, `Title`, `Description`, `Order`, `Status_id`, `Creation_Date`, `Last_Update`, `User`) VALUES (48, '202611030914', '2026-11-03', 'latest', 'new', 'Postback Report in manager menu', 'The Postback Report is now available in the manager menu.', 2, 1, '2026-11-04 09:40:14', '2026-11-04 09:40:14', 'admin');
+-- REPLACE INTO `changelog` (`id`, `Version`, `Release_Date`, `Tag`, `Type`, `Title`, `Description`, `Order`, `Status_id`, `Creation_Date`, `Last_Update`, `User`) VALUES (49, '202611030914', '2026-11-03', 'latest', 'new', 'Daily Postback Report in manager Dashboard', 'The manager Dashboard now includes the Daily Postback Report.', 3, 1, '2026-11-04 09:40:14', '2026-11-04 09:40:14', 'admin');
+-- REPLACE INTO `changelog` (`id`, `Version`, `Release_Date`, `Tag`, `Type`, `Title`, `Description`, `Order`, `Status_id`, `Creation_Date`, `Last_Update`, `User`) VALUES (50, '202611030914', '2026-11-03', 'latest', 'improvement', 'Operator accounts without a required Brand', 'You can now create operator accounts without selecting a Brand, and the CPA Limit field is now optional.', 1, 1, '2026-11-04 09:40:14', '2026-11-04 09:40:14', 'admin');
+-- REPLACE INTO `changelog` (`id`, `Version`, `Release_Date`, `Tag`, `Type`, `Title`, `Description`, `Order`, `Status_id`, `Creation_Date`, `Last_Update`, `User`) VALUES (51, '202611030914', '2026-11-03', 'latest', 'improvement', 'Totals stay visible while scrolling in reports', 'Totals in all affiliate and manager reports now stay fixed at the top while you scroll, so they are always visible.', 2, 1, '2026-11-04 09:40:14', '2026-11-04 09:40:14', 'admin');
+-- REPLACE INTO `changelog` (`id`, `Version`, `Release_Date`, `Tag`, `Type`, `Title`, `Description`, `Order`, `Status_id`, `Creation_Date`, `Last_Update`, `User`) VALUES (52, '202611030914', '2026-11-03', 'latest', 'improvement', 'Informative tooltips on report columns', 'Some report columns now show an explanatory tooltip when you hover over them. Column names with extra information are underlined so you can easily spot them.', 3, 1, '2026-11-04 09:40:14', '2026-11-04 09:40:14', 'admin');
+
+
 -- 03.11.2026
 
 -- ALTER TABLE `dash_modules` CHANGE COLUMN `Settings` `Settings` TEXT NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci' AFTER `Query_params`;
@@ -35,6 +63,43 @@
 -- COLLATE='utf8mb4_0900_ai_ci'
 -- ENGINE=InnoDB
 -- ;
+
+-- SET FOREIGN_KEY_CHECKS = 0;
+-- REPLACE INTO `auth_menu` (`id`, `Code`, `title`, `icon`, `path`, `type`, `header_id`, `isExternal`, `isReport`, `group`, `order`, `status_id`, `description`, `Creation_Date`, `Last_Update`) VALUES (97, 'affiliate_reports_postback_daily', 'Postback Report', 'Activity', '/affiliate/report-postback-daily', '0', 46, 0, 0, '0', 5, 1, NULL, '2026-09-23 13:35:03', '2026-11-03 13:38:40');
+
+-- DROP TABLE IF EXISTS `account_notifications_session`;
+-- CREATE TABLE IF NOT EXISTS `players_general_API_idx` (
+   -- `API` VARCHAR(20) NULL DEFAULT "netrefer",
+   -- `Date` VARCHAR(7) NULL DEFAULT NULL,
+   -- `Advertiser_id` INT NOT NULL DEFAULT '0',
+   -- `Advertiser` VARCHAR(50) NULL DEFAULT NULL,
+   -- `Username_id` INT NULL DEFAULT NULL,
+   -- `Username` VARCHAR(50) NULL DEFAULT NULL,
+   -- `Customer_Reference_ID` VARCHAR(50) NULL DEFAULT NULL,
+   -- `Signup_Date` VARCHAR(7) NULL DEFAULT NULL,
+   -- `Marketing_Source_Name` VARCHAR(50) NULL DEFAULT NULL,
+   -- `Affiliate_id` INT NOT NULL DEFAULT '0',
+   -- `Affiliate` VARCHAR(100) NOT NULL DEFAULT '',
+   -- `Operator_id` INT NOT NULL DEFAULT '0',
+   -- `Operator` VARCHAR(150) NULL DEFAULT NULL,
+   -- `CPA_Processed_Date` VARCHAR(7) NULL DEFAULT NULL,
+   -- `Deposits` DECIMAL(10,2) NULL DEFAULT NULL,
+   -- `MS_id` INT NULL DEFAULT NULL,
+   -- `Rev_Share_Aff` DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'Net Revenue API * RS_Percentage/100 de campaign_deal_affiliate',
+   -- `Rev_Share_Netw` DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'Net Revenue API * RS_Percentage/100 de campaign_deal_gestor',
+   -- INDEX `Date` (`Date`) USING BTREE,
+   -- INDEX `Advertiser_id` (`Advertiser_id`) USING BTREE,
+   -- INDEX `Username_id` (`Username_id`) USING BTREE,
+   -- INDEX `Signup_Date` (`Signup_Date`) USING BTREE,
+   -- INDEX `CPA_Processed_Date` (`CPA_Processed_Date`) USING BTREE,
+   -- INDEX `Customer_Reference_ID` (`Customer_Reference_ID`) USING BTREE,
+   -- INDEX `Marketing_Source_Name` (`Marketing_Source_Name`) USING BTREE,
+   -- INDEX `Affiliate_id` (`Affiliate_id`) USING BTREE,
+   -- INDEX `Operator_id` (`Operator_id`) USING BTREE,
+   -- INDEX `MS_id` (`MS_id`) USING BTREE
+-- );
+
+-- call Report_players_general('genidx=yes');
 
 
 -- 02.11.2026

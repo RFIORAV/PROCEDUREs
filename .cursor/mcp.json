@@ -1,0 +1,10 @@
+{  
+   "mcpServers": {
+      "seedlab": {
+         "url": "http://34.140.226.222:5173/api/mcp",
+         "headers": {
+            "Authorization": "Bearer CzdWDlsgHcYuryFKUWmbVAirtWtNOMEdwcbUjtmfaevShUJxSPwBJzoeAauCYbox"  
+               }            
+             }
+           }
+         }

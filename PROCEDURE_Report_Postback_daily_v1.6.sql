@@ -1,5 +1,5 @@
 /*
-PROCEDURE_Report_Postback_daily_v1.5.sql - Reporte diario de postbacks inbound
+PROCEDURE_Report_Postback_daily_v1.6.sql - Reporte diario de postbacks inbound
 
 Descripción:
   Lista postbacks (postback_inbound_data) enriquecidos con MS / Account /
@@ -36,8 +36,8 @@ Keys:
                  Normal/Flat: reporte detallado actual (Flat = alias de Normal).
                  Transpose/Transposed: columnas Date, Brand, [Affiliate solo en Mode=Ges], Marketing source
                  + una columna por cada Op_Code distinto (conteo); primera fila = totales.
-                 En Mode=Ges aparece en Filters=Yes como Options: Display=Flat/Transposed.
-                 En Mode=Aff Display es siempre Transpose (se fuerza; Options no aparece).
+                 En Mode=Ges y Mode=Aff aparece en Filters=Yes como Options: Display=Flat/Transposed.
+                 En Mode=Aff, si no se informa Display, es Flat.
                  Con Transposed se oculta el filtro Op_Code.
                  Mode=Ges + Transposed admite Affiliate_id=ALL.
                  Mode=Aff exige un único Affiliate_id (ALL no se procesa).
@@ -68,6 +68,8 @@ Ejemplos:
   call Report_Postback_daily('Display=Transpose,Affiliate_id=11,Date_from=2026-09-01,Date_to=2026-09-15,debug=ye');
   call Report_Postback_daily('Mode=Ges,Display=Transposed,Affiliate_id=ALL,month=2026-10');
   call Report_Postback_daily('Mode=Aff,Affiliate_id=13,filters=yes');
+  call Report_Postback_daily('Mode=Aff,Affiliate_id=13,Display=Flat,filters=yes');
+  call Report_Postback_daily('Mode=Aff,Affiliate_id=13,Display=Transposed');
   call Report_Postback_daily('Mode=Ges,Display=Flat,filters=yes');
   call Report_Postback_daily('Mode=Ges,Display=Transposed,filters=yes');
   call Report_Postback_daily('month=2026-09,Operator=VegasLegends,Op_Code=reg,filters=yes,debug=ye');
@@ -107,7 +109,7 @@ Ejemplos:
                   Currency oculta (omit=yes); MS id y Tracker_ID a continuación de Affiliate; "TOTAL records" en Account;
                   Relleno de totales con blancos en lugar de "~~~~~"
 03.11.2026 v1.5   Filters=Yes en Mode=Ges: grupo "Options" con Display=Flat / Transposed (Korder 01);
-                  Mode=Aff: Display forzado a Transpose (sin Options);
+                  Mode=Aff: Options (Flat/Transposed) igual que Ges; sin Display explícito sigue en Transpose;
                   Display acepta alias FLAT (=NORMAL) y TRANSPOSED (=TRANSPOSE);
                   Display=Transposed: se oculta el filtro Op_Code en Filters=Yes;
                   Display=Transposed ya no fuerza Mode=Aff; Mode=Ges + Transposed admite Affiliate_id=ALL;
@@ -117,6 +119,7 @@ Ejemplos:
                   Filters=Yes: Korder Options=01, Period=03, Month=05; Month solo últimos 4 meses (incl. corriente) en orden DESC;
                   Rows en todos los grupos según la combinación de filtros aplicada: Period/Month cuentan cada periodo
                   con el resto de filtros (sin el de fecha); Options/Custom y demás grupos cuentan el periodo seleccionado
+04.11.2026 v1.6   Mode=Aff: si no se informa Display, el default es Flat (ya no Transpose)
 */
 
 DROP PROCEDURE IF EXISTS Report_Postback_daily;
@@ -126,11 +129,11 @@ DELIMITER $$
 CREATE DEFINER=`b3w1nn3r`@`%` PROCEDURE `Report_Postback_daily`(
    IN InputCommLine VARCHAR(550)
 )
-COMMENT 'v1.5 03.11.2026 Postbacks enriquecidos con MS y clics affly; Ges: Options Flat/Transposed; Aff: siempre Transpose'
+COMMENT 'v1.6 04.11.2026 Postbacks enriquecidos con MS y clics affly; Ges y Aff: Options Flat/Transposed; Aff sin Display: Flat'
 SQL SECURITY DEFINER
 proc_label:BEGIN
 
-DECLARE v_Version       VARCHAR(32)  DEFAULT 'v1.5 03.11.2026';
+DECLARE v_Version       VARCHAR(32)  DEFAULT 'v1.6 04.11.2026';
 DECLARE v_InputCommLine VARCHAR(560);
 DECLARE v_e             INT;
 DECLARE v_c             INT;
@@ -274,8 +277,8 @@ IF v_Display = 'FLAT'       THEN SET v_Display = 'NORMAL';    END IF; -- v1.5 al
 IF v_Display = 'TRANSPOSED' THEN SET v_Display = 'TRANSPOSE'; END IF; -- v1.5 alias
 IF v_Display NOT IN ('NORMAL', 'TRANSPOSE') THEN SET v_Display = 'NORMAL'; END IF;
 -- v1.5: Transposed ya no fuerza Mode=Aff (Mode=Ges + Transposed admite Affiliate_id=ALL)
--- Mode=Aff: solo un afiliado (Affiliate_id obligatorio) y siempre Display=Transpose
-IF v_Mode = 'AFF' THEN SET v_Display = 'TRANSPOSE'; END IF;
+-- v1.6: Mode=Aff sin Display queda en Flat (NORMAL, default). Transposed solo si se informa.
+-- Mode=Aff: solo un afiliado (Affiliate_id obligatorio).
 IF v_Mode IN ('AFF') AND v_Affiliate_id IN ("", "ALL")
 THEN LEAVE proc_label; 
 END IF;
@@ -492,12 +495,10 @@ UNION ALL
 UNION ALL
 (SELECT "05", "Month", LEFT(MF.`date`,7), "Month", LEFT(MF.`date`,7),
         (SELECT COUNT(*) FROM PE_base WHERE LEFT(`Date`,7) = LEFT(MF.`date`,7)) FROM MonthFilter MF)
-', IF(v_Mode = 'GES', '
 UNION ALL
 (SELECT "01", "Options", "Stacked", "Display", "FLAT", (SELECT COUNT(*) FROM PE) FROM DUAL)
 UNION ALL
 (SELECT "01", "Options", "Split by OpCode", "Display", "TRANSPOSED", (SELECT COUNT(*) FROM PE) FROM DUAL)
-', ''), '
 UNION ALL
 (SELECT "10", "Operator", Operator, "Operator", Operator, COUNT(*) FROM PE WHERE Operator IS NOT NULL GROUP BY PE.Operator)
 ', IF(v_Display = 'TRANSPOSE', '', '
