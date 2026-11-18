@@ -13,6 +13,7 @@ Keys:
 
    11.10.2024 v1     Version 1
    03.06.2025        Adecuación selección deal
+   17.11.2026        Country no condiciona la selección del deal (alineado a fact1 v3.9.5)
 
 */
 
@@ -80,12 +81,11 @@ from Fact1 D
 LEFT JOIN LATERAL (
 	SELECT * FROM (
       SELECT *,ROW_NUMBER() OVER(PARTITION BY Product
-                                 ORDER BY Valid_From DESC,Country DESC,id DESC) AS RowNr
+                                 ORDER BY Valid_From DESC,id DESC) AS RowNr
       FROM `campaign_deal_gestor_prod_date`
       WHERE `Username_id` = `D`.`Username_id`
         AND `is_active` = 1  AND `Valid_From` <= `D`.`Date`
         AND Product IN (IFNULL(D.Product,""),"")
-        AND Country IN (IFNULL(D.Country,""),"")
 	) AS CDP
    WHERE RowNr=1
    LIMIT 1

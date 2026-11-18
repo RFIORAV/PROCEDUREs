@@ -2,9 +2,58 @@
       MODIFICAR ANTES DE USAR
 */
 
+-- 14.11.2026
+/*
+CREATE TABLE IF NOT EXISTS `players_cellxpert_API` (
+   `id` INT NOT NULL AUTO_INCREMENT,
+   `Date` DATE NOT NULL COMMENT 'Report/Event date',
+   `Hour_Update` DATETIME NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE CURRENT_TIMESTAMP,
+   `Advertiser` VARCHAR(100) NULL DEFAULT NULL COMMENT 'Brand name' COLLATE 'utf8mb4_0900_ai_ci',
+   `Username` VARCHAR(100) NULL DEFAULT NULL COMMENT 'Account username' COLLATE 'utf8mb4_0900_ai_ci',
+   `Username_id` INT NULL DEFAULT NULL COMMENT 'Account ID',
+   `Prodotto` VARCHAR(100) NULL DEFAULT NULL COMMENT 'Product category' COLLATE 'utf8mb4_0900_ai_ci',
+   `Customer_ID` VARCHAR(100) NULL DEFAULT NULL COMMENT 'Trader / Customer ID' COLLATE 'utf8mb4_0900_ai_ci',
+   `Marketing_Source_Name` VARCHAR(100) NULL DEFAULT NULL COMMENT 'Tracking code' COLLATE 'utf8mb4_0900_ai_ci',
+   `Sub_ID` VARCHAR(100) NULL DEFAULT NULL COMMENT 'AFP / Sub account ID' COLLATE 'utf8mb4_0900_ai_ci',
+   `Reward_Plan` VARCHAR(255) NULL DEFAULT NULL COMMENT 'Commission type / Plan' COLLATE 'utf8mb4_0900_ai_ci',
+   `CPA_Count` INT NULL DEFAULT '0' COMMENT '1 if CPA triggered',
+   `CPA_Amount` DECIMAL(10,2) NULL DEFAULT '0.00' COMMENT 'CPA commission amount',
+   `Revenue_Share` DECIMAL(10,2) NULL DEFAULT '0.00' COMMENT 'RevShare commission amount',
+   `Total_Net_Revenue` DECIMAL(10,2) NULL DEFAULT '0.00' COMMENT 'Total commission / Net Rev',
+   `Country` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Registration_Date` VARCHAR(100) NULL DEFAULT NULL COLLATE 'utf8mb4_0900_ai_ci',
+   `Created_At` TIMESTAMP NULL DEFAULT (CURRENT_TIMESTAMP),
+   PRIMARY KEY (`id`) USING BTREE,
+   INDEX `idx_date_username` (`Date`, `Username_id`) USING BTREE,
+   INDEX `idx_customer_id` (`Customer_ID`) USING BTREE,
+   INDEX `idx_advertiser` (`Advertiser`) USING BTREE
+)
+COMMENT='Player-level data from Cellxpert API'
+COLLATE='utf8mb4_0900_ai_ci'
+;
+*/
+
+
+-- 13.11.2026 SOLO RITEMOOD PARA PROBAR
+-- 14.11.2026 TODAS
+/*
+ALTER TABLE `Snapshot_day_by_day`         CHANGE COLUMN `Net_Revenue` `Net_Revenue` DECIMAL(15,4) NULL DEFAULT '0.00' AFTER `Turnover`;
+ALTER TABLE `Snapshot_day_by_day_temp`    CHANGE COLUMN `Net_Revenue` `Net_Revenue` DECIMAL(15,4) NULL DEFAULT '0.00' AFTER `Turnover`;
+ALTER TABLE `Snapshot_day_by_day_lm`      CHANGE COLUMN `Net_Revenue` `Net_Revenue` DECIMAL(15,4) NULL DEFAULT '0.00' AFTER `Turnover`;
+ALTER TABLE `Snapshot_day_by_day_temp_lm` CHANGE COLUMN `Net_Revenue` `Net_Revenue` DECIMAL(15,4) NULL DEFAULT '0.00' AFTER `Turnover`;
+ALTER TABLE `Snapshot_day_by_day_fact1`
+   CHANGE COLUMN `Net_Revenue` `Net_Revenue`                         DECIMAL(15,4) NULL DEFAULT '0.00' AFTER `Turnover`,
+   CHANGE COLUMN `Revenue_Share_Gestor` `Revenue_Share_Gestor`       DECIMAL(15,2) NULL DEFAULT '0.00' AFTER `Level_4`,
+   CHANGE COLUMN `Revenue_Share_Affiliate` `Revenue_Share_Affiliate` DECIMAL(15,4) NULL DEFAULT '0.00' AFTER `Revenue_Share_Gestor`
+   ;
+ALTER TABLE `Snapshot_day_by_day_fact2`
+   CHANGE COLUMN `Net_Revenue` `Net_Revenue`                         DECIMAL(15,4) NULL DEFAULT '0.00' AFTER `Turnover`,
+   CHANGE COLUMN `Revenue_Share_Affiliate` `Revenue_Share_Affiliate` DECIMAL(15,4) NULL DEFAULT '0.00' AFTER `Channel`;   
+*/
+-- 13.11.2026
 -- 12.11.2026
 
-DROP TABLE `players_general_API_idx`;
+TRUNCATE TABLE `players_general_API_idx`;
 call Report_players_general('genidx=yes');
 
 -- 06.11.2026

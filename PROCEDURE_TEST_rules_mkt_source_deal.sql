@@ -13,6 +13,7 @@ Keys:
 
    10.10.2024 v1     Version 1
    03.06.2025        Adecuación selección deal
+   17.11.2026        Country no condiciona la selección del deal (alineado a fact1 v3.9.5)
 */
 SET NAMES 'utf8mb4' COLLATE 'utf8mb4_0900_ai_ci';
 SET collation_connection = utf8mb4_0900_ai_ci;
@@ -93,18 +94,17 @@ WITH Fact1 as (
                                         AND `Deal_Valid_From` <= `D`.`Date`
    	ORDER BY Deal_Valid_From DESC LIMIT 1
    ) AS M2 ON TRUE
-   -- -------------------------Seleccion de DEAL Affiliate/MS por producto/pais-------------
+   -- -------------------------Seleccion de DEAL Affiliate/MS por producto------------------
    LEFT JOIN LATERAL (
       SELECT * FROM (
          SELECT *,ROW_NUMBER() OVER(PARTITION BY Product
-                                    ORDER BY Deal_Valid_From DESC,Country DESC,id DESC) AS RowN
+                                    ORDER BY Deal_Valid_From DESC,id DESC) AS RowN
          FROM `campaign_mkt_source_deal`
          WHERE `MS_id` = `D`.`MS_id`
            AND Affiliate_id=M2.Affiliate_id
            AND `is_active` = 1
            AND `Deal_Valid_From` <= `D`.`Date`
            AND Product IN (IFNULL(D.Product, ""),""," ")
-           AND Country IN (IFNULL(D.Country,""),"")
       ) AS DbP
       where RowNr=1
       LIMIT 1
